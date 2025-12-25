@@ -19,6 +19,7 @@ BOLD='\033[1m'
 BACKUP_DIR="$HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$HOME/reticulum_update_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$HOME/reticulum-meshchat"
+NEEDS_REBOOT=false
 
 #########################################################
 # Helper Functions
@@ -35,19 +36,19 @@ print_section() {
 }
 
 print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}âœ“ $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    echo -e "${YELLOW}âš  $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}✗ $1${NC}"
+    echo -e "${RED}âœ— $1${NC}"
 }
 
 print_info() {
-    echo -e "${CYAN}ℹ $1${NC}"
+    echo -e "${CYAN}â„¹ $1${NC}"
 }
 
 log_message() {
@@ -96,6 +97,46 @@ check_pip() {
     fi
 }
 
+update_system_packages() {
+    print_section "Updating System Packages"
+    
+    echo -e "${YELLOW}Do you want to update system packages first? (recommended)${NC}"
+    echo -e "This will run: sudo apt update && sudo apt upgrade -y"
+    echo -n "Update system packages? (Y/n): "
+    read -r UPDATE_SYSTEM
+    
+    if [[ "$UPDATE_SYSTEM" =~ ^[Nn]$ ]]; then
+        print_warning "Skipping system package updates"
+        log_message "User skipped system updates"
+        return 0
+    fi
+    
+    print_info "Updating package lists..."
+    log_message "Running apt update"
+    
+    if sudo apt update 2>&1 | tee -a "$UPDATE_LOG"; then
+        print_success "Package lists updated"
+        
+        print_info "Upgrading installed packages (this may take several minutes)..."
+        log_message "Running apt upgrade"
+        
+        if sudo apt upgrade -y 2>&1 | tee -a "$UPDATE_LOG"; then
+            print_success "System packages updated"
+            log_message "System packages upgraded successfully"
+            NEEDS_REBOOT=true
+            return 0
+        else
+            print_error "Failed to upgrade system packages"
+            log_message "apt upgrade failed"
+            return 1
+        fi
+    else
+        print_error "Failed to update package lists"
+        log_message "apt update failed"
+        return 1
+    fi
+}
+
 get_installed_version() {
     local package=$1
     $PIP_CMD show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}'
@@ -138,6 +179,29 @@ check_meshchat_installed() {
         print_warning "MeshChat is not installed at $MESHCHAT_DIR"
         log_message "MeshChat not installed"
         return 1
+    fi
+}
+
+check_meshtasticd() {
+    if command -v meshtasticd &> /dev/null; then
+        MESHTASTIC_VERSION=$(meshtasticd --version 2>&1 | head -1 || echo "unknown")
+        print_info "meshtasticd found: $MESHTASTIC_VERSION"
+        log_message "meshtasticd version: $MESHTASTIC_VERSION"
+        
+        # Check if service is running
+        if systemctl is-active --quiet meshtasticd 2>/dev/null; then
+            print_success "meshtasticd service is running"
+            log_message "meshtasticd service is active"
+            return 0
+        else
+            print_warning "meshtasticd is installed but not running"
+            log_message "meshtasticd service is inactive"
+            return 1
+        fi
+    else
+        print_info "meshtasticd is not installed"
+        log_message "meshtasticd not found"
+        return 2
     fi
 }
 
@@ -196,6 +260,15 @@ create_backup() {
 stop_services() {
     print_section "Stopping Running Services"
     
+    # Stop meshtasticd if running
+    if systemctl is-active --quiet meshtasticd 2>/dev/null; then
+        print_info "Stopping meshtasticd service..."
+        sudo systemctl stop meshtasticd 2>/dev/null
+        sleep 2
+        print_success "meshtasticd stopped"
+        log_message "Stopped meshtasticd service"
+    fi
+    
     # Stop rnsd if running
     if pgrep -f "rnsd" > /dev/null; then
         print_info "Stopping rnsd daemon..."
@@ -220,6 +293,12 @@ stop_services() {
         read
         log_message "User closed MeshChat manually"
     fi
+    
+    # Reload systemd daemon
+    print_info "Reloading systemd daemon..."
+    sudo systemctl daemon-reload 2>&1 | tee -a "$UPDATE_LOG"
+    print_success "systemd daemon reloaded"
+    log_message "Executed systemctl daemon-reload"
 }
 
 update_pip_package() {
@@ -244,7 +323,7 @@ update_pip_package() {
         NEW_VERSION=$(get_installed_version "$package")
         
         if [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
-            print_success "$display_name updated: $OLD_VERSION → $NEW_VERSION"
+            print_success "$display_name updated: $OLD_VERSION â†’ $NEW_VERSION"
             log_message "$display_name updated to $NEW_VERSION"
         else
             print_success "$display_name is already at the latest version: $NEW_VERSION"
@@ -417,19 +496,111 @@ EOF
 start_services() {
     print_section "Starting Services"
     
-    echo -e "${YELLOW}Do you want to start rnsd daemon now?${NC}"
+    # Start meshtasticd if it was running before
+    if command -v meshtasticd &> /dev/null; then
+        echo -e "${YELLOW}Do you want to start meshtasticd service?${NC}"
+        echo -n "Start meshtasticd? (Y/n): "
+        read -r START_MESHTASTIC
+        
+        if [[ ! "$START_MESHTASTIC" =~ ^[Nn]$ ]]; then
+            print_info "Starting meshtasticd service..."
+            if sudo systemctl start meshtasticd 2>&1 | tee -a "$UPDATE_LOG"; then
+                sleep 3
+                
+                # Verify it's actually running
+                if systemctl is-active --quiet meshtasticd; then
+                    print_success "meshtasticd service started and running"
+                    log_message "Started meshtasticd service successfully"
+                else
+                    print_error "meshtasticd service failed to start properly"
+                    print_info "Check status with: sudo systemctl status meshtasticd"
+                    log_message "meshtasticd service started but not active"
+                fi
+            else
+                print_error "Failed to start meshtasticd service"
+                log_message "Failed to start meshtasticd service"
+            fi
+        fi
+    fi
+    
+    echo -e "\n${YELLOW}Do you want to start rnsd daemon now?${NC}"
     echo -n "Start rnsd? (Y/n): "
     read -r START_RNSD
     
     if [[ ! "$START_RNSD" =~ ^[Nn]$ ]]; then
         print_info "Starting rnsd daemon..."
         if rnsd --daemon 2>&1 | tee -a "$UPDATE_LOG"; then
-            sleep 2
-            print_success "rnsd daemon started"
-            log_message "Started rnsd daemon"
+            sleep 3
+            
+            # Verify it's actually running
+            if pgrep -f "rnsd" > /dev/null; then
+                print_success "rnsd daemon started and running"
+                log_message "Started rnsd daemon successfully"
+                
+                # Show quick status
+                print_info "Reticulum Network Status:"
+                rnstatus 2>&1 | head -n 10 | tee -a "$UPDATE_LOG"
+            else
+                print_error "rnsd daemon failed to start properly"
+                print_info "Try starting manually with: rnsd --daemon"
+                log_message "rnsd daemon started but process not found"
+            fi
         else
             print_error "Failed to start rnsd daemon"
             log_message "Failed to start rnsd daemon"
+        fi
+    fi
+    
+    # Final service status check
+    print_section "Service Status Verification"
+    
+    local all_services_ok=true
+    
+    if command -v meshtasticd &> /dev/null; then
+        if systemctl is-active --quiet meshtasticd; then
+            print_success "meshtasticd: Running"
+        else
+            print_warning "meshtasticd: Not running"
+            all_services_ok=false
+        fi
+    fi
+    
+    if pgrep -f "rnsd" > /dev/null; then
+        print_success "rnsd: Running"
+    else
+        print_warning "rnsd: Not running"
+        all_services_ok=false
+    fi
+    
+    if [ "$all_services_ok" = false ]; then
+        print_warning "Some services are not running. You may need to start them manually or reboot."
+        NEEDS_REBOOT=true
+    fi
+}
+
+prompt_reboot() {
+    if [ "$NEEDS_REBOOT" = true ]; then
+        print_section "Reboot Recommendation"
+        
+        echo -e "${YELLOW}${BOLD}A system reboot is recommended to ensure all updates take effect.${NC}"
+        echo -e "${YELLOW}This will ensure:${NC}"
+        echo "  - System packages are fully updated"
+        echo "  - All services start cleanly"
+        echo "  - Python packages are properly loaded"
+        echo ""
+        echo -e "${YELLOW}Would you like to reboot now?${NC}"
+        echo -n "Reboot? (y/N): "
+        read -r REBOOT_NOW
+        
+        if [[ "$REBOOT_NOW" =~ ^[Yy]$ ]]; then
+            print_info "Rebooting system in 5 seconds..."
+            print_warning "Press Ctrl+C to cancel"
+            log_message "User initiated system reboot"
+            sleep 5
+            sudo reboot
+        else
+            print_warning "Reboot postponed. Please reboot manually when convenient with: sudo reboot"
+            log_message "User postponed reboot"
         fi
     fi
 }
@@ -458,6 +629,23 @@ show_summary() {
     fi
     
     echo ""
+    echo -e "${BOLD}Service Status:${NC}"
+    
+    if command -v meshtasticd &> /dev/null; then
+        if systemctl is-active --quiet meshtasticd; then
+            echo -e "  ${GREEN}✓${NC} meshtasticd: Running"
+        else
+            echo -e "  ${YELLOW}⚠${NC} meshtasticd: Stopped"
+        fi
+    fi
+    
+    if pgrep -f "rnsd" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} rnsd: Running"
+    else
+        echo -e "  ${YELLOW}⚠${NC} rnsd: Stopped"
+    fi
+    
+    echo ""
     print_info "Update log saved to: $UPDATE_LOG"
     
     if [ -d "$BACKUP_DIR" ]; then
@@ -471,6 +659,10 @@ show_summary() {
     
     if [ -d "$MESHCHAT_DIR" ]; then
         echo -e "  3. Launch MeshChat: ${YELLOW}cd $MESHCHAT_DIR && npm run dev${NC}"
+    fi
+    
+    if command -v meshtasticd &> /dev/null; then
+        echo -e "  4. Check Meshtastic status: ${YELLOW}sudo systemctl status meshtasticd${NC}"
     fi
     
     echo ""
@@ -496,6 +688,10 @@ main() {
         exit 1
     fi
     
+    # Update system packages
+    update_system_packages
+    pause_for_input
+    
     # Check what's currently installed
     print_section "Checking Installed Components"
     
@@ -504,6 +700,9 @@ main() {
     NOMAD_INSTALLED=$(check_package_installed "nomadnet" "Nomad Network")
     MESHCHAT_INSTALLED=false
     check_meshchat_installed && MESHCHAT_INSTALLED=true
+    
+    # Check meshtasticd
+    check_meshtasticd
     
     if [ -z "$RNS_INSTALLED" ] && [ -z "$LXMF_INSTALLED" ] && [ -z "$NOMAD_INSTALLED" ] && [ "$MESHCHAT_INSTALLED" = false ]; then
         print_warning "No Reticulum components appear to be installed!"
@@ -582,6 +781,9 @@ main() {
     
     log_message "=== Reticulum Update Completed ==="
     
+    # Prompt for reboot if needed
+    prompt_reboot
+
     print_success "\nUpdate process completed!"
 }
 
