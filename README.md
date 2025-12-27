@@ -42,7 +42,7 @@ An interactive bash script for updating Reticulum Network Stack (RNS), LXMF, Nom
 
 ```bash
 # Download the script
-wget https://raw.githubusercontent.com/YOUR_REPO/reticulum_updater.sh
+wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/reticulum_updater.sh
 
 # Or if you have it locally, just navigate to the directory
 cd /path/to/script

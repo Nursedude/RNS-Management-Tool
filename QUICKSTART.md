@@ -4,7 +4,7 @@
 
 ```bash
 # Download and run
-wget https://raw.githubusercontent.com/YOUR_REPO/reticulum_updater.sh
+wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/reticulum_updater.sh
 chmod +x reticulum_updater.sh
 ./reticulum_updater.sh
 ```
@@ -237,7 +237,7 @@ npm run dev
 
 ```bash
 # Download, make executable, and run
-wget https://raw.githubusercontent.com/YOUR_REPO/reticulum_updater.sh && chmod +x reticulum_updater.sh && ./reticulum_updater.sh
+wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/reticulum_updater.sh && chmod +x reticulum_updater.sh && ./reticulum_updater.sh
 
 # Or if you already have it
 chmod +x reticulum_updater.sh && ./reticulum_updater.sh
