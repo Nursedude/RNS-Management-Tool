@@ -2,7 +2,7 @@
 
 **Branch:** `claude/fix-deprecated-deps-C5Ygl` → `main`
 
-**GitHub URL:** https://github.com/Nursedude/RNS-updater/compare/main...claude/fix-deprecated-deps-C5Ygl
+**GitHub URL:** https://github.com/Nursedude/RNS-Management-Tool/compare/main...claude/fix-deprecated-deps-C5Ygl
 
 ---
 
@@ -222,7 +222,7 @@ Review the comprehensive documentation files for details:
 
 ## 🎉 Commits Included
 
-1. **Add comprehensive deprecation audit and fixes for RNS-updater**
+1. **Add comprehensive deprecation audit and fixes for RNS Management Tool**
    - Created full audit report
    - Documented all deprecated software
    - Provided ready-to-apply fixes

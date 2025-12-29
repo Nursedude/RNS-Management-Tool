@@ -7,14 +7,14 @@ Get up and running with Reticulum in under 5 minutes!
 ### Raspberry Pi / Linux (One-Line Install)
 
 ```bash
-wget -O - https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.sh | bash
+wget -O - https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh | bash
 ```
 
 **Or step-by-step:**
 
 ```bash
 # Download
-wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.sh
+wget https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh
 
 # Make executable
 chmod +x rns_management_tool.sh
@@ -28,14 +28,14 @@ chmod +x rns_management_tool.sh
 ```powershell
 # Open PowerShell as Administrator
 # Download and run
-iwr -useb https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.ps1 | iex
 ```
 
 **Or step-by-step:**
 
 ```powershell
 # Download
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
 
 # Allow execution
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -256,7 +256,7 @@ npm run dev
 
 ```bash
 # Download, make executable, and run
-wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/reticulum_updater.sh && chmod +x reticulum_updater.sh && ./reticulum_updater.sh
+wget https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/reticulum_updater.sh && chmod +x reticulum_updater.sh && ./reticulum_updater.sh
 
 # Or if you already have it
 chmod +x reticulum_updater.sh && ./reticulum_updater.sh

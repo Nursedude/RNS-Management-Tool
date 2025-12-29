@@ -315,7 +315,7 @@ function Install-ReticulumWSL {
     Write-ColorOutput "Installing Reticulum in $selectedDistro..." "Progress"
 
     # Download the Linux script to WSL
-    $scriptUrl = "https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.sh"
+    $scriptUrl = "https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh"
     $wslScript = "/tmp/rns_management_tool.sh"
 
     wsl -d $selectedDistro -- bash -c "curl -fsSL $scriptUrl -o $wslScript && chmod +x $wslScript"
@@ -361,7 +361,7 @@ function Install-RNODE {
                 Write-ColorOutput "Launching RNODE installer in WSL..." "Info"
                 $distros = Get-WSLDistributions
                 if ($distros.Count -gt 0) {
-                    wsl -d $distros[0] -- bash -c "curl -fsSL https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.sh | bash -s -- --rnode"
+                    wsl -d $distros[0] -- bash -c "curl -fsSL https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh | bash -s -- --rnode"
                 }
             } else {
                 Write-ColorOutput "WSL not available" "Error"

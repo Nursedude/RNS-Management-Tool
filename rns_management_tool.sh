@@ -413,13 +413,23 @@ configure_rnode_interactive() {
     echo -e "${CYAN}${BOLD}RNODE Configuration Wizard${NC}\n"
     echo "What would you like to do?"
     echo ""
-    echo "  1) Auto-install firmware (easiest - recommended)"
-    echo "  2) List supported devices"
-    echo "  3) Flash specific device"
-    echo "  4) Update existing RNODE"
-    echo "  5) Test RNODE connection"
-    echo "  6) Advanced configuration"
-    echo "  0) Back to main menu"
+    echo "  ${BOLD}Basic Operations:${NC}"
+    echo "    1) Auto-install firmware (easiest - recommended)"
+    echo "    2) List supported devices"
+    echo "    3) Flash specific device"
+    echo "    4) Update existing RNODE"
+    echo "    5) Get device information"
+    echo ""
+    echo "  ${BOLD}Hardware Configuration:${NC}"
+    echo "    6) Configure radio parameters (frequency, bandwidth, power)"
+    echo "    7) Set device model and platform"
+    echo "    8) View/edit device EEPROM"
+    echo "    9) Update bootloader (ROM)"
+    echo ""
+    echo "  ${BOLD}Advanced Tools:${NC}"
+    echo "   10) Open serial console"
+    echo "   11) Show all rnodeconf options"
+    echo "    0) Back to main menu"
     echo ""
     echo -n "Select an option: "
     read -r RNODE_CHOICE
@@ -480,27 +490,152 @@ configure_rnode_interactive() {
             fi
             ;;
         5)
-            print_section "Test RNODE Connection"
+            print_section "Get Device Information"
             echo "Enter the device port:"
             echo -n "Device port: "
             read -r DEVICE_PORT
 
             if [ -e "$DEVICE_PORT" ]; then
-                print_info "Testing device at $DEVICE_PORT..."
+                print_info "Getting device information..."
                 rnodeconf "$DEVICE_PORT" --info 2>&1 | tee -a "$UPDATE_LOG"
             else
                 print_error "Device not found: $DEVICE_PORT"
             fi
             ;;
         6)
-            print_section "Advanced RNODE Configuration"
-            echo "For advanced configuration, use the rnodeconf command directly."
+            print_section "Configure Radio Parameters"
+            echo "Enter the device port:"
+            echo -n "Device port: "
+            read -r DEVICE_PORT
+
+            if [ ! -e "$DEVICE_PORT" ]; then
+                print_error "Device not found: $DEVICE_PORT"
+            else
+                echo ""
+                echo -e "${CYAN}Radio Parameter Configuration${NC}"
+                echo "Leave blank to keep current value"
+                echo ""
+
+                # Build command with optional parameters
+                CMD="rnodeconf $DEVICE_PORT"
+
+                # Frequency
+                echo -n "Frequency in Hz (e.g., 915000000 for 915MHz): "
+                read -r FREQ
+                [ -n "$FREQ" ] && CMD="$CMD --freq $FREQ"
+
+                # Bandwidth
+                echo -n "Bandwidth in kHz (e.g., 125, 250, 500): "
+                read -r BW
+                [ -n "$BW" ] && CMD="$CMD --bw $BW"
+
+                # Spreading Factor
+                echo -n "Spreading Factor (7-12): "
+                read -r SF
+                [ -n "$SF" ] && CMD="$CMD --sf $SF"
+
+                # Coding Rate
+                echo -n "Coding Rate (5-8): "
+                read -r CR
+                [ -n "$CR" ] && CMD="$CMD --cr $CR"
+
+                # TX Power
+                echo -n "TX Power in dBm (e.g., 17): "
+                read -r TXP
+                [ -n "$TXP" ] && CMD="$CMD --txp $TXP"
+
+                echo ""
+                print_info "Executing: $CMD"
+                eval "$CMD" 2>&1 | tee -a "$UPDATE_LOG"
+            fi
+            ;;
+        7)
+            print_section "Set Device Model and Platform"
+            echo "Enter the device port:"
+            echo -n "Device port: "
+            read -r DEVICE_PORT
+
+            if [ ! -e "$DEVICE_PORT" ]; then
+                print_error "Device not found: $DEVICE_PORT"
+            else
+                echo ""
+                echo -e "${CYAN}Device Model/Platform Configuration${NC}"
+                echo ""
+
+                # Show supported models
+                print_info "Run 'rnodeconf --list' to see supported models"
+                echo ""
+
+                echo -n "Model (e.g., t3s3, lora32_v2_1): "
+                read -r MODEL
+
+                echo -n "Platform (e.g., esp32, rp2040): "
+                read -r PLATFORM
+
+                CMD="rnodeconf $DEVICE_PORT"
+                [ -n "$MODEL" ] && CMD="$CMD --model $MODEL"
+                [ -n "$PLATFORM" ] && CMD="$CMD --platform $PLATFORM"
+
+                echo ""
+                print_info "Executing: $CMD"
+                eval "$CMD" 2>&1 | tee -a "$UPDATE_LOG"
+            fi
+            ;;
+        8)
+            print_section "View/Edit Device EEPROM"
+            echo "Enter the device port:"
+            echo -n "Device port: "
+            read -r DEVICE_PORT
+
+            if [ -e "$DEVICE_PORT" ]; then
+                print_info "Reading device EEPROM..."
+                rnodeconf "$DEVICE_PORT" --eeprom 2>&1 | tee -a "$UPDATE_LOG"
+            else
+                print_error "Device not found: $DEVICE_PORT"
+            fi
+            ;;
+        9)
+            print_section "Update Bootloader (ROM)"
+            echo -e "${YELLOW}WARNING: This will update the device bootloader.${NC}"
+            echo -e "${YELLOW}Only proceed if you know what you're doing!${NC}"
             echo ""
-            echo "Common commands:"
-            echo "  rnodeconf --help              Show all options"
-            echo "  rnodeconf <port> --eeprom     Show device EEPROM"
-            echo "  rnodeconf <port> --rom        Update bootloader"
-            echo ""
+            echo "Enter the device port:"
+            echo -n "Device port: "
+            read -r DEVICE_PORT
+
+            if [ ! -e "$DEVICE_PORT" ]; then
+                print_error "Device not found: $DEVICE_PORT"
+            else
+                echo -n "Are you sure you want to update the bootloader? (yes/no): "
+                read -r CONFIRM
+
+                if [ "$CONFIRM" = "yes" ]; then
+                    print_info "Updating bootloader..."
+                    rnodeconf "$DEVICE_PORT" --rom 2>&1 | tee -a "$UPDATE_LOG"
+                else
+                    print_info "Bootloader update cancelled"
+                fi
+            fi
+            ;;
+        10)
+            print_section "Open Serial Console"
+            echo "Enter the device port:"
+            echo -n "Device port: "
+            read -r DEVICE_PORT
+
+            if [ -e "$DEVICE_PORT" ]; then
+                print_info "Opening serial console for $DEVICE_PORT..."
+                print_info "Press Ctrl+C to exit"
+                echo ""
+                rnodeconf "$DEVICE_PORT" --console 2>&1 | tee -a "$UPDATE_LOG"
+            else
+                print_error "Device not found: $DEVICE_PORT"
+            fi
+            ;;
+        11)
+            print_section "All RNODE Configuration Options"
+            echo -e "${CYAN}Displaying full rnodeconf help...${NC}\n"
+            rnodeconf --help 2>&1 | less
             ;;
         0)
             return 0

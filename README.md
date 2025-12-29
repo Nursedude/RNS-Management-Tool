@@ -61,7 +61,7 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 
 ```bash
 # Download the installer
-wget https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.sh
+wget https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh
 
 # Make it executable
 chmod +x rns_management_tool.sh
@@ -74,7 +74,7 @@ chmod +x rns_management_tool.sh
 
 ```powershell
 # Download the installer (PowerShell)
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-updater/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
 
 # Run the tool (you may need to allow script execution)
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -337,7 +337,7 @@ If you encounter issues:
    - Try the operation again
 
 4. **Report issues**:
-   - https://github.com/Nursedude/RNS-updater/issues
+   - https://github.com/Nursedude/RNS-Management-Tool/issues
    - Include log files and system information
 
 ## 🔐 Security Considerations

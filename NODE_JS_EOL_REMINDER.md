@@ -216,7 +216,7 @@ If the updated script causes problems:
    ```
 
 3. **Report Issue:**
-   - Open issue at: https://github.com/Nursedude/RNS-updater/issues
+   - Open issue at: https://github.com/Nursedude/RNS-Management-Tool/issues
    - Include error logs from `~/reticulum_update_*.log`
    - Include Node.js and npm versions
 

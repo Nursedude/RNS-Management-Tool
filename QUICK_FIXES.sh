@@ -15,7 +15,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}================================${NC}"
-echo -e "${BLUE}RNS-Updater Quick Fixes${NC}"
+echo -e "${BLUE}RNS Management Tool Quick Fixes${NC}"
 echo -e "${BLUE}================================${NC}\n"
 
 # =============================================================================

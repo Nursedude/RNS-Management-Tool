@@ -1,4 +1,4 @@
-# Summary of Changes Applied to RNS-Updater
+# Summary of Changes Applied to RNS Management Tool
 
 **Date:** 2025-12-27
 **Branch:** `claude/fix-deprecated-deps-C5Ygl`
@@ -383,9 +383,9 @@ git diff HEAD~1 reticulum_updater.sh
 
 ## Questions & Support
 
-- **Repository:** https://github.com/Nursedude/RNS-updater
-- **Issues:** https://github.com/Nursedude/RNS-updater/issues
-- **Pull Request:** https://github.com/Nursedude/RNS-updater/pull/new/claude/fix-deprecated-deps-C5Ygl
+- **Repository:** https://github.com/Nursedude/RNS-Management-Tool
+- **Issues:** https://github.com/Nursedude/RNS-Management-Tool/issues
+- **Pull Request:** https://github.com/Nursedude/RNS-Management-Tool/pull/new/claude/fix-deprecated-deps-C5Ygl
 
 ---
 

@@ -1,4 +1,4 @@
-# RNS-Updater Deprecation and Update Audit Report
+# RNS Management Tool Deprecation and Update Audit Report
 **Date:** 2025-12-27
 **Auditor:** Claude Code
 **Project:** Reticulum Ecosystem Update Installer
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-This audit identified **CRITICAL** issues with deprecated software and outdated dependencies in the RNS-updater project. The script itself uses deprecated installation methods for Node.js/npm that could cause compatibility issues with modern MeshChat builds.
+This audit identified **CRITICAL** issues with deprecated software and outdated dependencies in the RNS Management Tool project. The script itself uses deprecated installation methods for Node.js/npm that could cause compatibility issues with modern MeshChat builds.
 
 ### Severity Levels
 - 🔴 **CRITICAL**: Requires immediate attention - breaks functionality or major security risk
@@ -478,4 +478,4 @@ npm audit  # Should show minimal high/critical issues
 6. Deploy to main branch
 
 **Questions or Issues:**
-Please open an issue at https://github.com/Nursedude/RNS-updater/issues
+Please open an issue at https://github.com/Nursedude/RNS-Management-Tool/issues

@@ -1,4 +1,4 @@
-# Executive Summary - RNS-Updater Deprecation Audit
+# Executive Summary - RNS Management Tool Deprecation Audit
 
 **Date:** 2025-12-27
 **Status:** ✅ PARTIAL FIXES APPLIED | 🔴 CRITICAL ISSUES REMAIN IN SCRIPT
@@ -227,7 +227,7 @@ Review the detailed documents:
 2. **FIXES_TO_APPLY.sh** - Code implementations
 3. **reticulum_updater.sh** - Current script (needs updates)
 
-Or open an issue at: https://github.com/Nursedude/RNS-updater/issues
+Or open an issue at: https://github.com/Nursedude/RNS-Management-Tool/issues
 
 ---
 
