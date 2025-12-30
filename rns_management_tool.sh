@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Global variables
-SCRIPT_VERSION="2.1.0"
+SCRIPT_VERSION="2.2.0"
 BACKUP_DIR="$HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$HOME/reticulum-meshchat"
@@ -37,6 +37,10 @@ IS_WSL=false
 IS_RASPBERRY_PI=false
 OS_TYPE=""
 ARCHITECTURE=""
+
+# UI Constants
+BOX_WIDTH=58
+MENU_BREADCRUMB=""
 
 #########################################################
 # Utility Functions
@@ -128,8 +132,188 @@ print_progress() {
     printf "] %3d%% - %s" "$percent" "$message"
 }
 
+# Enhanced progress bar with colors and ETA
+print_progress_bar() {
+    local current=$1
+    local total=$2
+    local title="${3:-Progress}"
+    local width=40
+    local percent=$((current * 100 / total))
+    local filled=$((current * width / total))
+    local empty=$((width - filled))
+
+    # Color based on progress
+    local bar_color="$YELLOW"
+    [ $percent -ge 50 ] && bar_color="$CYAN"
+    [ $percent -ge 90 ] && bar_color="$GREEN"
+
+    printf "\r  ${title}: ${bar_color}["
+    printf "%${filled}s" | tr ' ' '█'
+    printf "%${empty}s" | tr ' ' '░'
+    printf "]${NC} %3d%% (%d/%d)" "$percent" "$current" "$total"
+}
+
+# Step-based progress display for multi-step operations
+declare -a OPERATION_STEPS=()
+CURRENT_STEP=0
+
+init_operation() {
+    local title="$1"
+    shift
+    OPERATION_STEPS=("$@")
+    CURRENT_STEP=0
+
+    echo ""
+    print_box_top
+    print_box_line "${CYAN}${BOLD}$title${NC}"
+    print_box_divider
+
+    local total=${#OPERATION_STEPS[@]}
+    for ((i=0; i<total; i++)); do
+        print_box_line "  ${YELLOW}○${NC} ${OPERATION_STEPS[$i]}"
+    done
+
+    print_box_bottom
+    echo ""
+}
+
+next_step() {
+    local status="${1:-success}"
+    local total=${#OPERATION_STEPS[@]}
+
+    if [ $CURRENT_STEP -lt $total ]; then
+        if [ "$status" = "success" ]; then
+            echo -e "  ${GREEN}✓${NC} ${OPERATION_STEPS[$CURRENT_STEP]}"
+        elif [ "$status" = "skip" ]; then
+            echo -e "  ${YELLOW}⊘${NC} ${OPERATION_STEPS[$CURRENT_STEP]} ${YELLOW}(skipped)${NC}"
+        else
+            echo -e "  ${RED}✗${NC} ${OPERATION_STEPS[$CURRENT_STEP]} ${RED}(failed)${NC}"
+        fi
+        ((CURRENT_STEP++))
+    fi
+}
+
+complete_operation() {
+    local status="${1:-success}"
+    echo ""
+
+    if [ "$status" = "success" ]; then
+        print_success "Operation completed successfully"
+    else
+        print_error "Operation completed with errors"
+    fi
+}
+
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$UPDATE_LOG"
+}
+
+# Enhanced error display with troubleshooting suggestions
+show_error_help() {
+    local error_type="$1"
+    local context="$2"
+
+    echo ""
+    echo -e "${RED}${BOLD}Error: $error_type${NC}"
+    echo ""
+
+    case "$error_type" in
+        "network")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Check your internet connection"
+            echo "  2) Try: ping -c 3 google.com"
+            echo "  3) Check DNS settings"
+            echo "  4) If behind proxy, configure git and pip accordingly"
+            ;;
+        "permission")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Check file/directory permissions"
+            echo "  2) Try running with sudo if appropriate"
+            echo "  3) Verify you own the files: ls -la $context"
+            ;;
+        "python")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Install Python 3.7+: sudo apt install python3 python3-pip"
+            echo "  2) Check version: python3 --version"
+            echo "  3) Verify pip: pip3 --version"
+            ;;
+        "nodejs")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Install Node.js: select option 1 to install automatically"
+            echo "  2) Check version: node --version (requires 18+)"
+            echo "  3) Manual install: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
+            ;;
+        "pip")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Upgrade pip: pip3 install --upgrade pip"
+            echo "  2) Try with --user flag: pip3 install --user <package>"
+            echo "  3) Clear cache: pip3 cache purge"
+            echo "  4) Check for conflicts: pip3 check"
+            ;;
+        "git")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Install git: sudo apt install git"
+            echo "  2) Check SSH keys for private repos"
+            echo "  3) Try HTTPS URL instead of SSH"
+            ;;
+        "device")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Check device is connected: ls /dev/ttyUSB* /dev/ttyACM*"
+            echo "  2) Add user to dialout group: sudo usermod -aG dialout \$USER"
+            echo "  3) Reconnect device and try again"
+            echo "  4) Check permissions: sudo chmod 666 $context"
+            ;;
+        "service")
+            echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+            echo "  1) Check service status: systemctl --user status rnsd"
+            echo "  2) View logs: journalctl --user -u rnsd -n 50"
+            echo "  3) Try manual start: rnsd --daemon"
+            echo "  4) Check config: cat ~/.reticulum/config"
+            ;;
+        *)
+            echo -e "${YELLOW}General troubleshooting:${NC}"
+            echo "  1) Check log file: $UPDATE_LOG"
+            echo "  2) Run diagnostics: select option 6 from main menu"
+            echo "  3) Visit: https://github.com/markqvist/Reticulum/issues"
+            ;;
+    esac
+    echo ""
+}
+
+# Validate input is numeric
+validate_numeric() {
+    local input="$1"
+    local min="${2:-0}"
+    local max="${3:-999999}"
+
+    if [[ ! "$input" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+
+    if [ "$input" -lt "$min" ] || [ "$input" -gt "$max" ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+# Validate device port format
+validate_device_port() {
+    local port="$1"
+
+    if [[ ! "$port" =~ ^/dev/tty[A-Za-z0-9]+$ ]]; then
+        print_error "Invalid device port format"
+        echo "Expected format: /dev/ttyUSB0 or /dev/ttyACM0"
+        return 1
+    fi
+
+    if [ ! -e "$port" ]; then
+        print_error "Device not found: $port"
+        show_error_help "device" "$port"
+        return 1
+    fi
+
+    return 0
 }
 
 pause_for_input() {
@@ -152,57 +336,168 @@ show_spinner() {
     printf "    \r"
 }
 
+# Enhanced UI Functions
+print_box_line() {
+    local content="$1"
+    local padding=$((BOX_WIDTH - ${#content} - 4))
+    [ $padding -lt 0 ] && padding=0
+    printf "${BOLD}│${NC} %s%*s ${BOLD}│${NC}\n" "$content" "$padding" ""
+}
+
+print_box_top() {
+    printf "${BOLD}┌"
+    printf '─%.0s' $(seq 1 $BOX_WIDTH)
+    printf "┐${NC}\n"
+}
+
+print_box_bottom() {
+    printf "${BOLD}└"
+    printf '─%.0s' $(seq 1 $BOX_WIDTH)
+    printf "┘${NC}\n"
+}
+
+print_box_divider() {
+    printf "${BOLD}├"
+    printf '─%.0s' $(seq 1 $BOX_WIDTH)
+    printf "┤${NC}\n"
+}
+
+print_breadcrumb() {
+    if [ -n "$MENU_BREADCRUMB" ]; then
+        echo -e "${CYAN}Location:${NC} $MENU_BREADCRUMB"
+        echo ""
+    fi
+}
+
+show_help() {
+    print_header
+    echo -e "${BOLD}Help & Quick Reference${NC}\n"
+    echo -e "${CYAN}Navigation:${NC}"
+    echo "  • Enter the number of your choice and press Enter"
+    echo "  • Press 0 to go back or exit"
+    echo "  • Press h or ? for help in most menus"
+    echo ""
+    echo -e "${CYAN}Key Components:${NC}"
+    echo "  • ${BOLD}RNS${NC} - Reticulum Network Stack (core networking)"
+    echo "  • ${BOLD}LXMF${NC} - Lightweight Extensible Message Format"
+    echo "  • ${BOLD}NomadNet${NC} - Terminal-based messaging client"
+    echo "  • ${BOLD}MeshChat${NC} - Web-based LXMF messaging interface"
+    echo "  • ${BOLD}Sideband${NC} - Mobile/Desktop LXMF client"
+    echo "  • ${BOLD}RNODE${NC} - LoRa radio hardware for long-range links"
+    echo ""
+    echo -e "${CYAN}Common Tasks:${NC}"
+    echo "  • Start daemon:    ${GREEN}rnsd --daemon${NC}"
+    echo "  • Check status:    ${GREEN}rnstatus${NC}"
+    echo "  • Launch NomadNet: ${GREEN}nomadnet${NC}"
+    echo "  • Configure RNODE: ${GREEN}rnodeconf --autoinstall${NC}"
+    echo ""
+    echo -e "${CYAN}Configuration Files:${NC}"
+    echo "  • ~/.reticulum/config   - Main RNS configuration"
+    echo "  • ~/.nomadnetwork/      - NomadNet settings"
+    echo "  • ~/.lxmf/              - LXMF message store"
+    echo ""
+    echo -e "${CYAN}Documentation:${NC}"
+    echo "  • https://reticulum.network/"
+    echo "  • https://github.com/markqvist/Reticulum"
+    echo ""
+    pause_for_input
+}
+
+confirm_action() {
+    local message="$1"
+    local default="${2:-n}"  # Default to 'n' if not specified
+
+    if [ "$default" = "y" ]; then
+        echo -n "$message (Y/n): "
+        read -r response
+        [[ ! "$response" =~ ^[Nn]$ ]]
+    else
+        echo -n "$message (y/N): "
+        read -r response
+        [[ "$response" =~ ^[Yy]$ ]]
+    fi
+}
+
+show_operation_summary() {
+    local title="$1"
+    shift
+    local items=("$@")
+
+    echo ""
+    print_box_top
+    print_box_line "${CYAN}${BOLD}$title${NC}"
+    print_box_divider
+
+    for item in "${items[@]}"; do
+        print_box_line "  $item"
+    done
+
+    print_box_bottom
+    echo ""
+}
+
 #########################################################
 # Main Menu System
 #########################################################
 
 show_main_menu() {
     print_header
+    MENU_BREADCRUMB=""
 
-    # Quick status dashboard
-    echo -e "${BOLD}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${BOLD}│${NC}  ${CYAN}Quick Status${NC}                                           ${BOLD}│${NC}"
-    echo -e "${BOLD}├─────────────────────────────────────────────────────────┤${NC}"
+    # Quick status dashboard with dynamic formatting
+    print_box_top
+    print_box_line "${CYAN}${BOLD}Quick Status${NC}"
+    print_box_divider
 
-    # Check rnsd status inline
+    # Check rnsd status
     if pgrep -f "rnsd" > /dev/null 2>&1; then
-        echo -e "${BOLD}│${NC}  ${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}                               ${BOLD}│${NC}"
+        local rnsd_status="${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
     else
-        echo -e "${BOLD}│${NC}  ${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}                               ${BOLD}│${NC}"
+        local rnsd_status="${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
     fi
+    print_box_line "$rnsd_status"
 
     # Check RNS installed
     if command -v rnstatus &> /dev/null; then
-        RNS_V=$(pip3 show rns 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "?")
-        echo -e "${BOLD}│${NC}  ${GREEN}●${NC} RNS: v${RNS_V}                                          ${BOLD}│${NC}"
+        local rns_ver
+        rns_ver=$(pip3 show rns 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "?")
+        print_box_line "${GREEN}●${NC} RNS: v${rns_ver}"
     else
-        echo -e "${BOLD}│${NC}  ${YELLOW}○${NC} RNS: ${YELLOW}Not installed${NC}                                 ${BOLD}│${NC}"
+        print_box_line "${YELLOW}○${NC} RNS: ${YELLOW}Not installed${NC}"
     fi
 
-    echo -e "${BOLD}└─────────────────────────────────────────────────────────┘${NC}"
+    # Check LXMF installed
+    if pip3 show lxmf &>/dev/null; then
+        local lxmf_ver
+        lxmf_ver=$(pip3 show lxmf 2>/dev/null | grep "^Version:" | awk '{print $2}')
+        print_box_line "${GREEN}●${NC} LXMF: v${lxmf_ver}"
+    else
+        print_box_line "${YELLOW}○${NC} LXMF: Not installed"
+    fi
+
+    print_box_bottom
     echo ""
 
     echo -e "${BOLD}Main Menu:${NC}"
     echo ""
     echo -e "  ${CYAN}─── Installation ───${NC}"
-    echo "  1) Install/Update Reticulum Ecosystem"
-    echo "  2) Install/Configure RNODE Device"
-    echo "  3) Install NomadNet"
-    echo "  4) Install MeshChat"
-    echo "  5) Install Sideband"
+    echo "   1) Install/Update Reticulum Ecosystem"
+    echo "   2) Install/Configure RNODE Device"
+    echo "   3) Install NomadNet"
+    echo "   4) Install MeshChat"
+    echo "   5) Install Sideband"
     echo ""
     echo -e "  ${CYAN}─── Management ───${NC}"
-    echo "  6) System Status & Diagnostics"
-    echo "  7) Manage Services"
-    echo "  8) Backup/Restore Configuration"
-    echo "  9) Advanced Options"
+    echo "   6) System Status & Diagnostics"
+    echo "   7) Manage Services"
+    echo "   8) Backup/Restore Configuration"
+    echo "   9) Advanced Options"
     echo ""
-    echo -e "  ${CYAN}─── System ───${NC}"
-    echo "  0) Exit"
+    echo -e "  ${CYAN}─── Help & Exit ───${NC}"
+    echo "   h) Help & Quick Reference"
+    echo "   0) Exit"
     echo ""
-    echo -e "${YELLOW}Tip:${NC} Run option 6 for detailed system diagnostics"
-    echo ""
-    echo -n "Select an option [0-9]: "
+    echo -n "Select an option: "
     read -r MENU_CHOICE
 }
 
@@ -426,34 +721,43 @@ install_rnode_tools() {
 }
 
 configure_rnode_interactive() {
-    print_section "Interactive RNODE Configuration"
+    print_header
+    MENU_BREADCRUMB="Main Menu > RNODE Configuration"
+    print_breadcrumb
 
     # Check if rnodeconf is available
     if ! command -v rnodeconf &> /dev/null; then
         print_error "rnodeconf not found"
-        echo -e "${YELLOW}Would you like to install it now?${NC}"
-        echo -n "Install rnodeconf? (Y/n): "
-        read -r INSTALL_RNODE
-
-        if [[ ! "$INSTALL_RNODE" =~ ^[Nn]$ ]]; then
+        echo ""
+        if confirm_action "Install rnodeconf now?" "y"; then
             install_rnode_tools || return 1
         else
             return 1
         fi
     fi
 
-    echo -e "${CYAN}${BOLD}RNODE Configuration Wizard${NC}\n"
-    echo "What would you like to do?"
-    echo ""
-    echo "  ${BOLD}Basic Operations:${NC}"
-    echo "    1) Auto-install firmware (easiest - recommended)"
+    echo -e "${BOLD}RNODE Configuration Wizard${NC}\n"
+
+    # Show detected devices
+    local devices
+    devices=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)
+    if [ -n "$devices" ]; then
+        echo -e "${GREEN}Detected USB devices:${NC}"
+        echo "$devices" | while read -r dev; do
+            echo "  • $dev"
+        done
+        echo ""
+    fi
+
+    echo -e "  ${CYAN}─── Basic Operations ───${NC}"
+    echo "    1) Auto-install firmware (recommended)"
     echo "    2) List supported devices"
     echo "    3) Flash specific device"
     echo "    4) Update existing RNODE"
     echo "    5) Get device information"
     echo ""
-    echo "  ${BOLD}Hardware Configuration:${NC}"
-    echo "    6) Configure radio parameters (frequency, bandwidth, power)"
+    echo -e "  ${CYAN}─── Hardware Configuration ───${NC}"
+    echo "    6) Configure radio parameters"
     echo "    7) Set device model and platform"
     echo "    8) View/edit device EEPROM"
     echo "    9) Update bootloader (ROM)"
@@ -963,6 +1267,253 @@ EOF
 }
 
 #########################################################
+# Sideband Installation
+#########################################################
+
+install_sideband() {
+    print_section "Installing Sideband"
+
+    echo -e "${CYAN}${BOLD}About Sideband${NC}\n"
+    echo "Sideband is a graphical LXMF messaging application that provides:"
+    echo "  • Secure end-to-end encrypted messaging"
+    echo "  • Works over any medium Reticulum supports"
+    echo "  • Available for Linux, macOS, Windows, and Android"
+    echo ""
+
+    # Check Python first
+    if ! check_python || ! check_pip; then
+        print_error "Python 3.7+ and pip are required"
+        return 1
+    fi
+
+    # Check for display (Sideband is a GUI app)
+    if [ -z "$DISPLAY" ] && [ -z "$XDG_CURRENT_DESKTOP" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+        print_warning "No graphical display detected"
+        echo ""
+        echo "Sideband requires a graphical environment to run."
+        echo "On headless systems, consider using NomadNet (terminal client) instead."
+        echo ""
+        echo -n "Continue anyway? (y/N): "
+        read -r CONTINUE
+        if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
+            return 1
+        fi
+    fi
+
+    # Installation method menu
+    echo -e "${BOLD}Installation Options:${NC}\n"
+    echo "   1) Install via pip (recommended for Linux)"
+    echo "   2) Install from source (latest development version)"
+    echo "   3) Download AppImage (portable, no installation)"
+    echo "   4) Show platform-specific instructions"
+    echo "   0) Cancel"
+    echo ""
+    echo -n "Select installation method: "
+    read -r INSTALL_METHOD
+
+    case $INSTALL_METHOD in
+        1)
+            install_sideband_pip
+            ;;
+        2)
+            install_sideband_source
+            ;;
+        3)
+            download_sideband_appimage
+            ;;
+        4)
+            show_sideband_platform_instructions
+            ;;
+        0|"")
+            print_info "Installation cancelled"
+            return 0
+            ;;
+        *)
+            print_error "Invalid option"
+            return 1
+            ;;
+    esac
+}
+
+install_sideband_pip() {
+    print_section "Installing Sideband via pip"
+
+    # Check for required system dependencies
+    print_info "Checking system dependencies..."
+
+    local missing_deps=()
+
+    # Check for required packages for GUI
+    if ! dpkg -l | grep -q "python3-tk"; then
+        missing_deps+=("python3-tk")
+    fi
+    if ! dpkg -l | grep -q "python3-pil"; then
+        missing_deps+=("python3-pil" "python3-pil.imagetk")
+    fi
+
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        print_info "Installing required dependencies..."
+        sudo apt update
+        sudo apt install -y "${missing_deps[@]}" 2>&1 | tee -a "$UPDATE_LOG"
+    fi
+
+    print_info "Installing Sideband..."
+
+    if $PIP_CMD install sbapp --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        print_success "Sideband installed successfully"
+
+        # Verify installation
+        if command -v sideband &> /dev/null || $PIP_CMD show sbapp &>/dev/null; then
+            local sb_version
+            sb_version=$($PIP_CMD show sbapp 2>/dev/null | grep "^Version:" | awk '{print $2}')
+            print_success "Sideband v$sb_version is ready"
+            log_message "Installed Sideband v$sb_version"
+
+            # Create desktop launcher
+            create_sideband_launcher
+
+            echo ""
+            print_info "To launch Sideband, run: ${GREEN}sideband${NC}"
+        else
+            print_warning "Installation completed but sideband command not found"
+            print_info "Try: python3 -m sbapp"
+        fi
+        return 0
+    else
+        print_error "Failed to install Sideband"
+        echo ""
+        echo -e "${YELLOW}Troubleshooting:${NC}"
+        echo "  1) Ensure you have Python 3.7 or newer"
+        echo "  2) Try: pip3 install --user sbapp"
+        echo "  3) Check internet connection"
+        log_message "Sideband installation failed"
+        return 1
+    fi
+}
+
+install_sideband_source() {
+    print_section "Installing Sideband from Source"
+
+    if [ -d "$SIDEBAND_DIR" ]; then
+        print_warning "Sideband directory already exists"
+        echo -n "Update existing installation? (Y/n): "
+        read -r UPDATE_EXISTING
+
+        if [[ ! "$UPDATE_EXISTING" =~ ^[Nn]$ ]]; then
+            pushd "$SIDEBAND_DIR" > /dev/null || return 1
+            print_info "Updating from git..."
+            git pull origin main 2>&1 | tee -a "$UPDATE_LOG"
+        else
+            return 1
+        fi
+    else
+        print_info "Cloning Sideband repository..."
+        if git clone https://github.com/markqvist/Sideband.git "$SIDEBAND_DIR" 2>&1 | tee -a "$UPDATE_LOG"; then
+            pushd "$SIDEBAND_DIR" > /dev/null || return 1
+        else
+            print_error "Failed to clone Sideband repository"
+            return 1
+        fi
+    fi
+
+    print_info "Installing from source..."
+    if $PIP_CMD install . --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        print_success "Sideband installed from source"
+        create_sideband_launcher
+        popd > /dev/null
+        return 0
+    else
+        print_error "Failed to install Sideband from source"
+        popd > /dev/null
+        return 1
+    fi
+}
+
+download_sideband_appimage() {
+    print_section "Downloading Sideband AppImage"
+
+    local appimage_url="https://github.com/markqvist/Sideband/releases/latest"
+
+    echo -e "${YELLOW}AppImage is a portable format that runs without installation.${NC}"
+    echo ""
+    echo "Please visit the releases page to download the latest AppImage:"
+    echo -e "  ${CYAN}$appimage_url${NC}"
+    echo ""
+    echo "After downloading:"
+    echo "  1) Make it executable: chmod +x Sideband*.AppImage"
+    echo "  2) Run it: ./Sideband*.AppImage"
+    echo ""
+
+    # Try to open browser if available
+    if command -v xdg-open &> /dev/null && [ -n "$DISPLAY" ]; then
+        echo -n "Open releases page in browser? (Y/n): "
+        read -r OPEN_BROWSER
+        if [[ ! "$OPEN_BROWSER" =~ ^[Nn]$ ]]; then
+            xdg-open "$appimage_url" 2>/dev/null &
+            print_success "Opened browser"
+        fi
+    fi
+}
+
+show_sideband_platform_instructions() {
+    print_section "Platform-Specific Instructions"
+
+    echo -e "${BOLD}Linux (Debian/Ubuntu):${NC}"
+    echo "  pip3 install sbapp"
+    echo "  or download the AppImage from GitHub releases"
+    echo ""
+
+    echo -e "${BOLD}Raspberry Pi:${NC}"
+    echo "  pip3 install sbapp --break-system-packages"
+    echo "  Note: May require extra time to build on older Pi models"
+    echo ""
+
+    echo -e "${BOLD}macOS:${NC}"
+    echo "  pip3 install sbapp"
+    echo "  or download the .dmg from GitHub releases"
+    echo ""
+
+    echo -e "${BOLD}Windows:${NC}"
+    echo "  pip install sbapp"
+    echo "  or download the .exe installer from GitHub releases"
+    echo ""
+
+    echo -e "${BOLD}Android:${NC}"
+    echo "  Download from F-Droid or GitHub releases (.apk)"
+    echo "  Note: Sideband is also available on Google Play"
+    echo ""
+
+    echo -e "${CYAN}GitHub Releases:${NC}"
+    echo "  https://github.com/markqvist/Sideband/releases"
+}
+
+create_sideband_launcher() {
+    if [ -n "$DISPLAY" ] || [ -n "$XDG_CURRENT_DESKTOP" ]; then
+        print_info "Creating desktop launcher..."
+
+        DESKTOP_FILE="$HOME/.local/share/applications/sideband.desktop"
+        mkdir -p "$HOME/.local/share/applications"
+
+        cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sideband
+Comment=LXMF Messaging Client for Reticulum
+Exec=sideband
+Icon=sideband
+Terminal=false
+Categories=Network;Communication;
+Keywords=lxmf;reticulum;mesh;messaging;
+EOF
+
+        chmod +x "$DESKTOP_FILE"
+        print_success "Desktop launcher created"
+        log_message "Created Sideband desktop launcher"
+    fi
+}
+
+#########################################################
 # Service Management
 #########################################################
 
@@ -1089,6 +1640,355 @@ show_service_status() {
         print_success "rnodeconf: $RNODE_VER"
     else
         print_info "rnodeconf: Not installed"
+    fi
+}
+
+#########################################################
+# Service Management Menu
+#########################################################
+
+services_menu() {
+    while true; do
+        print_header
+        MENU_BREADCRUMB="Main Menu > Services"
+        print_breadcrumb
+
+        # Show current status at top
+        print_box_top
+        print_box_line "${CYAN}${BOLD}Service Status${NC}"
+        print_box_divider
+
+        if pgrep -f "rnsd" > /dev/null 2>&1; then
+            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+        else
+            print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
+        fi
+
+        # Check for meshtasticd
+        if command -v meshtasticd &>/dev/null; then
+            if pgrep -f "meshtasticd" > /dev/null 2>&1; then
+                print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
+            else
+                print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
+            fi
+        fi
+
+        print_box_bottom
+        echo ""
+
+        echo -e "${BOLD}Service Management:${NC}"
+        echo ""
+        echo "   1) Start rnsd daemon"
+        echo "   2) Stop rnsd daemon"
+        echo "   3) Restart rnsd daemon"
+        echo "   4) View detailed status"
+        echo "   5) View network statistics"
+        echo "   6) Enable auto-start on boot"
+        echo "   7) Disable auto-start on boot"
+        echo ""
+        echo "   0) Back to Main Menu"
+        echo ""
+        echo -n "Select an option: "
+        read -r SVC_CHOICE
+
+        case $SVC_CHOICE in
+            1)
+                start_services
+                pause_for_input
+                ;;
+            2)
+                stop_services
+                pause_for_input
+                ;;
+            3)
+                print_info "Restarting rnsd daemon..."
+                stop_services
+                sleep 2
+                start_services
+                pause_for_input
+                ;;
+            4)
+                show_service_status
+                pause_for_input
+                ;;
+            5)
+                print_section "Network Statistics"
+                if command -v rnstatus &> /dev/null; then
+                    rnstatus -a 2>&1 | head -n 50
+                else
+                    print_warning "rnstatus not available"
+                fi
+                pause_for_input
+                ;;
+            6)
+                setup_autostart
+                pause_for_input
+                ;;
+            7)
+                disable_autostart
+                pause_for_input
+                ;;
+            0|"")
+                return
+                ;;
+            *)
+                print_error "Invalid option"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+setup_autostart() {
+    print_section "Setup Auto-Start"
+
+    if [ ! -d "$HOME/.config/systemd/user" ]; then
+        mkdir -p "$HOME/.config/systemd/user"
+    fi
+
+    local service_file="$HOME/.config/systemd/user/rnsd.service"
+
+    cat > "$service_file" << 'EOF'
+[Unit]
+Description=Reticulum Network Stack Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rnsd
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+    print_info "Enabling rnsd service..."
+    systemctl --user daemon-reload
+    systemctl --user enable rnsd.service
+
+    print_success "Auto-start enabled for rnsd"
+    print_info "Service will start automatically on login"
+    log_message "Enabled rnsd auto-start"
+}
+
+disable_autostart() {
+    print_section "Disable Auto-Start"
+
+    if systemctl --user is-enabled rnsd.service &>/dev/null; then
+        systemctl --user disable rnsd.service
+        print_success "Auto-start disabled for rnsd"
+        log_message "Disabled rnsd auto-start"
+    else
+        print_info "Auto-start was not enabled"
+    fi
+}
+
+#########################################################
+# Backup and Restore Menu
+#########################################################
+
+backup_restore_menu() {
+    while true; do
+        print_header
+        MENU_BREADCRUMB="Main Menu > Backup/Restore"
+        print_breadcrumb
+
+        # Show backup status
+        local backup_count
+        backup_count=$(find "$HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" 2>/dev/null | wc -l)
+
+        print_box_top
+        print_box_line "${CYAN}${BOLD}Backup Status${NC}"
+        print_box_divider
+        print_box_line "Available backups: $backup_count"
+
+        if [ -d "$HOME/.reticulum" ]; then
+            local config_size
+            config_size=$(du -sh "$HOME/.reticulum" 2>/dev/null | cut -f1)
+            print_box_line "Config size: $config_size"
+        fi
+
+        print_box_bottom
+        echo ""
+
+        echo -e "${BOLD}Backup & Restore:${NC}"
+        echo ""
+        echo "   1) Create backup"
+        echo "   2) Restore from backup"
+        echo "   3) List all backups"
+        echo "   4) Delete old backups"
+        echo "   5) Export configuration (portable)"
+        echo "   6) Import configuration"
+        echo ""
+        echo "   0) Back to Main Menu"
+        echo ""
+        echo -n "Select an option: "
+        read -r BACKUP_CHOICE
+
+        case $BACKUP_CHOICE in
+            1)
+                create_backup
+                pause_for_input
+                ;;
+            2)
+                restore_backup
+                pause_for_input
+                ;;
+            3)
+                list_all_backups
+                pause_for_input
+                ;;
+            4)
+                delete_old_backups
+                pause_for_input
+                ;;
+            5)
+                export_configuration
+                pause_for_input
+                ;;
+            6)
+                import_configuration
+                pause_for_input
+                ;;
+            0|"")
+                return
+                ;;
+            *)
+                print_error "Invalid option"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+list_all_backups() {
+    print_section "All Backups"
+
+    local backups=()
+    while IFS= read -r -d '' backup; do
+        backups+=("$backup")
+    done < <(find "$HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
+
+    if [ ${#backups[@]} -eq 0 ]; then
+        print_warning "No backups found"
+        return
+    fi
+
+    echo -e "${BOLD}Found ${#backups[@]} backup(s):${NC}\n"
+
+    for backup in "${backups[@]}"; do
+        local backup_name
+        backup_name=$(basename "$backup")
+        local backup_date
+        backup_date=$(echo "$backup_name" | sed -n 's/.*\([0-9]\{8\}_[0-9]\{6\}\).*/\1/p')
+        local backup_size
+        backup_size=$(du -sh "$backup" 2>/dev/null | cut -f1)
+
+        # Format date nicely
+        local formatted_date
+        formatted_date=$(echo "$backup_date" | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)_\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
+
+        echo -e "  ${GREEN}●${NC} $formatted_date (Size: $backup_size)"
+    done
+}
+
+delete_old_backups() {
+    print_section "Delete Old Backups"
+
+    local backups=()
+    while IFS= read -r -d '' backup; do
+        backups+=("$backup")
+    done < <(find "$HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
+
+    if [ ${#backups[@]} -eq 0 ]; then
+        print_warning "No backups found to delete"
+        return
+    fi
+
+    if [ ${#backups[@]} -le 3 ]; then
+        print_info "Only ${#backups[@]} backup(s) exist. Keeping all."
+        return
+    fi
+
+    echo -e "${YELLOW}This will keep the 3 most recent backups and delete older ones.${NC}"
+    echo ""
+
+    local to_delete=$((${#backups[@]} - 3))
+    echo "Backups to delete: $to_delete"
+    echo ""
+
+    if confirm_action "Delete $to_delete old backup(s)?"; then
+        local count=0
+        for ((i=0; i<to_delete; i++)); do
+            rm -rf "${backups[$i]}"
+            ((count++))
+        done
+        print_success "Deleted $count old backup(s)"
+        log_message "Deleted $count old backups"
+    else
+        print_info "Cancelled"
+    fi
+}
+
+export_configuration() {
+    print_section "Export Configuration"
+    EXPORT_FILE="$HOME/reticulum_config_export_$(date +%Y%m%d_%H%M%S).tar.gz"
+
+    echo -e "${YELLOW}This will create a portable backup of your configuration.${NC}"
+    echo ""
+
+    if [ -d "$HOME/.reticulum" ] || [ -d "$HOME/.nomadnetwork" ] || [ -d "$HOME/.lxmf" ]; then
+        print_info "Creating export archive..."
+
+        # Create temporary directory for export
+        TEMP_EXPORT=$(mktemp -d)
+
+        [ -d "$HOME/.reticulum" ] && cp -r "$HOME/.reticulum" "$TEMP_EXPORT/"
+        [ -d "$HOME/.nomadnetwork" ] && cp -r "$HOME/.nomadnetwork" "$TEMP_EXPORT/"
+        [ -d "$HOME/.lxmf" ] && cp -r "$HOME/.lxmf" "$TEMP_EXPORT/"
+
+        if tar -czf "$EXPORT_FILE" -C "$TEMP_EXPORT" . 2>&1 | tee -a "$UPDATE_LOG"; then
+            print_success "Configuration exported to:"
+            echo -e "  ${GREEN}$EXPORT_FILE${NC}"
+            log_message "Exported configuration to: $EXPORT_FILE"
+        else
+            print_error "Failed to create export archive"
+        fi
+
+        rm -rf "$TEMP_EXPORT"
+    else
+        print_warning "No configuration files found to export"
+    fi
+}
+
+import_configuration() {
+    print_section "Import Configuration"
+    echo "Enter the path to the export archive (.tar.gz):"
+    echo -n "Archive path: "
+    read -r IMPORT_FILE
+
+    if [ ! -f "$IMPORT_FILE" ]; then
+        print_error "File not found: $IMPORT_FILE"
+    elif [[ ! "$IMPORT_FILE" =~ \.tar\.gz$ ]]; then
+        print_error "Invalid file format. Expected .tar.gz archive"
+    else
+        echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
+
+        if confirm_action "Continue?"; then
+            print_info "Creating backup of current configuration..."
+            create_backup
+
+            print_info "Importing configuration..."
+            if tar -xzf "$IMPORT_FILE" -C "$HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
+                print_success "Configuration imported successfully"
+                log_message "Imported configuration from: $IMPORT_FILE"
+            else
+                print_error "Failed to import configuration"
+            fi
+        else
+            print_info "Import cancelled"
+        fi
     fi
 }
 
@@ -1286,18 +2186,175 @@ run_diagnostics() {
 # Advanced Options
 #########################################################
 
+view_config_files() {
+    print_section "Configuration Files"
+
+    echo -e "${BOLD}Available configuration files:${NC}\n"
+
+    local configs_found=false
+
+    if [ -f "$HOME/.reticulum/config" ]; then
+        echo "   1) Reticulum config (~/.reticulum/config)"
+        configs_found=true
+    fi
+
+    if [ -f "$HOME/.nomadnetwork/config" ]; then
+        echo "   2) NomadNet config (~/.nomadnetwork/config)"
+        configs_found=true
+    fi
+
+    if [ -f "$HOME/.lxmf/config" ]; then
+        echo "   3) LXMF config (~/.lxmf/config)"
+        configs_found=true
+    fi
+
+    if [ "$configs_found" = false ]; then
+        print_warning "No configuration files found"
+        print_info "Run rnsd --daemon to create initial Reticulum config"
+        return
+    fi
+
+    echo ""
+    echo "   0) Cancel"
+    echo ""
+    echo -n "Select file to view: "
+    read -r CONFIG_CHOICE
+
+    case $CONFIG_CHOICE in
+        1)
+            if [ -f "$HOME/.reticulum/config" ]; then
+                print_section "Reticulum Configuration"
+                echo -e "${CYAN}File: ~/.reticulum/config${NC}\n"
+                cat "$HOME/.reticulum/config" | head -n 100
+                if [ "$(wc -l < "$HOME/.reticulum/config")" -gt 100 ]; then
+                    echo ""
+                    print_info "Showing first 100 lines. Use 'cat ~/.reticulum/config' for full file."
+                fi
+            fi
+            ;;
+        2)
+            if [ -f "$HOME/.nomadnetwork/config" ]; then
+                print_section "NomadNet Configuration"
+                echo -e "${CYAN}File: ~/.nomadnetwork/config${NC}\n"
+                cat "$HOME/.nomadnetwork/config" | head -n 100
+            fi
+            ;;
+        3)
+            if [ -f "$HOME/.lxmf/config" ]; then
+                print_section "LXMF Configuration"
+                echo -e "${CYAN}File: ~/.lxmf/config${NC}\n"
+                cat "$HOME/.lxmf/config" | head -n 100
+            fi
+            ;;
+        0|"")
+            return
+            ;;
+    esac
+}
+
+view_logs_menu() {
+    while true; do
+        print_header
+        MENU_BREADCRUMB="Main Menu > Advanced > Logs"
+        print_breadcrumb
+
+        echo -e "${BOLD}Log Viewer:${NC}\n"
+        echo "   1) View recent management tool log"
+        echo "   2) View rnsd daemon logs (systemd)"
+        echo "   3) Search logs for keyword"
+        echo "   4) List all management logs"
+        echo ""
+        echo "   0) Back"
+        echo ""
+        echo -n "Select option: "
+        read -r LOG_CHOICE
+
+        case $LOG_CHOICE in
+            1)
+                print_section "Recent Log Entries"
+                if [ -f "$UPDATE_LOG" ]; then
+                    echo -e "${CYAN}File: $UPDATE_LOG${NC}\n"
+                    tail -n 50 "$UPDATE_LOG"
+                else
+                    # Find most recent log
+                    local latest_log
+                    latest_log=$(find "$HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r | head -1)
+                    if [ -n "$latest_log" ]; then
+                        echo -e "${CYAN}File: $latest_log${NC}\n"
+                        tail -n 50 "$latest_log"
+                    else
+                        print_warning "No log files found"
+                    fi
+                fi
+                pause_for_input
+                ;;
+            2)
+                print_section "Daemon Logs"
+                if command -v journalctl &>/dev/null; then
+                    print_info "Showing recent rnsd-related log entries..."
+                    echo ""
+                    journalctl --user -u rnsd --no-pager -n 30 2>/dev/null || \
+                        journalctl -t rnsd --no-pager -n 30 2>/dev/null || \
+                        print_warning "No systemd logs found for rnsd"
+                else
+                    print_warning "journalctl not available"
+                    print_info "Try: ps aux | grep rnsd"
+                fi
+                pause_for_input
+                ;;
+            3)
+                print_section "Search Logs"
+                echo -n "Enter search term: "
+                read -r SEARCH_TERM
+                if [ -n "$SEARCH_TERM" ]; then
+                    print_info "Searching for '$SEARCH_TERM' in log files..."
+                    echo ""
+                    grep -r --color=always "$SEARCH_TERM" "$HOME"/rns_management_*.log 2>/dev/null || \
+                        print_warning "No matches found"
+                fi
+                pause_for_input
+                ;;
+            4)
+                print_section "All Management Logs"
+                local log_count
+                log_count=$(find "$HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | wc -l)
+
+                if [ "$log_count" -gt 0 ]; then
+                    echo -e "${BOLD}Found $log_count log file(s):${NC}\n"
+                    find "$HOME" -maxdepth 1 -name "rns_management_*.log" -type f -printf "  %f (%s bytes, %TY-%Tm-%Td)\n" 2>/dev/null | sort -r
+                    echo ""
+                    print_info "Logs are in: $HOME/"
+                else
+                    print_warning "No log files found"
+                fi
+                pause_for_input
+                ;;
+            0|"")
+                return
+                ;;
+            *)
+                print_error "Invalid option"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 advanced_menu() {
     while true; do
         print_header
+        MENU_BREADCRUMB="Main Menu > Advanced Options"
+        print_breadcrumb
+
         echo -e "${BOLD}Advanced Options:${NC}\n"
-        echo "  1) Update System Packages"
-        echo "  2) Reinstall All Components"
-        echo "  3) Clean Cache and Temporary Files"
-        echo "  4) Export Configuration"
-        echo "  5) Import Configuration"
-        echo "  6) Reset to Factory Defaults"
-        echo "  7) View Logs"
-        echo "  0) Back to Main Menu"
+        echo "   1) Update System Packages"
+        echo "   2) Reinstall All Components"
+        echo "   3) Clean Cache and Temporary Files"
+        echo "   4) View Configuration Files"
+        echo "   5) View/Search Logs"
+        echo "   6) Reset to Factory Defaults"
+        echo ""
+        echo "   0) Back to Main Menu"
         echo ""
         echo -n "Select an option: "
         read -r ADV_CHOICE
@@ -1309,80 +2366,30 @@ advanced_menu() {
                 ;;
             2)
                 print_warning "This will reinstall all Reticulum components"
-                echo -n "Continue? (y/N): "
-                read -r CONFIRM
-                if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+                if confirm_action "Continue?"; then
                     install_reticulum_ecosystem
                 fi
                 pause_for_input
                 ;;
             3)
+                print_section "Cleaning Cache"
                 print_info "Cleaning pip cache..."
                 $PIP_CMD cache purge 2>&1 | tee -a "$UPDATE_LOG"
+
+                if command -v npm &>/dev/null; then
+                    print_info "Cleaning npm cache..."
+                    npm cache clean --force 2>&1 | tee -a "$UPDATE_LOG"
+                fi
+
                 print_success "Cache cleaned"
                 pause_for_input
                 ;;
             4)
-                print_section "Export Configuration"
-                EXPORT_FILE="$HOME/reticulum_config_export_$(date +%Y%m%d_%H%M%S).tar.gz"
-
-                echo -e "${YELLOW}This will create a portable backup of your configuration.${NC}"
-                echo ""
-
-                if [ -d "$HOME/.reticulum" ] || [ -d "$HOME/.nomadnetwork" ] || [ -d "$HOME/.lxmf" ]; then
-                    print_info "Creating export archive..."
-
-                    # Create temporary directory for export
-                    TEMP_EXPORT=$(mktemp -d)
-
-                    [ -d "$HOME/.reticulum" ] && cp -r "$HOME/.reticulum" "$TEMP_EXPORT/"
-                    [ -d "$HOME/.nomadnetwork" ] && cp -r "$HOME/.nomadnetwork" "$TEMP_EXPORT/"
-                    [ -d "$HOME/.lxmf" ] && cp -r "$HOME/.lxmf" "$TEMP_EXPORT/"
-
-                    if tar -czf "$EXPORT_FILE" -C "$TEMP_EXPORT" . 2>&1 | tee -a "$UPDATE_LOG"; then
-                        print_success "Configuration exported to: $EXPORT_FILE"
-                        log_message "Exported configuration to: $EXPORT_FILE"
-                    else
-                        print_error "Failed to create export archive"
-                    fi
-
-                    rm -rf "$TEMP_EXPORT"
-                else
-                    print_warning "No configuration files found to export"
-                fi
+                view_config_files
                 pause_for_input
                 ;;
             5)
-                print_section "Import Configuration"
-                echo "Enter the path to the export archive (.tar.gz):"
-                echo -n "Archive path: "
-                read -r IMPORT_FILE
-
-                if [ ! -f "$IMPORT_FILE" ]; then
-                    print_error "File not found: $IMPORT_FILE"
-                elif [[ ! "$IMPORT_FILE" =~ \.tar\.gz$ ]]; then
-                    print_error "Invalid file format. Expected .tar.gz archive"
-                else
-                    echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
-                    echo -n "Continue? (y/N): "
-                    read -r CONFIRM
-
-                    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-                        print_info "Creating backup of current configuration..."
-                        create_backup
-
-                        print_info "Importing configuration..."
-                        if tar -xzf "$IMPORT_FILE" -C "$HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
-                            print_success "Configuration imported successfully"
-                            log_message "Imported configuration from: $IMPORT_FILE"
-                        else
-                            print_error "Failed to import configuration"
-                        fi
-                    else
-                        print_info "Import cancelled"
-                    fi
-                fi
-                pause_for_input
+                view_logs_menu
                 ;;
             6)
                 print_section "Reset to Factory Defaults"
@@ -1417,16 +2424,7 @@ advanced_menu() {
                 fi
                 pause_for_input
                 ;;
-            7)
-                print_section "Recent Log Entries"
-                if [ -f "$UPDATE_LOG" ]; then
-                    tail -n 50 "$UPDATE_LOG"
-                else
-                    print_warning "No log file found"
-                fi
-                pause_for_input
-                ;;
-            0)
+            0|"")
                 return
                 ;;
             *)
@@ -1522,7 +2520,7 @@ main() {
                 ;;
             5)
                 # Install Sideband
-                print_info "Sideband installation will be added in a future update"
+                install_sideband
                 pause_for_input
                 ;;
             6)
@@ -1534,41 +2532,19 @@ main() {
                 ;;
             7)
                 # Manage Services
-                echo ""
-                echo "  1) Start rnsd daemon"
-                echo "  2) Stop rnsd daemon"
-                echo "  3) Restart rnsd daemon"
-                echo "  4) View service status"
-                echo ""
-                echo -n "Select option: "
-                read -r SVC_CHOICE
-
-                case $SVC_CHOICE in
-                    1) start_services ;;
-                    2) stop_services ;;
-                    3) stop_services; sleep 2; start_services ;;
-                    4) show_service_status ;;
-                esac
-                pause_for_input
+                services_menu
                 ;;
             8)
                 # Backup/Restore
-                echo ""
-                echo "  1) Create backup"
-                echo "  2) Restore backup"
-                echo ""
-                echo -n "Select option: "
-                read -r BACKUP_OPT
-
-                case $BACKUP_OPT in
-                    1) create_backup ;;
-                    2) restore_backup ;;
-                esac
-                pause_for_input
+                backup_restore_menu
                 ;;
             9)
                 # Advanced Options
                 advanced_menu
+                ;;
+            h|H|\?)
+                # Help
+                show_help
                 ;;
             0)
                 # Exit
@@ -1588,7 +2564,7 @@ main() {
                 exit 0
                 ;;
             *)
-                print_error "Invalid option"
+                print_error "Invalid option. Press 'h' for help."
                 sleep 1
                 ;;
         esac
