@@ -891,7 +891,7 @@ install_meshchat() {
         read -r UPDATE_EXISTING
 
         if [[ ! "$UPDATE_EXISTING" =~ ^[Nn]$ ]]; then
-            cd "$MESHCHAT_DIR" || return 1
+            pushd "$MESHCHAT_DIR" > /dev/null || return 1
             print_info "Updating from git..."
             git pull origin main 2>&1 | tee -a "$UPDATE_LOG"
         else
@@ -899,7 +899,7 @@ install_meshchat() {
         fi
     else
         if git clone https://github.com/liamcottle/reticulum-meshchat.git "$MESHCHAT_DIR" 2>&1 | tee -a "$UPDATE_LOG"; then
-            cd "$MESHCHAT_DIR" || return 1
+            pushd "$MESHCHAT_DIR" > /dev/null || return 1
         else
             print_error "Failed to clone MeshChat repository"
             return 1
@@ -923,16 +923,16 @@ install_meshchat() {
             # Create launcher
             create_meshchat_launcher
 
-            cd - > /dev/null
+            popd > /dev/null
             return 0
         else
             print_error "Failed to build MeshChat"
-            cd - > /dev/null
+            popd > /dev/null
             return 1
         fi
     else
         print_error "Failed to install dependencies"
-        cd - > /dev/null
+        popd > /dev/null
         return 1
     fi
 }
