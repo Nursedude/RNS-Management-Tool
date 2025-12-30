@@ -4,7 +4,7 @@
 
 A comprehensive, cross-platform management tool for the Reticulum ecosystem, featuring automated installation, configuration, and maintenance capabilities for Raspberry Pi, Linux, Windows 11, and WSL environments.
 
-![Version](https://img.shields.io/badge/version-2.1.0-blue)
+![Version](https://img.shields.io/badge/version-2.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -384,7 +384,19 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📅 Version History
 
-### Version 2.1.0 (Current)
+### Version 2.2.0 (Current)
+- ✨ **PowerShell Feature Parity** - Advanced Options menu now available on Windows
+- ✨ **Enhanced Service Management** - Improved start/stop/restart options for rnsd
+- ✨ **Configuration Export/Import (Windows)** - Portable .zip backup archives
+- ✨ **Factory Reset (Windows)** - Complete configuration reset with safety backup
+- ✨ **Update Checker** - Built-in version checking against GitHub releases
+- 🔧 **Better Menu Organization** - Consistent navigation across both scripts
+- 🔧 **Improved Error Messages** - More actionable error recovery hints
+- 📚 **Code Review Documentation** - Comprehensive code quality analysis included
+- 🎨 **UI Polish** - Better alignment and visual consistency
+- 🐛 **Bug Fixes** - Various edge case improvements
+
+### Version 2.1.0
 - ✨ **Quick Status Dashboard** - See rnsd and RNS status at a glance on main menu
 - ✨ **Organized Menu Sections** - Installation, Management, and System categories
 - 🔒 **Security Fixes** - Replaced unsafe `eval` with array-based command execution

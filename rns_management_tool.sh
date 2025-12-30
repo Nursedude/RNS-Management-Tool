@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Global variables
-SCRIPT_VERSION="2.1.0"
+SCRIPT_VERSION="2.2.0"
 BACKUP_DIR="$HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$HOME/reticulum-meshchat"
