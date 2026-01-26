@@ -13,10 +13,14 @@
 #Requires -Version 5.1
 
 # Script configuration
-$Script:Version = "2.2.0"
+$Script:Version = "0.3.0-beta"
 $Script:LogFile = Join-Path $env:USERPROFILE "rns_management_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $Script:BackupDir = Join-Path $env:USERPROFILE ".reticulum_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 $Script:NeedsReboot = $false
+
+# Network Timeout Constants (RNS006: Subprocess timeout protection)
+$Script:NetworkTimeout = 300    # 5 minutes for network operations
+$Script:PipTimeout = 300        # 5 minutes for pip operations
 
 #########################################################
 # Color and Display Functions
@@ -696,6 +700,57 @@ function Import-Configuration {
 
     if ($importFile -notmatch '\.zip$') {
         Write-ColorOutput "Invalid file format. Expected .zip archive" "Error"
+        pause
+        return
+    }
+
+    # RNS004: Archive validation before extraction
+    Write-ColorOutput "Validating archive structure..." "Info"
+
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($importFile)
+
+        # Check for path traversal attempts
+        $hasInvalidPaths = $false
+        $hasReticulumConfig = $false
+
+        foreach ($entry in $zip.Entries) {
+            # Check for path traversal (../)
+            if ($entry.FullName -match '\.\.' -or $entry.FullName.StartsWith('/') -or $entry.FullName.StartsWith('\')) {
+                $hasInvalidPaths = $true
+                break
+            }
+            # Check for expected Reticulum directories
+            if ($entry.FullName -match '^\.reticulum|^\.nomadnetwork|^\.lxmf') {
+                $hasReticulumConfig = $true
+            }
+        }
+
+        $zip.Dispose()
+
+        if ($hasInvalidPaths) {
+            Write-ColorOutput "Security: Archive contains invalid paths (traversal attempt)" "Error"
+            "SECURITY: Rejected archive with invalid paths: $importFile" | Out-File -FilePath $Script:LogFile -Append
+            pause
+            return
+        }
+
+        if (-not $hasReticulumConfig) {
+            Write-ColorOutput "Archive does not appear to contain Reticulum configuration" "Warning"
+            Write-Host "Expected directories: .reticulum/, .nomadnetwork/, .lxmf/"
+            $continueAnyway = Read-Host "Continue anyway? (y/N)"
+            if ($continueAnyway -ne 'y' -and $continueAnyway -ne 'Y') {
+                Write-ColorOutput "Import cancelled" "Info"
+                pause
+                return
+            }
+        }
+
+        Write-ColorOutput "Archive validation passed" "Success"
+    }
+    catch {
+        Write-ColorOutput "Failed to validate archive: $_" "Error"
         pause
         return
     }
