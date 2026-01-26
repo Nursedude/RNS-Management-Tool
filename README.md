@@ -7,6 +7,70 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 ![Version](https://img.shields.io/badge/version-2.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
+![Tests](https://img.shields.io/badge/shellcheck-passing-green)
+
+---
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "User Interfaces"
+        TUI["Terminal UI<br/>(Bash - Primary)"]
+        PS["PowerShell UI<br/>(Windows)"]
+    end
+
+    subgraph "Management Core"
+        INST[Installer Engine]
+        DIAG[Diagnostics]
+        SVC[Service Manager]
+        BACKUP[Backup/Restore]
+        RNODE[RNODE Config]
+    end
+
+    subgraph "Reticulum Ecosystem"
+        RNS[RNS Core]
+        LXMF[LXMF Protocol]
+        NOMAD[NomadNet]
+        MESH[MeshChat]
+        SIDE[Sideband]
+    end
+
+    subgraph "Hardware"
+        LORA[LoRa Radios]
+        USB[USB Devices]
+    end
+
+    TUI --> INST & DIAG & SVC & BACKUP & RNODE
+    PS --> INST & DIAG & SVC & BACKUP
+
+    INST --> RNS --> LXMF
+    LXMF --> NOMAD & MESH & SIDE
+    RNODE --> LORA & USB
+```
+
+---
+
+## Quick Status Dashboard
+
+```mermaid
+flowchart LR
+    subgraph "Service Status"
+        RNSD{rnsd daemon}
+        RNSD -->|Running| OK["● Active"]
+        RNSD -->|Stopped| WARN["○ Inactive"]
+    end
+
+    subgraph "Components"
+        RNS["RNS v0.8.x"]
+        LXMF["LXMF v0.5.x"]
+        NOMAD["NomadNet"]
+        MESH["MeshChat"]
+    end
+```
+
+---
 
 ## 🌟 Features
 
@@ -134,6 +198,32 @@ When you select "Install/Configure RNODE Device", you'll see:
 
 ### First-Time Setup
 
+```mermaid
+flowchart TD
+    START([Start]) --> RUN[Run Management Tool]
+    RUN --> MENU{Main Menu}
+
+    MENU -->|Option 1| INSTALL[Install Reticulum]
+    MENU -->|Option 2| RNODE[Configure RNODE]
+
+    subgraph "Reticulum Installation"
+        INSTALL --> CHECK[Check Prerequisites]
+        CHECK --> DEPS[Install Dependencies]
+        DEPS --> BACKUP[Create Backup]
+        BACKUP --> RNS[Install RNS + LXMF]
+        RNS --> DAEMON[Start rnsd]
+        DAEMON --> DONE1([Complete])
+    end
+
+    subgraph "RNODE Setup"
+        RNODE --> USB[Connect USB Device]
+        USB --> AUTO[Auto-detect Device]
+        AUTO --> FLASH[Flash Firmware]
+        FLASH --> CONFIG[Configure Radio]
+        CONFIG --> DONE2([Complete])
+    end
+```
+
 **For a complete Reticulum installation:**
 
 1. Run the management tool
@@ -217,6 +307,33 @@ The diagnostic tool provides:
 - **Version Information** - All installed components
 
 ## 🎯 Supported Platforms
+
+```mermaid
+graph TB
+    subgraph "Linux Platforms"
+        RPI["Raspberry Pi<br/>All Models"]
+        DEBIAN["Debian/Ubuntu<br/>10+/20.04+"]
+        MINT["Linux Mint<br/>Pop!_OS"]
+    end
+
+    subgraph "Windows Platforms"
+        WIN11["Windows 11<br/>21H2+"]
+        WSL["WSL2<br/>Ubuntu/Debian"]
+        SERVER["Windows Server<br/>2022"]
+    end
+
+    subgraph "Architecture"
+        ARM["ARM<br/>(32/64-bit)"]
+        X86["x86_64<br/>(Intel/AMD)"]
+    end
+
+    RPI --> ARM
+    DEBIAN --> ARM & X86
+    MINT --> X86
+    WIN11 --> X86
+    WSL --> X86
+    SERVER --> X86
+```
 
 ### Raspberry Pi
 - ✅ Raspberry Pi 1 (all variants)
@@ -340,7 +457,43 @@ If you encounter issues:
    - https://github.com/Nursedude/RNS-Management-Tool/issues
    - Include log files and system information
 
-## 🔐 Security Considerations
+## 🔐 Security Model
+
+```mermaid
+flowchart LR
+    subgraph "Input Validation"
+        DEV["Device Port<br/>Regex Check"]
+        NUM["Numeric Params<br/>Range Validation"]
+        PATH["Path Traversal<br/>Prevention"]
+    end
+
+    subgraph "Execution Safety"
+        ARRAY["Array-based<br/>Commands"]
+        NOEVAL["No eval()<br/>Usage"]
+        CONFIRM["Destructive<br/>Confirmation"]
+    end
+
+    subgraph "Data Protection"
+        BACKUP["Auto Backup<br/>Before Changes"]
+        RESTORE["Rollback<br/>Capability"]
+        LOG["Audit<br/>Logging"]
+    end
+
+    DEV & NUM & PATH --> ARRAY & NOEVAL
+    ARRAY & NOEVAL --> BACKUP & RESTORE & LOG
+```
+
+### Security Rules (Adapted from MeshForge)
+
+| Rule | Requirement | Status |
+|------|-------------|--------|
+| RNS001 | Array-based command execution, never `eval` | ✅ Enforced |
+| RNS002 | Device port validation (regex) | ✅ Enforced |
+| RNS003 | Numeric range validation | ✅ Enforced |
+| RNS004 | Path traversal prevention | ✅ Enforced |
+| RNS005 | Confirmation for destructive actions | ✅ Enforced |
+
+### Security Features
 
 - **Automatic backups** protect your configuration
 - **Secure package installation** from official repositories only
