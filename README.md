@@ -545,6 +545,29 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Test Suite** - Basic bats tests for CI validation
 - **Documentation** - CLAUDE.md, mermaid diagrams, code review
 
+### Upgrading from v2.x
+
+If you have v2.2.0 or earlier installed:
+
+```bash
+# Linux/Raspberry Pi - Just replace the script
+wget -O rns_management_tool.sh https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh
+chmod +x rns_management_tool.sh
+```
+
+```powershell
+# Windows PowerShell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
+```
+
+**What's preserved:**
+- All your Reticulum configurations (`~/.reticulum/`)
+- NomadNet settings (`~/.nomadnetwork/`)
+- LXMF data (`~/.lxmf/`)
+- Existing backups
+
+**Why version reset?** The v2.x numbering implied production-ready stability. The v0.3.0-beta label honestly reflects that this is beta software that needs real-world testing. Code quality is high, but field testing is ongoing.
+
 ### Version 2.2.0 (Legacy)
 - ✨ **PowerShell Feature Parity** - Advanced Options menu now available on Windows
 - ✨ **Enhanced Service Management** - Improved start/stop/restart options for rnsd

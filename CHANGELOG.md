@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added CODE_REVIEW_MESHFORGE.md with domain analysis
 - Updated README.md with mermaid architecture diagrams
 
+### Upgrade Path from v2.x
+Users upgrading from v2.2.0 or earlier:
+1. **No breaking changes** - All existing configurations remain compatible
+2. **Backup preserved** - Your `~/.reticulum/`, `~/.nomadnetwork/`, `~/.lxmf/` untouched
+3. **Just replace the script** - Download new version, old one can be deleted
+4. **Version number reset** - v0.3.0-beta reflects honest maturity, not regression
+
+```bash
+# Upgrade from v2.x to v0.3.0-beta (Linux)
+wget -O rns_management_tool.sh https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh
+chmod +x rns_management_tool.sh
+
+# Upgrade (Windows PowerShell)
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
+```
+
 ---
 
 ## [2.2.0] - 2025-12-30 (Legacy Version Number)
