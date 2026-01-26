@@ -5,7 +5,35 @@ All notable changes to the RNS Management Tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.2.0] - 2025-12-30
+## [0.3.0-beta] - 2026-01-26
+
+### Changed
+- **Version Reset**: Moved to semantic versioning starting at 0.x to reflect beta status
+- Previous v2.2.0 functionality preserved, version number adjusted for honesty
+
+### Added
+- **Subprocess Timeouts**: Network operations now have explicit timeouts (300s default)
+- **Archive Validation**: Import function validates tar structure before extraction
+- **Function Decomposition**: Long functions split into smaller, testable units
+- **Bats Test Suite**: Basic shell testing framework for CI validation
+- **MeshForge Compliance**: 100% compliance with MeshForge domain principles
+
+### Security
+- RNS001: Array-based command execution (enforced)
+- RNS002: Device port validation with regex (enforced)
+- RNS003: Numeric range validation (enforced)
+- RNS004: Path traversal prevention (enforced)
+- RNS005: Destructive action confirmation (enforced)
+- RNS006: Subprocess timeout protection (NEW)
+
+### Documentation
+- Added CLAUDE.md development guide
+- Added CODE_REVIEW_MESHFORGE.md with domain analysis
+- Updated README.md with mermaid architecture diagrams
+
+---
+
+## [2.2.0] - 2025-12-30 (Legacy Version Number)
 
 ### Added (PowerShell/Windows)
 - **Advanced Options Menu** with comprehensive system management

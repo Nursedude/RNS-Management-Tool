@@ -4,7 +4,7 @@
 
 A comprehensive, cross-platform management tool for the Reticulum ecosystem, featuring automated installation, configuration, and maintenance capabilities for Raspberry Pi, Linux, Windows 11, and WSL environments.
 
-![Version](https://img.shields.io/badge/version-2.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.0--beta-orange)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
@@ -537,7 +537,15 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📅 Version History
 
-### Version 2.2.0 (Current)
+### Version 0.3.0-beta (Current)
+- **Version Reset** - Semantic versioning from 0.x to reflect beta maturity
+- **MeshForge Compliance** - 100% compliance with domain principles
+- **Subprocess Timeouts** - Network operations protected with timeouts
+- **Archive Validation** - Import validates structure before extraction
+- **Test Suite** - Basic bats tests for CI validation
+- **Documentation** - CLAUDE.md, mermaid diagrams, code review
+
+### Version 2.2.0 (Legacy)
 - ✨ **PowerShell Feature Parity** - Advanced Options menu now available on Windows
 - ✨ **Enhanced Service Management** - Improved start/stop/restart options for rnsd
 - ✨ **Configuration Export/Import (Windows)** - Portable .zip backup archives
