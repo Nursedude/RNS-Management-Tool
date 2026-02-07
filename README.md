@@ -1,14 +1,49 @@
 # RNS Management Tool
 
 **Complete Reticulum Network Stack Management Solution**
+*Part of the [MeshForge](https://github.com/Nursedude/meshforge) Ecosystem*
 
 A comprehensive, cross-platform management tool for the Reticulum ecosystem, featuring automated installation, configuration, and maintenance capabilities for Raspberry Pi, Linux, Windows 11, and WSL environments.
+
+This is the **only MeshForge ecosystem tool with native Windows support**. Users don't need MeshForge installed to use this tool, but if they do, they can extend its functionality through MeshForge's gateway. Upstream MeshForge updates are frequent - environment patterns, security rules, and best practices flow downstream into this tool regularly.
 
 ![Version](https://img.shields.io/badge/version-0.3.0--beta-orange)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+![MeshForge](https://img.shields.io/badge/MeshForge-ecosystem-blueviolet)
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
 ![Tests](https://img.shields.io/badge/shellcheck-passing-green)
+
+---
+
+## MeshForge Ecosystem
+
+```mermaid
+graph LR
+    subgraph "MeshForge Ecosystem"
+        MF["MeshForge<br/>(Python NOC Suite)"]
+        RNS_TOOL["RNS Management Tool<br/>(Bash + PowerShell)"]
+    end
+
+    subgraph "Platforms"
+        LINUX["Linux / RPi<br/>Bash TUI"]
+        WINDOWS["Windows 11<br/>PowerShell TUI"]
+    end
+
+    MF -.->|"upstream patterns<br/>security rules"| RNS_TOOL
+    RNS_TOOL --> LINUX
+    RNS_TOOL --> WINDOWS
+
+    style RNS_TOOL fill:#1a6,stroke:#fff,color:#fff
+    style WINDOWS fill:#47a,stroke:#fff,color:#fff
+```
+
+**Relationship to MeshForge:**
+- MeshForge is the Python-based NOC reference suite for LoRa mesh networks
+- RNS Management Tool extends the ecosystem with a shell-based TUI for Reticulum
+- Security rules (RNS001-RNS006), environment patterns, and architectural decisions flow from MeshForge upstream
+- This tool is standalone - no MeshForge installation required
+- If MeshForge is installed, this tool can extend its functionality through MeshForge's gateway
 
 ---
 
@@ -17,8 +52,8 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 ```mermaid
 graph TB
     subgraph "User Interfaces"
-        TUI["Terminal UI<br/>(Bash - Primary)"]
-        PS["PowerShell UI<br/>(Windows)"]
+        TUI["Terminal UI<br/>(Bash - Linux/RPi)"]
+        PS["PowerShell UI<br/>(Windows - Native)"]
     end
 
     subgraph "Management Core"
@@ -27,6 +62,8 @@ graph TB
         SVC[Service Manager]
         BACKUP[Backup/Restore]
         RNODE[RNODE Config]
+        ENV[Environment Detection]
+        HEALTH[Health Check]
     end
 
     subgraph "Reticulum Ecosystem"
@@ -42,13 +79,63 @@ graph TB
         USB[USB Devices]
     end
 
-    TUI --> INST & DIAG & SVC & BACKUP & RNODE
-    PS --> INST & DIAG & SVC & BACKUP
+    TUI --> INST & DIAG & SVC & BACKUP & RNODE & ENV & HEALTH
+    PS --> INST & DIAG & SVC & BACKUP & ENV & HEALTH
 
     INST --> RNS --> LXMF
     LXMF --> NOMAD & MESH & SIDE
     RNODE --> LORA & USB
 ```
+
+---
+
+## Feature Matrix
+
+Features are fully implemented unless marked otherwise. Platform differences are noted honestly.
+
+| Category | Feature | Linux/RPi (Bash) | Windows (PowerShell) | Notes |
+|----------|---------|:---:|:---:|-------|
+| **Installation** | Full ecosystem install | ✅ | ✅ | |
+| | Selective component updates | ✅ | ✅ | |
+| | MeshChat with Node.js | ✅ | ❌ | Linux only (Node.js build) |
+| **RNODE** | Auto-install firmware | ✅ | ⚠️ Basic | Windows: pip-only or WSL fallback |
+| | Radio parameter config | ✅ | ❌ | Bash only (rnodeconf TUI) |
+| | EEPROM management | ✅ | ❌ | Bash only |
+| | 21+ board support | ✅ | ⚠️ via WSL | Full support through WSL bridge |
+| **Services** | Start/Stop/Restart rnsd | ✅ | ✅ | |
+| | systemd user services | ✅ | ❌ | Linux only |
+| | meshtasticd integration | ✅ | ❌ | RPi/Linux only |
+| **Backup** | Automatic timestamped | ✅ | ✅ | |
+| | Export/Import archives | ✅ (.tar.gz) | ✅ (.zip) | Platform-native formats |
+| | Factory reset | ✅ | ✅ | |
+| **Diagnostics** | Environment detection | ✅ | ✅ | |
+| | USB device detection | ✅ | ⚠️ | Windows: COM port detection |
+| | Startup health check | ✅ | ✅ | Disk, memory, log validation |
+| **Environment** | Terminal capability detection | ✅ | ✅ | Color fallback on dumb terminals |
+| | Sudo-aware home directory | ✅ | N/A | Windows has no sudo issue |
+| | SSH/remote session detection | ✅ | ✅ | SSH + RDP detection on Windows |
+| | PEP 668 detection | ✅ | N/A | Debian 12+ externally-managed Python |
+| | Disk space pre-check | ✅ | ✅ | |
+| | Memory pre-check | ✅ | ✅ | |
+| | Log levels (DEBUG-ERROR) | ✅ | ✅ | |
+| | Signal trap / cleanup | ✅ | N/A | Bash EXIT/INT/TERM traps |
+| **UI** | Quick Status Dashboard | ✅ | ✅ | |
+| | Progress indicators | ✅ | ✅ | |
+| | Box drawing / color | ✅ | ✅ | |
+
+### Raspberry Pi vs Desktop Linux vs Windows
+
+| Aspect | Raspberry Pi | Desktop Linux | Windows 11 |
+|--------|:---:|:---:|:---:|
+| Primary script | `rns_management_tool.sh` | `rns_management_tool.sh` | `rns_management_tool.ps1` |
+| RNODE USB support | Full (native) | Full (native) | Via WSL or pip |
+| LoRa SPI HAT support | Full | N/A | N/A |
+| Pi model detection | Auto-detected | N/A | N/A |
+| PEP 668 handling | Auto (Bookworm) | Depends on distro | N/A |
+| Service management | systemd + direct | systemd + direct | Process-based |
+| MeshChat | Full | Full | Not supported |
+| WSL bridge | N/A | N/A | Full |
+| Sideband | From source | From source | Executable download |
 
 ---
 
@@ -72,40 +159,63 @@ flowchart LR
 
 ---
 
-## 🌟 Features
+## Features
 
 ### Core Functionality
-- ✅ **Cross-Platform Support** - Works on Raspberry Pi, Linux, Windows 11, and WSL2
-- ✅ **Interactive Menu System** - Easy-to-use interface with visual feedback
-- ✅ **Automatic Version Detection** - Intelligently detects installed components
-- ✅ **Smart Dependency Management** - Installs packages in the correct order
-- ✅ **Comprehensive Backup System** - Automatic configuration backups with restore
-- ✅ **Service Management** - Start, stop, and monitor Reticulum services
-- ✅ **Detailed Logging** - Complete installation and operation logs
-- ✅ **Error Recovery** - Smart error handling with recovery suggestions
+- **Cross-Platform Support** - Works on Raspberry Pi, Linux, Windows 11, and WSL2
+- **Interactive Menu System** - Easy-to-use TUI with visual feedback
+- **Environment Detection** - Terminal capabilities, SSH sessions, admin rights, PEP 668, disk/memory
+- **Startup Health Check** - Validates environment before entering main menu
+- **Smart Dependency Management** - Installs packages in the correct order
+- **Comprehensive Backup System** - Automatic configuration backups with restore
+- **Service Management** - Start, stop, and monitor Reticulum services
+- **Leveled Logging** - DEBUG/INFO/WARN/ERROR with file rotation
+- **Error Recovery** - Smart error handling with recovery suggestions
+- **Signal Handling** - Clean exit on interrupt (Bash), cleanup on termination
 
 ### Reticulum Ecosystem
 - **RNS (Reticulum Network Stack)** - Core cryptographic networking
 - **LXMF** - Lightweight Extensible Message Format protocol
 - **NomadNet** - Terminal-based messaging and file sharing
-- **MeshChat** - Modern web-based messaging interface
+- **MeshChat** - Modern web-based messaging interface (Linux/RPi only)
 - **Sideband** - Mobile-first LXMF client
 - **RNODE** - Complete RNODE device setup and configuration
 
-### RNODE Support (NEW!)
-- 🔧 **Interactive RNODE Installer** - Automated firmware flashing
-- 🔧 **Device Configuration Wizard** - Step-by-step setup for all supported devices
-- 🔧 **Auto-Install Mode** - Automatic device detection and flashing
-- 🔧 **Firmware Updates** - Keep your RNODE devices up to date
-- 🔧 **Device Testing** - Verify RNODE functionality
-- 🔧 **Support for 21+ Boards** - LilyGO T-Beam, Heltec LoRa32, RAK4631, and more
+### RNODE Support
+- **Interactive RNODE Installer** - Automated firmware flashing
+- **Device Configuration Wizard** - Step-by-step setup for all supported devices
+- **Auto-Install Mode** - Automatic device detection and flashing
+- **Firmware Updates** - Keep your RNODE devices up to date
+- **Device Testing** - Verify RNODE functionality
+- **Support for 21+ Boards** - LilyGO T-Beam, Heltec LoRa32, RAK4631, and more
 
-## 📋 Requirements
+### Environment Hardening (from MeshForge)
+These patterns are ported from the upstream MeshForge project:
+
+| Pattern | Description | Bash | PowerShell |
+|---------|-------------|:---:|:---:|
+| Terminal capability detection | Graceful color fallback for dumb terminals and piped output | ✅ | ✅ |
+| `SCRIPT_DIR` / `$Script:ScriptDir` | Reliable script directory resolution | ✅ | ✅ |
+| `REAL_HOME` / `$Script:RealHome` | Sudo-aware home directory (prevents `/root` under sudo) | ✅ | N/A |
+| SSH / remote session detection | Conservative behavior in remote sessions | ✅ | ✅ |
+| PEP 668 detection | Identifies externally-managed Python (Debian 12+) | ✅ | N/A |
+| Disk space pre-check | Validates available space before installs | ✅ | ✅ |
+| Memory pre-check | Warns on low available memory | ✅ | ✅ |
+| Git `safe.directory` guard | Prevents dubious ownership errors as root | ✅ | N/A |
+| Signal trap / cleanup | Handles EXIT/INT/TERM for clean shutdown | ✅ | N/A |
+| Log levels | DEBUG/INFO/WARN/ERROR with configurable filtering | ✅ | ✅ |
+| Startup health check | Full environment validation before menu entry | ✅ | ✅ |
+| Path traversal prevention | SUDO_USER sanitization, archive validation | ✅ | ✅ |
+
+---
+
+## Requirements
 
 ### Raspberry Pi / Linux
 - Raspberry Pi OS (any version) or Debian/Ubuntu-based system
 - Python 3.7 or higher
 - 512MB+ RAM recommended
+- 500MB+ free disk space (checked at startup)
 - Internet connection (for installation)
 
 ### Windows 11
@@ -113,13 +223,15 @@ flowchart LR
 - PowerShell 5.1+ or PowerShell Core 7+
 - Python 3.7+ (will offer to install if missing)
 - Administrator rights (recommended)
+- 500MB+ free disk space (checked at startup)
 
 ### Optional
-- Node.js 18+ (for MeshChat)
+- Node.js 18+ (for MeshChat - Linux/RPi only)
 - Git (for source installations)
 - USB port (for RNODE devices)
+- WSL2 (for full RNODE support on Windows)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Linux / Raspberry Pi
 
@@ -152,14 +264,16 @@ The Windows version includes WSL support! You can:
 2. Install through WSL (recommended for RNODE devices)
 3. Manage both simultaneously
 
-## 📖 Usage Guide
+---
+
+## Usage Guide
 
 ### Main Menu Options
 
 1. **Install/Update Reticulum Ecosystem** - Complete stack installation
 2. **Install/Configure RNODE Device** - Interactive RNODE setup
 3. **Install NomadNet** - Terminal messaging client
-4. **Install MeshChat** - Web-based messaging interface
+4. **Install MeshChat** - Web-based messaging interface (Linux/RPi)
 5. **Install Sideband** - Mobile-focused client
 6. **System Status & Diagnostics** - Check installation health
 7. **Manage Services** - Start/stop/restart services
@@ -201,7 +315,8 @@ When you select "Install/Configure RNODE Device", you'll see:
 ```mermaid
 flowchart TD
     START([Start]) --> RUN[Run Management Tool]
-    RUN --> MENU{Main Menu}
+    RUN --> HEALTH[Startup Health Check]
+    HEALTH --> MENU{Main Menu}
 
     MENU -->|Option 1| INSTALL[Install Reticulum]
     MENU -->|Option 2| RNODE[Configure RNODE]
@@ -227,8 +342,9 @@ flowchart TD
 **For a complete Reticulum installation:**
 
 1. Run the management tool
-2. Select option **1** (Install/Update Reticulum Ecosystem)
-3. The tool will:
+2. The startup health check validates your environment automatically
+3. Select option **1** (Install/Update Reticulum Ecosystem)
+4. The tool will:
    - Check prerequisites
    - Install Python dependencies if needed
    - Create a backup of existing configurations
@@ -244,7 +360,9 @@ flowchart TD
 4. Choose option **1** (Auto-install firmware)
 5. The tool will automatically detect and configure your device
 
-## 🔧 Advanced Features
+---
+
+## Advanced Features
 
 ### Automatic Backup System
 
@@ -276,7 +394,7 @@ Control Reticulum services with ease:
 
 ### Logging
 
-All operations are logged to timestamped files:
+All operations are logged with levels (DEBUG/INFO/WARN/ERROR) to timestamped files:
 
 ```
 ~/rns_management_YYYYMMDD_HHMMSS.log
@@ -286,15 +404,21 @@ View logs through the Advanced Options menu.
 
 ### Environment Detection
 
-The tool automatically detects:
-- Raspberry Pi model (all variants: Pi 1, 2, 3, 4, 5, Zero, etc.)
-- Operating system and version
-- Architecture (ARM, x86_64, etc.)
-- WSL environment
-- Available Python versions
-- Existing installations
+The tool automatically detects and adapts to:
+- **Raspberry Pi** model (all variants: Pi 1-5, Zero, 400, Compute Modules)
+- **Operating system** and version
+- **Architecture** (ARM, x86_64)
+- **WSL environment** (Windows)
+- **SSH / remote sessions** (conservative behavior)
+- **Terminal capabilities** (color support, dumb terminal fallback)
+- **PEP 668** externally-managed Python (Debian 12+ / RPi OS Bookworm)
+- **Available disk space** and **memory** (warns before running low)
+- **Python and pip** versions
+- **Existing installations** and running services
 
-## 📊 System Status & Diagnostics
+---
+
+## System Status & Diagnostics
 
 The diagnostic tool provides:
 
@@ -305,8 +429,11 @@ The diagnostic tool provides:
 - **Reticulum Configuration** - Config file status
 - **Service Status** - Running daemons and processes
 - **Version Information** - All installed components
+- **Health Status** - Disk space, memory, log writability
 
-## 🎯 Supported Platforms
+---
+
+## Supported Platforms
 
 ```mermaid
 graph TB
@@ -336,27 +463,27 @@ graph TB
 ```
 
 ### Raspberry Pi
-- ✅ Raspberry Pi 1 (all variants)
-- ✅ Raspberry Pi 2 (all variants)
-- ✅ Raspberry Pi 3 (all variants)
-- ✅ Raspberry Pi 4 (all variants)
-- ✅ Raspberry Pi 5
-- ✅ Raspberry Pi Zero (all variants)
-- ✅ Raspberry Pi 400
-- ✅ Raspberry Pi Compute Modules
+- Raspberry Pi 1 (all variants)
+- Raspberry Pi 2 (all variants)
+- Raspberry Pi 3 (all variants)
+- Raspberry Pi 4 (all variants)
+- Raspberry Pi 5
+- Raspberry Pi Zero (all variants)
+- Raspberry Pi 400
+- Raspberry Pi Compute Modules
 
 ### Linux Distributions
-- ✅ Raspberry Pi OS (32-bit and 64-bit)
-- ✅ Ubuntu 20.04+
-- ✅ Debian 10+
-- ✅ Linux Mint
-- ✅ Pop!_OS
-- ✅ Any Debian-based distribution
+- Raspberry Pi OS (32-bit and 64-bit)
+- Ubuntu 20.04+
+- Debian 10+
+- Linux Mint
+- Pop!_OS
+- Any Debian-based distribution
 
 ### Windows
-- ✅ Windows 11 (21H2+)
-- ✅ Windows 11 with WSL2
-- ✅ Windows Server 2022
+- Windows 11 (21H2+)
+- Windows 11 with WSL2
+- Windows Server 2022
 
 ### RNODE Devices (21+ Supported Boards)
 
@@ -383,7 +510,9 @@ graph TB
 - Generic ESP32 boards
 - Custom LoRa configurations
 
-## 🛠️ Troubleshooting
+---
+
+## Troubleshooting
 
 ### Common Issues
 
@@ -417,6 +546,7 @@ sudo usermod -a -G dialout $USER
 # (Logout and login for changes to take effect)
 
 # Windows - Check Device Manager for COM ports
+# Or use WSL bridge for full RNODE support
 ```
 
 **Problem: "MeshChat build fails"**
@@ -425,6 +555,7 @@ sudo usermod -a -G dialout $USER
 node --version
 
 # The tool will offer to upgrade Node.js automatically
+# Note: MeshChat is Linux/RPi only
 ```
 
 **Problem: "Permission denied"**
@@ -433,13 +564,21 @@ node --version
 chmod +x rns_management_tool.sh
 
 # Some operations may need sudo (tool will prompt when needed)
+# Note: The tool detects sudo and resolves the real user's home directory
+```
+
+**Problem: "Low disk space" warning at startup**
+```bash
+# The startup health check requires 500MB minimum
+# Free up space or the tool will warn but still run
+df -h ~
 ```
 
 ### Getting Help
 
 If you encounter issues:
 
-1. **Check the logs**:
+1. **Check the logs** (now with DEBUG/INFO/WARN/ERROR levels):
    ```bash
    # View the latest log file
    ls -lt ~/rns_management_*.log | head -1
@@ -457,7 +596,9 @@ If you encounter issues:
    - https://github.com/Nursedude/RNS-Management-Tool/issues
    - Include log files and system information
 
-## 🔐 Security Model
+---
+
+## Security Model
 
 ```mermaid
 flowchart LR
@@ -483,25 +624,33 @@ flowchart LR
     ARRAY & NOEVAL --> BACKUP & RESTORE & LOG
 ```
 
-### Security Rules (Adapted from MeshForge)
+### Security Rules (from MeshForge Upstream)
 
 | Rule | Requirement | Status |
 |------|-------------|--------|
-| RNS001 | Array-based command execution, never `eval` | ✅ Enforced |
-| RNS002 | Device port validation (regex) | ✅ Enforced |
-| RNS003 | Numeric range validation | ✅ Enforced |
-| RNS004 | Path traversal prevention | ✅ Enforced |
-| RNS005 | Confirmation for destructive actions | ✅ Enforced |
+| RNS001 | Array-based command execution, never `eval` | Enforced |
+| RNS002 | Device port validation (regex) | Enforced |
+| RNS003 | Numeric range validation | Enforced |
+| RNS004 | Path traversal prevention | Enforced |
+| RNS005 | Confirmation for destructive actions | Enforced |
+| RNS006 | Subprocess timeout protection | Enforced |
 
 ### Security Features
 
 - **Automatic backups** protect your configuration
 - **Secure package installation** from official repositories only
 - **No elevation unless necessary** - prompts before sudo operations
+- **SUDO_USER sanitization** - path traversal prevention on home directory resolution
+- **Archive validation** before extraction (checks for `../` traversal)
 - **Configuration validation** before applying changes
 - **Rollback capability** through backup/restore system
 
-## 📚 Learn More
+---
+
+## Learn More
+
+### MeshForge Ecosystem
+- MeshForge (upstream): https://github.com/Nursedude/meshforge
 
 ### Reticulum Network Stack
 - Official Manual: https://reticulum.network/manual/
@@ -521,29 +670,64 @@ flowchart LR
 - Unsigned.io RNS Testnet: Connect and test your setup
 - GitHub Discussions: Share experiences and get help
 
-## 🤝 Contributing
+---
 
-Contributions are welcome! Please feel free to submit pull requests or open issues.
+## Contributing
 
-## 📝 License
+Contributions are welcome! This tool tracks upstream MeshForge patterns, so contributions that align with MeshForge conventions are preferred.
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Nursedude/RNS-Management-Tool.git
+cd RNS-Management-Tool
+
+# Run syntax checks
+bash -n rns_management_tool.sh
+shellcheck rns_management_tool.sh
+
+# Run tests
+bats tests/rns_management_tool.bats
+```
+
+See [CLAUDE.md](CLAUDE.md) for the full development guide.
+
+---
+
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Mark Qvist** - Creator of Reticulum Network Stack
 - **Liam Cottle** - MeshChat and RNode Web Flasher
 - **Reticulum Community** - Testing and feedback
+- **MeshForge** - Upstream patterns, security rules, and architecture guidance
 
-## 📅 Version History
+---
+
+## Version History
 
 ### Version 0.3.0-beta (Current)
-- **Version Reset** - Semantic versioning from 0.x to reflect beta maturity
-- **MeshForge Compliance** - 100% compliance with domain principles
-- **Subprocess Timeouts** - Network operations protected with timeouts
-- **Archive Validation** - Import validates structure before extraction
-- **Test Suite** - Basic bats tests for CI validation
-- **Documentation** - CLAUDE.md, mermaid diagrams, code review
+- **MeshForge Ecosystem** - Positioned as part of the MeshForge ecosystem
+- **Environment Hardening** - 14 env detection patterns ported from MeshForge upstream:
+  - Terminal capability detection with color fallback
+  - `SCRIPT_DIR` / `$Script:ScriptDir` reliable resolution
+  - Sudo-aware `REAL_HOME` (Bash) / `$Script:RealHome` (PowerShell)
+  - SSH and remote session detection (both platforms)
+  - PEP 668 externally-managed Python detection (Debian 12+)
+  - Disk space and memory pre-checks (both platforms)
+  - Git `safe.directory` guard for root operations
+  - Signal trap / cleanup handler (Bash)
+  - Log levels: DEBUG/INFO/WARN/ERROR (both platforms)
+  - Startup health check (both platforms)
+  - Path traversal prevention in SUDO_USER
+- **PowerShell Parity** - Environment detection, health checks, and log levels now on Windows
+- **Test Suite** - 27 BATS tests including 13 new environment detection tests
+- **Security** - RNS001-RNS006 enforced, MeshForge compliance maintained
+- **Documentation** - README reflects MeshForge ecosystem, honest feature matrix
 
 ### Upgrading from v2.x
 
@@ -569,60 +753,47 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-Manageme
 **Why version reset?** The v2.x numbering implied production-ready stability. The v0.3.0-beta label honestly reflects that this is beta software that needs real-world testing. Code quality is high, but field testing is ongoing.
 
 ### Version 2.2.0 (Legacy)
-- ✨ **PowerShell Feature Parity** - Advanced Options menu now available on Windows
-- ✨ **Enhanced Service Management** - Improved start/stop/restart options for rnsd
-- ✨ **Configuration Export/Import (Windows)** - Portable .zip backup archives
-- ✨ **Factory Reset (Windows)** - Complete configuration reset with safety backup
-- ✨ **Update Checker** - Built-in version checking against GitHub releases
-- 🔧 **Better Menu Organization** - Consistent navigation across both scripts
-- 🔧 **Improved Error Messages** - More actionable error recovery hints
-- 📚 **Code Review Documentation** - Comprehensive code quality analysis included
-- 🎨 **UI Polish** - Better alignment and visual consistency
-- 🐛 **Bug Fixes** - Various edge case improvements
+- PowerShell Feature Parity - Advanced Options menu now available on Windows
+- Enhanced Service Management - Improved start/stop/restart options for rnsd
+- Configuration Export/Import (Windows) - Portable .zip backup archives
+- Factory Reset (Windows) - Complete configuration reset with safety backup
+- Update Checker - Built-in version checking against GitHub releases
 
 ### Version 2.1.0
-- ✨ **Quick Status Dashboard** - See rnsd and RNS status at a glance on main menu
-- ✨ **Organized Menu Sections** - Installation, Management, and System categories
-- 🔒 **Security Fixes** - Replaced unsafe `eval` with array-based command execution
-- 🔒 **Input Validation** - Device port and radio parameter validation
-- 🔧 **Export/Import Configuration** - Portable backup archives (.tar.gz)
-- 🔧 **Factory Reset** - Complete configuration reset with safety backup
-- 🔧 **Windows Parity** - Added NomadNet install, diagnostics to PowerShell script
-- 🐛 **Portability Fix** - Replaced `grep -oP` with portable `sed` alternatives
+- Quick Status Dashboard - See rnsd and RNS status at a glance on main menu
+- Security Fixes - Replaced unsafe `eval` with array-based command execution
+- Input Validation - Device port and radio parameter validation
+- Export/Import Configuration - Portable backup archives (.tar.gz)
+- Factory Reset - Complete configuration reset with safety backup
 
 ### Version 2.0.0
-- ✨ Complete UI overhaul with interactive menus
-- ✨ Windows 11 support with PowerShell installer
-- ✨ WSL detection and integration
-- ✨ Interactive RNODE installer and configuration wizard
-- ✨ Enhanced Raspberry Pi detection (all models)
-- ✨ Comprehensive diagnostics system
-- ✨ Improved backup/restore functionality
-- ✨ Better error handling and recovery
-- ✨ Progress indicators and visual feedback
-- ✨ Automated environment detection
-- ✨ Service management improvements
+- Complete UI overhaul with interactive menus
+- Windows 11 support with PowerShell installer
+- WSL detection and integration
+- Interactive RNODE installer and configuration wizard
+- Enhanced Raspberry Pi detection (all models)
 
 ### Version 1.0.0
 - Initial release
 - Basic update functionality
 - Raspberry Pi support
-- Simple command-line interface
 
-## 🚀 What's Next?
+---
+
+## What's Next?
 
 Planned features:
-- [ ] GUI version (Electron-based)
 - [ ] Automatic update notifications
 - [ ] Configuration templates for common setups
 - [ ] Multi-node deployment tools
 - [ ] Docker container support
-- [ ] Integration with Sideband
 - [ ] Performance monitoring dashboard
 - [ ] Remote management capabilities
+- [ ] Deeper MeshForge integration
 
 ---
 
-**Made with ❤️ for the Reticulum community**
+**Part of the [MeshForge](https://github.com/Nursedude/meshforge) Ecosystem**
+*Made for the Reticulum community*
 
 For questions, suggestions, or support, please open an issue on GitHub.
