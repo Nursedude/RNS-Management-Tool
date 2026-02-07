@@ -116,6 +116,63 @@ teardown() {
 }
 
 #########################################################
+# Environment Detection Tests (from meshforge patterns)
+#########################################################
+
+@test "Terminal capability detection exists" {
+    grep -q 'detect_terminal_capabilities' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Color fallback for dumb terminals exists" {
+    grep -q 'HAS_COLOR' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "SCRIPT_DIR is resolved" {
+    grep -q 'SCRIPT_DIR=.*BASH_SOURCE' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Sudo-aware home resolution exists" {
+    grep -q 'resolve_real_home\|REAL_HOME' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "SSH session detection exists" {
+    grep -q 'IS_SSH\|SSH_CLIENT\|SSH_TTY' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "PEP 668 detection exists" {
+    grep -q 'PEP668_DETECTED\|EXTERNALLY-MANAGED' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Disk space check function exists" {
+    grep -q 'check_disk_space' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Memory check function exists" {
+    grep -q 'check_available_memory' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Git safe.directory guard exists" {
+    grep -q 'ensure_git_safe_directory' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Cleanup trap handler exists" {
+    grep -q 'cleanup_on_exit\|trap.*EXIT' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Log levels are defined" {
+    grep -q 'LOG_LEVEL_DEBUG\|LOG_LEVEL_INFO\|log_debug\|log_warn\|log_error' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Startup health check exists" {
+    grep -q 'run_startup_health_check' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "SUDO_USER path traversal prevention exists" {
+    # Meshforge security pattern: prevent path traversal in sudo user
+    grep -q 'sudo_user.*\.\.' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+#########################################################
 # Integration Tests (require external tools)
 #########################################################
 

@@ -15,32 +15,105 @@
 
 set -o pipefail  # Exit on pipe failures
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-NC='\033[0m' # No Color
-BOLD='\033[1m'
+# Resolve script directory reliably (meshforge pattern)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Terminal capability detection (adapted from meshforge emoji.py/install.sh)
+# Detects dumb terminals, piped output, and missing color support
+detect_terminal_capabilities() {
+    local term="${TERM:-}"
+    HAS_COLOR=false
+
+    # Check if stdout is a terminal (not piped)
+    if [ -t 1 ]; then
+        # Check for dumb/limited terminals
+        case "$term" in
+            dumb|vt100|vt220|"")
+                HAS_COLOR=false
+                ;;
+            *)
+                # Check tput for color count if available
+                if command -v tput &> /dev/null; then
+                    local colors
+                    colors=$(tput colors 2>/dev/null || echo 0)
+                    [ "$colors" -ge 8 ] && HAS_COLOR=true
+                else
+                    # Assume color support for known modern terminals
+                    HAS_COLOR=true
+                fi
+                ;;
+        esac
+    fi
+}
+detect_terminal_capabilities
+
+# Color codes for output - gracefully degrade on dumb terminals
+if [ "$HAS_COLOR" = true ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    MAGENTA='\033[0;35m'
+    NC='\033[0m'
+    BOLD='\033[1m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    CYAN=''
+    MAGENTA=''
+    NC=''
+    BOLD=''
+fi
+
+# Sudo-aware home directory resolution (adapted from meshforge paths.py)
+# When running with sudo, $HOME resolves to /root - we want the real user's home
+resolve_real_home() {
+    local sudo_user="${SUDO_USER:-}"
+    # Validate SUDO_USER (path traversal prevention from meshforge)
+    if [ -n "$sudo_user" ] && [ "$sudo_user" != "root" ] && \
+       [[ "$sudo_user" != */* ]] && [[ "$sudo_user" != *..* ]]; then
+        # Resolve via getent (works even if /home is non-standard)
+        local home_dir
+        home_dir=$(getent passwd "$sudo_user" 2>/dev/null | cut -d: -f6)
+        if [ -n "$home_dir" ] && [ -d "$home_dir" ]; then
+            echo "$home_dir"
+            return
+        fi
+    fi
+    echo "$HOME"
+}
+REAL_HOME="$(resolve_real_home)"
 
 # Global variables
 SCRIPT_VERSION="0.3.0-beta"
-BACKUP_DIR="$HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
-UPDATE_LOG="$HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
-MESHCHAT_DIR="$HOME/reticulum-meshchat"
-NOMADNET_DIR="$HOME/NomadNet"
-SIDEBAND_DIR="$HOME/Sideband"
+BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
+UPDATE_LOG="$REAL_HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
+MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"
+NOMADNET_DIR="$REAL_HOME/NomadNet"
+SIDEBAND_DIR="$REAL_HOME/Sideband"
 NEEDS_REBOOT=false
 IS_WSL=false
 IS_RASPBERRY_PI=false
+IS_SSH=false
+IS_INTERACTIVE=false
+PEP668_DETECTED=false
 OS_TYPE=""
+OS_VERSION=""
 ARCHITECTURE=""
 
 # UI Constants
 BOX_WIDTH=58
 MENU_BREADCRUMB=""
+
+# Log levels (adapted from meshforge logging_config.py)
+LOG_LEVEL_DEBUG=0
+LOG_LEVEL_INFO=1
+LOG_LEVEL_WARN=2
+LOG_LEVEL_ERROR=3
+CURRENT_LOG_LEVEL=$LOG_LEVEL_INFO
 
 # Network Timeout Constants (RNS006: Subprocess timeout protection)
 NETWORK_TIMEOUT=300      # 5 minutes for network operations
@@ -94,7 +167,28 @@ detect_environment() {
     # Detect architecture
     ARCHITECTURE=$(uname -m)
 
-    log_message "Environment detected: OS=$OS_TYPE, WSL=$IS_WSL, RaspberryPi=$IS_RASPBERRY_PI, Arch=$ARCHITECTURE"
+    # Detect SSH session (adapted from meshforge launcher.py detect_environment)
+    if [ -n "${SSH_CLIENT:-}" ] || [ -n "${SSH_TTY:-}" ] || [ -n "${SSH_CONNECTION:-}" ]; then
+        IS_SSH=true
+    fi
+
+    # Detect interactive mode (adapted from meshforge install.sh TTY check)
+    if [ -t 0 ] && [ -c /dev/tty ]; then
+        IS_INTERACTIVE=true
+    fi
+
+    # Detect PEP 668 externally-managed Python (adapted from meshforge install.sh)
+    # Debian 12+ / RPi OS Bookworm restricts system-wide pip installs
+    if command -v python3 &> /dev/null; then
+        if python3 -c "
+import sys, pathlib
+sys.exit(0 if any('EXTERNALLY-MANAGED' in str(p) for p in pathlib.Path(sys.prefix).glob('**/EXTERNALLY-MANAGED')) else 1)
+" 2>/dev/null; then
+            PEP668_DETECTED=true
+        fi
+    fi
+
+    log_message "Environment detected: OS=$OS_TYPE, WSL=$IS_WSL, RaspberryPi=$IS_RASPBERRY_PI, Arch=$ARCHITECTURE, SSH=$IS_SSH, Interactive=$IS_INTERACTIVE, PEP668=$PEP668_DETECTED"
 }
 
 print_header() {
@@ -222,9 +316,40 @@ complete_operation() {
     fi
 }
 
+# Leveled logging (adapted from meshforge logging_config.py)
 log_message() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$UPDATE_LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $1" >> "$UPDATE_LOG"
 }
+
+log_debug() {
+    [ "$CURRENT_LOG_LEVEL" -le "$LOG_LEVEL_DEBUG" ] && \
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DEBUG] $1" >> "$UPDATE_LOG"
+}
+
+log_warn() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN] $1" >> "$UPDATE_LOG"
+}
+
+log_error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >> "$UPDATE_LOG"
+}
+
+# Cleanup handler (adapted from meshforge set -e pattern)
+# Ensures temp files are cleaned and log is flushed on exit/interrupt
+cleanup_on_exit() {
+    local exit_code=$?
+    # Remove any temp files created during session
+    rm -f /tmp/rns_mgmt_*.tmp 2>/dev/null
+    if [ $exit_code -ne 0 ] && [ $exit_code -ne 130 ]; then
+        log_error "Script exited with code $exit_code"
+    fi
+    # Ensure log is written
+    if [ -f "$UPDATE_LOG" ]; then
+        log_message "=== RNS Management Tool Session Ended (exit=$exit_code) ==="
+    fi
+}
+trap cleanup_on_exit EXIT
+trap 'echo ""; print_warning "Interrupted by user"; exit 130' INT TERM
 
 # Enhanced error display with troubleshooting suggestions
 show_error_help() {
@@ -522,6 +647,82 @@ show_main_menu() {
 #########################################################
 # System Detection and Prerequisites
 #########################################################
+
+# Disk space pre-check (adapted from meshforge diagnostics)
+# Returns 0 if sufficient, 1 if low, 2 if critical
+check_disk_space() {
+    local min_mb="${1:-500}"  # Default: 500MB minimum
+    local target_path="${2:-$REAL_HOME}"
+
+    if ! command -v df &> /dev/null; then
+        log_warn "df command not available, skipping disk check"
+        return 0
+    fi
+
+    local available_mb
+    available_mb=$(df -m "$target_path" 2>/dev/null | awk 'NR==2 {print $4}')
+
+    if [ -z "$available_mb" ]; then
+        log_warn "Could not determine disk space for $target_path"
+        return 0
+    fi
+
+    log_debug "Disk space available: ${available_mb}MB at $target_path (minimum: ${min_mb}MB)"
+
+    if [ "$available_mb" -lt 100 ]; then
+        print_error "Critical: Only ${available_mb}MB disk space available (need ${min_mb}MB)"
+        log_error "Critical disk space: ${available_mb}MB at $target_path"
+        return 2
+    elif [ "$available_mb" -lt "$min_mb" ]; then
+        print_warning "Low disk space: ${available_mb}MB available (recommend ${min_mb}MB)"
+        log_warn "Low disk space: ${available_mb}MB at $target_path"
+        return 1
+    fi
+
+    return 0
+}
+
+# Memory pre-check (adapted from meshforge system.py check_memory)
+check_available_memory() {
+    if [ ! -f /proc/meminfo ]; then
+        log_debug "No /proc/meminfo, skipping memory check"
+        return 0
+    fi
+
+    local total_kb available_kb percent_free
+    total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+    available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
+
+    if [ -z "$total_kb" ] || [ -z "$available_kb" ] || [ "$total_kb" -eq 0 ]; then
+        log_warn "Could not parse memory info"
+        return 0
+    fi
+
+    local total_mb=$((total_kb / 1024))
+    local available_mb=$((available_kb / 1024))
+    percent_free=$((available_kb * 100 / total_kb))
+
+    log_debug "Memory: ${available_mb}MB free of ${total_mb}MB (${percent_free}%)"
+
+    if [ "$percent_free" -lt 10 ]; then
+        print_warning "Low memory: ${available_mb}MB free (${percent_free}%)"
+        print_info "Hint: Free up memory or add swap space"
+        log_warn "Low memory: ${available_mb}MB free (${percent_free}%)"
+        return 1
+    fi
+
+    return 0
+}
+
+# Git safe.directory guard (adapted from meshforge install.sh)
+# Prevents "dubious ownership" errors when running as root
+ensure_git_safe_directory() {
+    local dir="$1"
+    if [ -d "$dir/.git" ] && [ "$(id -u)" -eq 0 ]; then
+        git config --global --add safe.directory "$dir" 2>/dev/null || true
+        log_debug "Added git safe.directory: $dir"
+    fi
+}
 
 check_python() {
     print_section "Checking Python Installation"
@@ -1276,8 +1477,8 @@ create_meshchat_launcher() {
     if [ -n "$DISPLAY" ] || [ -n "$XDG_CURRENT_DESKTOP" ]; then
         print_info "Creating desktop launcher..."
 
-        DESKTOP_FILE="$HOME/.local/share/applications/meshchat.desktop"
-        mkdir -p "$HOME/.local/share/applications"
+        DESKTOP_FILE="$REAL_HOME/.local/share/applications/meshchat.desktop"
+        mkdir -p "$REAL_HOME/.local/share/applications"
 
         cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
@@ -1522,8 +1723,8 @@ create_sideband_launcher() {
     if [ -n "$DISPLAY" ] || [ -n "$XDG_CURRENT_DESKTOP" ]; then
         print_info "Creating desktop launcher..."
 
-        DESKTOP_FILE="$HOME/.local/share/applications/sideband.desktop"
-        mkdir -p "$HOME/.local/share/applications"
+        DESKTOP_FILE="$REAL_HOME/.local/share/applications/sideband.desktop"
+        mkdir -p "$REAL_HOME/.local/share/applications"
 
         cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
@@ -1773,11 +1974,11 @@ services_menu() {
 setup_autostart() {
     print_section "Setup Auto-Start"
 
-    if [ ! -d "$HOME/.config/systemd/user" ]; then
-        mkdir -p "$HOME/.config/systemd/user"
+    if [ ! -d "$REAL_HOME/.config/systemd/user" ]; then
+        mkdir -p "$REAL_HOME/.config/systemd/user"
     fi
 
-    local service_file="$HOME/.config/systemd/user/rnsd.service"
+    local service_file="$REAL_HOME/.config/systemd/user/rnsd.service"
 
     cat > "$service_file" << 'EOF'
 [Unit]
@@ -1827,16 +2028,16 @@ backup_restore_menu() {
 
         # Show backup status
         local backup_count
-        backup_count=$(find "$HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" 2>/dev/null | wc -l)
+        backup_count=$(find "$REAL_HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" 2>/dev/null | wc -l)
 
         print_box_top
         print_box_line "${CYAN}${BOLD}Backup Status${NC}"
         print_box_divider
         print_box_line "Available backups: $backup_count"
 
-        if [ -d "$HOME/.reticulum" ]; then
+        if [ -d "$REAL_HOME/.reticulum" ]; then
             local config_size
-            config_size=$(du -sh "$HOME/.reticulum" 2>/dev/null | cut -f1)
+            config_size=$(du -sh "$REAL_HOME/.reticulum" 2>/dev/null | cut -f1)
             print_box_line "Config size: $config_size"
         fi
 
@@ -1899,7 +2100,7 @@ list_all_backups() {
     local backups=()
     while IFS= read -r -d '' backup; do
         backups+=("$backup")
-    done < <(find "$HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
+    done < <(find "$REAL_HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
 
     if [ ${#backups[@]} -eq 0 ]; then
         print_warning "No backups found"
@@ -1930,7 +2131,7 @@ delete_old_backups() {
     local backups=()
     while IFS= read -r -d '' backup; do
         backups+=("$backup")
-    done < <(find "$HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
+    done < <(find "$REAL_HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
 
     if [ ${#backups[@]} -eq 0 ]; then
         print_warning "No backups found to delete"
@@ -1964,20 +2165,20 @@ delete_old_backups() {
 
 export_configuration() {
     print_section "Export Configuration"
-    EXPORT_FILE="$HOME/reticulum_config_export_$(date +%Y%m%d_%H%M%S).tar.gz"
+    EXPORT_FILE="$REAL_HOME/reticulum_config_export_$(date +%Y%m%d_%H%M%S).tar.gz"
 
     echo -e "${YELLOW}This will create a portable backup of your configuration.${NC}"
     echo ""
 
-    if [ -d "$HOME/.reticulum" ] || [ -d "$HOME/.nomadnetwork" ] || [ -d "$HOME/.lxmf" ]; then
+    if [ -d "$REAL_HOME/.reticulum" ] || [ -d "$REAL_HOME/.nomadnetwork" ] || [ -d "$REAL_HOME/.lxmf" ]; then
         print_info "Creating export archive..."
 
         # Create temporary directory for export
         TEMP_EXPORT=$(mktemp -d)
 
-        [ -d "$HOME/.reticulum" ] && cp -r "$HOME/.reticulum" "$TEMP_EXPORT/"
-        [ -d "$HOME/.nomadnetwork" ] && cp -r "$HOME/.nomadnetwork" "$TEMP_EXPORT/"
-        [ -d "$HOME/.lxmf" ] && cp -r "$HOME/.lxmf" "$TEMP_EXPORT/"
+        [ -d "$REAL_HOME/.reticulum" ] && cp -r "$REAL_HOME/.reticulum" "$TEMP_EXPORT/"
+        [ -d "$REAL_HOME/.nomadnetwork" ] && cp -r "$REAL_HOME/.nomadnetwork" "$TEMP_EXPORT/"
+        [ -d "$REAL_HOME/.lxmf" ] && cp -r "$REAL_HOME/.lxmf" "$TEMP_EXPORT/"
 
         if tar -czf "$EXPORT_FILE" -C "$TEMP_EXPORT" . 2>&1 | tee -a "$UPDATE_LOG"; then
             print_success "Configuration exported to:"
@@ -2035,7 +2236,7 @@ import_configuration() {
             create_backup
 
             print_info "Importing configuration..."
-            if tar -xzf "$IMPORT_FILE" -C "$HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
+            if tar -xzf "$IMPORT_FILE" -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
                 print_success "Configuration imported successfully"
                 log_message "Imported configuration from: $IMPORT_FILE"
             else
@@ -2072,8 +2273,8 @@ create_backup() {
     local backed_up=false
 
     # Backup RNS config
-    if [ -d "$HOME/.reticulum" ]; then
-        if cp -r "$HOME/.reticulum" "$BACKUP_DIR/" 2>/dev/null; then
+    if [ -d "$REAL_HOME/.reticulum" ]; then
+        if cp -r "$REAL_HOME/.reticulum" "$BACKUP_DIR/" 2>/dev/null; then
             print_success "Backed up Reticulum config"
             log_message "Backed up ~/.reticulum"
             backed_up=true
@@ -2083,8 +2284,8 @@ create_backup() {
     fi
 
     # Backup NomadNet config
-    if [ -d "$HOME/.nomadnetwork" ]; then
-        if cp -r "$HOME/.nomadnetwork" "$BACKUP_DIR/" 2>/dev/null; then
+    if [ -d "$REAL_HOME/.nomadnetwork" ]; then
+        if cp -r "$REAL_HOME/.nomadnetwork" "$BACKUP_DIR/" 2>/dev/null; then
             print_success "Backed up NomadNet config"
             log_message "Backed up ~/.nomadnetwork"
             backed_up=true
@@ -2094,8 +2295,8 @@ create_backup() {
     fi
 
     # Backup LXMF config
-    if [ -d "$HOME/.lxmf" ]; then
-        if cp -r "$HOME/.lxmf" "$BACKUP_DIR/" 2>/dev/null; then
+    if [ -d "$REAL_HOME/.lxmf" ]; then
+        if cp -r "$REAL_HOME/.lxmf" "$BACKUP_DIR/" 2>/dev/null; then
             print_success "Backed up LXMF config"
             log_message "Backed up ~/.lxmf"
             backed_up=true
@@ -2123,7 +2324,7 @@ restore_backup() {
     local backups=()
     while IFS= read -r -d '' backup; do
         backups+=("$backup")
-    done < <(find "$HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
+    done < <(find "$REAL_HOME" -maxdepth 1 -type d -name ".reticulum_backup_*" -print0 2>/dev/null | sort -z)
 
     if [ ${#backups[@]} -eq 0 ]; then
         print_warning "No backups found"
@@ -2157,9 +2358,9 @@ restore_backup() {
             print_info "Restoring from: $selected_backup"
 
             # Restore configs
-            [ -d "$selected_backup/.reticulum" ] && cp -r "$selected_backup/.reticulum" "$HOME/"
-            [ -d "$selected_backup/.nomadnetwork" ] && cp -r "$selected_backup/.nomadnetwork" "$HOME/"
-            [ -d "$selected_backup/.lxmf" ] && cp -r "$selected_backup/.lxmf" "$HOME/"
+            [ -d "$selected_backup/.reticulum" ] && cp -r "$selected_backup/.reticulum" "$REAL_HOME/"
+            [ -d "$selected_backup/.nomadnetwork" ] && cp -r "$selected_backup/.nomadnetwork" "$REAL_HOME/"
+            [ -d "$selected_backup/.lxmf" ] && cp -r "$selected_backup/.lxmf" "$REAL_HOME/"
 
             print_success "Backup restored successfully"
             log_message "Restored backup from: $selected_backup"
@@ -2221,7 +2422,7 @@ run_diagnostics() {
     echo ""
 
     # Reticulum config
-    if [ -f "$HOME/.reticulum/config" ]; then
+    if [ -f "$REAL_HOME/.reticulum/config" ]; then
         echo -e "${CYAN}Reticulum Configuration:${NC}"
         print_success "Config file exists: ~/.reticulum/config"
 
@@ -2248,17 +2449,17 @@ view_config_files() {
 
     local configs_found=false
 
-    if [ -f "$HOME/.reticulum/config" ]; then
+    if [ -f "$REAL_HOME/.reticulum/config" ]; then
         echo "   1) Reticulum config (~/.reticulum/config)"
         configs_found=true
     fi
 
-    if [ -f "$HOME/.nomadnetwork/config" ]; then
+    if [ -f "$REAL_HOME/.nomadnetwork/config" ]; then
         echo "   2) NomadNet config (~/.nomadnetwork/config)"
         configs_found=true
     fi
 
-    if [ -f "$HOME/.lxmf/config" ]; then
+    if [ -f "$REAL_HOME/.lxmf/config" ]; then
         echo "   3) LXMF config (~/.lxmf/config)"
         configs_found=true
     fi
@@ -2277,28 +2478,28 @@ view_config_files() {
 
     case $CONFIG_CHOICE in
         1)
-            if [ -f "$HOME/.reticulum/config" ]; then
+            if [ -f "$REAL_HOME/.reticulum/config" ]; then
                 print_section "Reticulum Configuration"
                 echo -e "${CYAN}File: ~/.reticulum/config${NC}\n"
-                cat "$HOME/.reticulum/config" | head -n 100
-                if [ "$(wc -l < "$HOME/.reticulum/config")" -gt 100 ]; then
+                cat "$REAL_HOME/.reticulum/config" | head -n 100
+                if [ "$(wc -l < "$REAL_HOME/.reticulum/config")" -gt 100 ]; then
                     echo ""
                     print_info "Showing first 100 lines. Use 'cat ~/.reticulum/config' for full file."
                 fi
             fi
             ;;
         2)
-            if [ -f "$HOME/.nomadnetwork/config" ]; then
+            if [ -f "$REAL_HOME/.nomadnetwork/config" ]; then
                 print_section "NomadNet Configuration"
                 echo -e "${CYAN}File: ~/.nomadnetwork/config${NC}\n"
-                cat "$HOME/.nomadnetwork/config" | head -n 100
+                cat "$REAL_HOME/.nomadnetwork/config" | head -n 100
             fi
             ;;
         3)
-            if [ -f "$HOME/.lxmf/config" ]; then
+            if [ -f "$REAL_HOME/.lxmf/config" ]; then
                 print_section "LXMF Configuration"
                 echo -e "${CYAN}File: ~/.lxmf/config${NC}\n"
-                cat "$HOME/.lxmf/config" | head -n 100
+                cat "$REAL_HOME/.lxmf/config" | head -n 100
             fi
             ;;
         0|"")
@@ -2333,7 +2534,7 @@ view_logs_menu() {
                 else
                     # Find most recent log
                     local latest_log
-                    latest_log=$(find "$HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r | head -1)
+                    latest_log=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r | head -1)
                     if [ -n "$latest_log" ]; then
                         echo -e "${CYAN}File: $latest_log${NC}\n"
                         tail -n 50 "$latest_log"
@@ -2364,7 +2565,7 @@ view_logs_menu() {
                 if [ -n "$SEARCH_TERM" ]; then
                     print_info "Searching for '$SEARCH_TERM' in log files..."
                     echo ""
-                    grep -r --color=always "$SEARCH_TERM" "$HOME"/rns_management_*.log 2>/dev/null || \
+                    grep -r --color=always "$SEARCH_TERM" "$REAL_HOME"/rns_management_*.log 2>/dev/null || \
                         print_warning "No matches found"
                 fi
                 pause_for_input
@@ -2372,13 +2573,13 @@ view_logs_menu() {
             4)
                 print_section "All Management Logs"
                 local log_count
-                log_count=$(find "$HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | wc -l)
+                log_count=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | wc -l)
 
                 if [ "$log_count" -gt 0 ]; then
                     echo -e "${BOLD}Found $log_count log file(s):${NC}\n"
-                    find "$HOME" -maxdepth 1 -name "rns_management_*.log" -type f -printf "  %f (%s bytes, %TY-%Tm-%Td)\n" 2>/dev/null | sort -r
+                    find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f -printf "  %f (%s bytes, %TY-%Tm-%Td)\n" 2>/dev/null | sort -r
                     echo ""
-                    print_info "Logs are in: $HOME/"
+                    print_info "Logs are in: $REAL_HOME/"
                 else
                     print_warning "No log files found"
                 fi
@@ -2467,9 +2668,9 @@ advanced_menu() {
                     create_backup
 
                     print_info "Removing configuration directories..."
-                    [ -d "$HOME/.reticulum" ] && rm -rf "$HOME/.reticulum" && print_success "Removed ~/.reticulum"
-                    [ -d "$HOME/.nomadnetwork" ] && rm -rf "$HOME/.nomadnetwork" && print_success "Removed ~/.nomadnetwork"
-                    [ -d "$HOME/.lxmf" ] && rm -rf "$HOME/.lxmf" && print_success "Removed ~/.lxmf"
+                    [ -d "$REAL_HOME/.reticulum" ] && rm -rf "$REAL_HOME/.reticulum" && print_success "Removed ~/.reticulum"
+                    [ -d "$REAL_HOME/.nomadnetwork" ] && rm -rf "$REAL_HOME/.nomadnetwork" && print_success "Removed ~/.nomadnetwork"
+                    [ -d "$REAL_HOME/.lxmf" ] && rm -rf "$REAL_HOME/.lxmf" && print_success "Removed ~/.lxmf"
 
                     print_success "Factory reset complete"
                     print_info "Run 'rnsd --daemon' to create fresh configuration"
@@ -2527,11 +2728,64 @@ update_system_packages() {
 # Main Program Logic
 #########################################################
 
+# Startup health check (adapted from meshforge startup_health.py)
+# Runs quick environment validation before entering main menu
+run_startup_health_check() {
+    local warnings=0
+
+    log_message "Running startup health check..."
+
+    # 1. Disk space check (need space for installs/backups)
+    if ! check_disk_space 500 "$REAL_HOME"; then
+        ((warnings++))
+    fi
+
+    # 2. Memory check
+    if ! check_available_memory; then
+        ((warnings++))
+    fi
+
+    # 3. PEP 668 notification (Debian 12+ restricts pip)
+    if [ "$PEP668_DETECTED" = true ]; then
+        log_message "PEP 668 detected: Python is externally managed (Debian 12+)"
+        print_info "Python externally managed (PEP 668) - will use --break-system-packages where needed"
+    fi
+
+    # 4. SSH session notice
+    if [ "$IS_SSH" = true ]; then
+        log_debug "Running via SSH session"
+    fi
+
+    # 5. Git safe.directory for common paths
+    ensure_git_safe_directory "$MESHCHAT_DIR"
+    ensure_git_safe_directory "$SIDEBAND_DIR"
+
+    # 6. Log directory writable
+    if ! touch "$UPDATE_LOG" 2>/dev/null; then
+        print_warning "Cannot write to log file: $UPDATE_LOG"
+        UPDATE_LOG="/tmp/rns_management_$(date +%Y%m%d_%H%M%S).log"
+        print_info "Falling back to: $UPDATE_LOG"
+        ((warnings++))
+    fi
+
+    if [ $warnings -gt 0 ]; then
+        log_warn "Startup health check completed with $warnings warning(s)"
+    else
+        log_message "Startup health check passed"
+    fi
+
+    return 0
+}
+
 main() {
     # Initialize
     detect_environment
     log_message "=== RNS Management Tool Started ==="
     log_message "Version: $SCRIPT_VERSION"
+    log_message "REAL_HOME=$REAL_HOME, SCRIPT_DIR=$SCRIPT_DIR"
+
+    # Run startup health check
+    run_startup_health_check
 
     # Main menu loop
     while true; do
