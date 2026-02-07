@@ -1,26 +1,227 @@
 <#
 .SYNOPSIS
-    RNS Management Tool for Windows 11
+    RNS Management Tool for Windows - Part of the MeshForge Ecosystem
 .DESCRIPTION
     Complete Reticulum Network Stack Management Solution for Windows 11
     Supports native Windows and WSL2 installations
+
+    This is the only MeshForge ecosystem tool with native Windows support.
+    Upstream meshforge updates are frequent - check for updates regularly.
 .NOTES
-    Version: 2.0.0
+    Version: 0.3.0-beta
     Requires: PowerShell 5.1+ or PowerShell Core 7+
     Run as Administrator for best results
+    MeshForge: https://github.com/Nursedude/meshforge
 #>
 
 #Requires -Version 5.1
 
+# Resolve script directory reliably (meshforge pattern)
+$Script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+
 # Script configuration
 $Script:Version = "0.3.0-beta"
-$Script:LogFile = Join-Path $env:USERPROFILE "rns_management_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$Script:BackupDir = Join-Path $env:USERPROFILE ".reticulum_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+# Note: $env:USERPROFILE is the correct home on Windows (no sudo/REAL_HOME issue)
+$Script:RealHome = $env:USERPROFILE
+$Script:LogFile = Join-Path $Script:RealHome "rns_management_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$Script:BackupDir = Join-Path $Script:RealHome ".reticulum_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 $Script:NeedsReboot = $false
+
+# Environment detection flags (adapted from meshforge launcher.py)
+$Script:IsAdmin = $false
+$Script:HasWSL = $false
+$Script:HasColor = $true
+$Script:IsRemoteSession = $false
 
 # Network Timeout Constants (RNS006: Subprocess timeout protection)
 $Script:NetworkTimeout = 300    # 5 minutes for network operations
 $Script:PipTimeout = 300        # 5 minutes for pip operations
+
+# Log levels (adapted from meshforge logging_config.py)
+$Script:LogLevelDebug = 0
+$Script:LogLevelInfo = 1
+$Script:LogLevelWarn = 2
+$Script:LogLevelError = 3
+$Script:CurrentLogLevel = $Script:LogLevelInfo
+
+#########################################################
+# Environment Detection (adapted from meshforge patterns)
+#########################################################
+
+function Detect-Environment {
+    <#
+    .SYNOPSIS
+        Detects runtime environment capabilities (meshforge launcher.py pattern)
+    #>
+
+    # Admin rights check (meshforge system.py check_root equivalent)
+    $Script:IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator
+    )
+
+    # WSL availability
+    $Script:HasWSL = [bool](Get-Command wsl -ErrorAction SilentlyContinue)
+
+    # Remote/SSH session detection (meshforge launcher.py SSH detection)
+    if ($env:SSH_CLIENT -or $env:SSH_TTY -or $env:SSH_CONNECTION) {
+        $Script:IsRemoteSession = $true
+    }
+    # Also detect Windows Remote Desktop / PS Remoting
+    if ($Host.Name -eq 'ServerRemoteHost' -or $env:SESSIONNAME -match 'RDP') {
+        $Script:IsRemoteSession = $true
+    }
+
+    # Terminal capability detection (meshforge emoji.py pattern)
+    # PowerShell ISE and some terminals have limited color support
+    $Script:HasColor = $true
+    if ($Host.Name -eq 'Windows PowerShell ISE Host') {
+        # ISE uses its own color scheme - still works
+        $Script:HasColor = $true
+    }
+    if (-not [Environment]::UserInteractive) {
+        $Script:HasColor = $false
+    }
+
+    Write-Log "Environment: Admin=$($Script:IsAdmin), WSL=$($Script:HasWSL), Remote=$($Script:IsRemoteSession), Color=$($Script:HasColor)" "INFO"
+}
+
+#########################################################
+# Leveled Logging (adapted from meshforge logging_config.py)
+#########################################################
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logLine = "[$timestamp] [$Level] $Message"
+
+    # Filter by log level
+    $levelNum = switch ($Level) {
+        "DEBUG" { $Script:LogLevelDebug }
+        "INFO"  { $Script:LogLevelInfo }
+        "WARN"  { $Script:LogLevelWarn }
+        "ERROR" { $Script:LogLevelError }
+        default { $Script:LogLevelInfo }
+    }
+
+    if ($levelNum -ge $Script:CurrentLogLevel) {
+        $logLine | Out-File -FilePath $Script:LogFile -Append -ErrorAction SilentlyContinue
+    }
+}
+
+#########################################################
+# Startup Health Check (adapted from meshforge startup_health.py)
+#########################################################
+
+function Test-DiskSpace {
+    <#
+    .SYNOPSIS
+        Check available disk space (meshforge diagnostics pattern)
+    #>
+    param(
+        [int]$MinimumMB = 500
+    )
+
+    try {
+        $drive = (Get-Item $Script:RealHome).PSDrive
+        $freeGB = [math]::Round($drive.Free / 1GB, 2)
+        $freeMB = [math]::Round($drive.Free / 1MB)
+
+        Write-Log "Disk space: ${freeGB}GB free on $($drive.Name): (minimum: ${MinimumMB}MB)" "DEBUG"
+
+        if ($freeMB -lt 100) {
+            Write-ColorOutput "Critical: Only ${freeMB}MB disk space available" "Error"
+            Write-Log "Critical disk space: ${freeMB}MB" "ERROR"
+            return $false
+        }
+        elseif ($freeMB -lt $MinimumMB) {
+            Write-ColorOutput "Low disk space: ${freeMB}MB available (recommend ${MinimumMB}MB)" "Warning"
+            Write-Log "Low disk space: ${freeMB}MB" "WARN"
+            return $false
+        }
+
+        return $true
+    }
+    catch {
+        Write-Log "Could not check disk space: $_" "WARN"
+        return $true  # Don't block on check failure
+    }
+}
+
+function Test-AvailableMemory {
+    <#
+    .SYNOPSIS
+        Check available system memory (meshforge system.py check_memory)
+    #>
+
+    try {
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        $totalMB = [math]::Round($os.TotalVisibleMemorySize / 1024)
+        $freeMB = [math]::Round($os.FreePhysicalMemory / 1024)
+        $percentFree = [math]::Round(($os.FreePhysicalMemory / $os.TotalVisibleMemorySize) * 100)
+
+        Write-Log "Memory: ${freeMB}MB free of ${totalMB}MB (${percentFree}%)" "DEBUG"
+
+        if ($percentFree -lt 10) {
+            Write-ColorOutput "Low memory: ${freeMB}MB free (${percentFree}%)" "Warning"
+            Write-ColorOutput "Hint: Close other applications to free memory" "Info"
+            Write-Log "Low memory: ${freeMB}MB free (${percentFree}%)" "WARN"
+            return $false
+        }
+
+        return $true
+    }
+    catch {
+        Write-Log "Could not check memory: $_" "WARN"
+        return $true
+    }
+}
+
+function Invoke-StartupHealthCheck {
+    <#
+    .SYNOPSIS
+        Run environment validation before entering main menu (meshforge startup_health.py)
+    #>
+    $warnings = 0
+
+    Write-Log "Running startup health check..." "INFO"
+
+    # 1. Disk space
+    if (-not (Test-DiskSpace -MinimumMB 500)) {
+        $warnings++
+    }
+
+    # 2. Memory
+    if (-not (Test-AvailableMemory)) {
+        $warnings++
+    }
+
+    # 3. Log writable
+    try {
+        "test" | Out-File -FilePath $Script:LogFile -Append -ErrorAction Stop
+    }
+    catch {
+        Write-ColorOutput "Cannot write to log file: $($Script:LogFile)" "Warning"
+        $Script:LogFile = Join-Path $env:TEMP "rns_management_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        Write-ColorOutput "Falling back to: $($Script:LogFile)" "Info"
+        $warnings++
+    }
+
+    # 4. Remote session notice
+    if ($Script:IsRemoteSession) {
+        Write-Log "Running via remote session (RDP/SSH/PSRemoting)" "DEBUG"
+    }
+
+    if ($warnings -gt 0) {
+        Write-Log "Startup health check completed with $warnings warning(s)" "WARN"
+    }
+    else {
+        Write-Log "Startup health check passed" "INFO"
+    }
+}
 
 #########################################################
 # Color and Display Functions
@@ -69,14 +270,13 @@ function Show-Header {
     Write-Host "║                                                        ║" -ForegroundColor Cyan
     Write-Host "║           RNS MANAGEMENT TOOL v$($Script:Version)                ║" -ForegroundColor Cyan
     Write-Host "║     Complete Reticulum Network Stack Manager           ║" -ForegroundColor Cyan
-    Write-Host "║                  Windows 11 Edition                    ║" -ForegroundColor Cyan
+    Write-Host "║            Part of the MeshForge Ecosystem             ║" -ForegroundColor Cyan
+    Write-Host "║                  Windows Edition                       ║" -ForegroundColor Cyan
     Write-Host "║                                                        ║" -ForegroundColor Cyan
     Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host ""
 
-    # Detect environment
-    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
+    # Use pre-detected environment flags
     Write-Host "Platform:      " -NoNewline
     Write-Host "Windows $([Environment]::OSVersion.Version.Major).$([Environment]::OSVersion.Version.Minor)" -ForegroundColor Green
 
@@ -84,16 +284,20 @@ function Show-Header {
     Write-Host "$env:PROCESSOR_ARCHITECTURE" -ForegroundColor Green
 
     Write-Host "Admin Rights:  " -NoNewline
-    if ($isAdmin) {
+    if ($Script:IsAdmin) {
         Write-Host "Yes" -ForegroundColor Green
     } else {
         Write-Host "No (some features may be limited)" -ForegroundColor Yellow
     }
 
-    # Check for WSL
-    if (Get-Command wsl -ErrorAction SilentlyContinue) {
+    if ($Script:HasWSL) {
         Write-Host "WSL:           " -NoNewline
         Write-Host "Available" -ForegroundColor Green
+    }
+
+    if ($Script:IsRemoteSession) {
+        Write-Host "Session:       " -NoNewline
+        Write-Host "Remote" -ForegroundColor Yellow
     }
 
     Write-Host ""
@@ -1201,10 +1405,16 @@ function Show-ServiceMenu {
 }
 
 function Main {
+    # Initialize environment detection (meshforge pattern)
+    Detect-Environment
+
     # Initialize log
-    "=== RNS Management Tool for Windows Started ===" | Out-File -FilePath $Script:LogFile
-    "Version: $Script:Version" | Out-File -FilePath $Script:LogFile -Append
-    "Timestamp: $(Get-Date)" | Out-File -FilePath $Script:LogFile -Append
+    Write-Log "=== RNS Management Tool for Windows Started ===" "INFO"
+    Write-Log "Version: $($Script:Version)" "INFO"
+    Write-Log "RealHome=$($Script:RealHome), ScriptDir=$($Script:ScriptDir)" "INFO"
+
+    # Run startup health check (meshforge startup_health.py pattern)
+    Invoke-StartupHealthCheck
 
     # Main loop
     while ($true) {
@@ -1224,10 +1434,11 @@ function Main {
                 Write-Host ""
                 Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
                 Write-Host "│  Thank you for using RNS Management Tool!              │" -ForegroundColor Cyan
-                Write-Host "│  Visit: github.com/Nursedude/RNS-Management-Tool       │" -ForegroundColor Cyan
+                Write-Host "│  Part of the MeshForge Ecosystem                       │" -ForegroundColor Cyan
+                Write-Host "│  github.com/Nursedude/RNS-Management-Tool              │" -ForegroundColor Cyan
                 Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
                 Write-Host ""
-                "=== RNS Management Tool Ended ===" | Out-File -FilePath $Script:LogFile -Append
+                Write-Log "=== RNS Management Tool Ended ===" "INFO"
                 exit 0
             }
             default {
