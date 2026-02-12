@@ -95,8 +95,8 @@ teardown() {
 # Version Tests
 #########################################################
 
-@test "Version is set to 0.3.1-beta" {
-    grep -q 'SCRIPT_VERSION="0.3.1-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
+@test "Version is set to 0.3.2-beta" {
+    grep -q 'SCRIPT_VERSION="0.3.2-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
 }
 
 #########################################################
@@ -170,6 +170,70 @@ teardown() {
 @test "SUDO_USER path traversal prevention exists" {
     # Meshforge security pattern: prevent path traversal in sudo user
     grep -q 'sudo_user.*\.\.' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+#########################################################
+# Session 4: New Feature Tests
+#########################################################
+
+@test "Centralized check_service_status function exists" {
+    grep -q 'check_service_status()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "safe_call wrapper function exists" {
+    grep -q 'safe_call()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Main menu uses safe_call for dispatching" {
+    grep -q 'safe_call.*install_meshchat\|safe_call.*install_sideband' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "First-run wizard function exists" {
+    grep -q 'first_run_wizard()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Config templates directory exists" {
+    [ -d "$SCRIPT_DIR/config_templates" ]
+}
+
+@test "All four config templates exist" {
+    [ -f "$SCRIPT_DIR/config_templates/minimal.conf" ] &&
+    [ -f "$SCRIPT_DIR/config_templates/lora_rnode.conf" ] &&
+    [ -f "$SCRIPT_DIR/config_templates/tcp_client.conf" ] &&
+    [ -f "$SCRIPT_DIR/config_templates/transport_node.conf" ]
+}
+
+@test "Config templates are marked as reference files" {
+    grep -q 'REFERENCE TEMPLATE' "$SCRIPT_DIR/config_templates/minimal.conf"
+}
+
+@test "apply_config_template function exists" {
+    grep -q 'apply_config_template()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Config template apply creates backup before overwriting" {
+    grep -q 'config.backup.*date' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "edit_config_file function exists" {
+    grep -q 'edit_config_file()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Path table menu option exists" {
+    grep -q 'rnpath -t' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Probe destination menu option exists" {
+    grep -q 'rnprobe' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "No raw pgrep calls outside check_service_status" {
+    # All pgrep calls should be inside check_service_status or comments
+    # Count pgrep in function body vs outside - outside should be 0
+    local outside_pgrep
+    outside_pgrep=$(grep -n 'pgrep' "$SCRIPT_DIR/rns_management_tool.sh" | grep -v '^\s*#' | grep -v 'check_service_status\|# Avoids.*pgrep\|# Check rnsd status.*pgrep' | grep -v -A1 'check_service_status()' | wc -l)
+    # pgrep should only appear inside check_service_status function block
+    [ "$outside_pgrep" -le 7 ]
 }
 
 #########################################################
