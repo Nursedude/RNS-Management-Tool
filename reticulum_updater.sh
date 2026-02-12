@@ -36,19 +36,19 @@ print_section() {
 }
 
 print_success() {
-    echo -e "${GREEN}âœ“ $1${NC}"
+    echo -e "${GREEN}✓ $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}âš  $1${NC}"
+    echo -e "${YELLOW}⚠ $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}âœ— $1${NC}"
+    echo -e "${RED}✗ $1${NC}"
 }
 
 print_info() {
-    echo -e "${CYAN}â„¹ $1${NC}"
+    echo -e "${CYAN}ℹ $1${NC}"
 }
 
 log_message() {
@@ -57,7 +57,7 @@ log_message() {
 
 pause_for_input() {
     echo -e "\n${YELLOW}Press Enter to continue...${NC}"
-    read
+    read -r
 }
 
 #########################################################
@@ -385,7 +385,7 @@ stop_services() {
     if pgrep -f "nomadnet" > /dev/null; then
         print_warning "Nomad Network appears to be running. Please close it manually."
         echo -n "Press Enter when Nomad Network is closed..."
-        read
+        read -r
         log_message "User closed Nomad Network manually"
     fi
     
@@ -393,7 +393,7 @@ stop_services() {
     if pgrep -f "meshchat" > /dev/null || pgrep -f "electron" > /dev/null; then
         print_warning "MeshChat/Electron appears to be running. Please close it manually."
         echo -n "Press Enter when MeshChat is closed..."
-        read
+        read -r
         log_message "User closed MeshChat manually"
     fi
     
@@ -535,7 +535,7 @@ update_meshchat() {
         return 1
     fi
     
-    cd - > /dev/null
+    cd - > /dev/null || true
 }
 
 install_meshchat() {
@@ -601,7 +601,7 @@ install_meshchat() {
             return 1
         fi
         
-        cd - > /dev/null
+        cd - > /dev/null || true
     else
         print_error "Failed to clone MeshChat repository"
         log_message "MeshChat git clone failed"

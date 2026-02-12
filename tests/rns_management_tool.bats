@@ -28,8 +28,8 @@ teardown() {
 }
 
 @test "Script does not use eval" {
-    # RNS001: No eval usage for security
-    ! grep -q '\beval\b' "$SCRIPT_DIR/rns_management_tool.sh"
+    # RNS001: No eval usage for security (exclude comments)
+    ! grep -v '^\s*#' "$SCRIPT_DIR/rns_management_tool.sh" | grep -q '\beval\b'
 }
 
 @test "Script does not use shell=True pattern" {
@@ -95,8 +95,8 @@ teardown() {
 # Version Tests
 #########################################################
 
-@test "Version is set to 0.3.0-beta" {
-    grep -q 'SCRIPT_VERSION="0.3.0-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
+@test "Version is set to 0.3.1-beta" {
+    grep -q 'SCRIPT_VERSION="0.3.1-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
 }
 
 #########################################################
@@ -178,7 +178,7 @@ teardown() {
 
 @test "shellcheck passes with no errors" {
     if command -v shellcheck &>/dev/null; then
-        shellcheck -e SC2034,SC2086,SC1090 "$SCRIPT_DIR/rns_management_tool.sh"
+        shellcheck -x "$SCRIPT_DIR/rns_management_tool.sh"
     else
         skip "shellcheck not installed"
     fi

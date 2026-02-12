@@ -56,7 +56,7 @@ fi
 # FIX 3: Update critical security packages
 # =============================================================================
 echo -e "${YELLOW}[3/4] Updating security-critical Python packages...${NC}"
-echo "This may take a few minutes...\n"
+printf 'This may take a few minutes...\n\n'
 
 SECURITY_PACKAGES=(
     "cryptography"
