@@ -90,7 +90,7 @@ resolve_real_home() {
 REAL_HOME="$(resolve_real_home)"
 
 # Global variables
-SCRIPT_VERSION="0.3.2-beta"
+SCRIPT_VERSION="0.3.3-beta"
 BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$REAL_HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"
@@ -104,6 +104,22 @@ PEP668_DETECTED=false
 OS_TYPE=""
 OS_VERSION=""
 ARCHITECTURE=""
+
+# Tool availability flags (set once at startup by detect_available_tools)
+HAS_RNSD=false
+HAS_RNSTATUS=false
+HAS_RNPATH=false
+HAS_RNPROBE=false
+HAS_RNCP=false
+HAS_RNX=false
+HAS_RNID=false
+HAS_RNODECONF=false
+HAS_NOMADNET=false
+HAS_MESHCHAT=false
+HAS_PYTHON3=false
+HAS_PIP=false
+HAS_NODE=false
+HAS_GIT=false
 
 # UI Constants
 BOX_WIDTH=58
@@ -228,6 +244,63 @@ sys.exit(0 if any('EXTERNALLY-MANAGED' in str(p) for p in pathlib.Path(sys.prefi
     fi
 
     log_message "Environment detected: OS=$OS_TYPE, WSL=$IS_WSL, RaspberryPi=$IS_RASPBERRY_PI, Arch=$ARCHITECTURE, SSH=$IS_SSH, Interactive=$IS_INTERACTIVE, PEP668=$PEP668_DETECTED"
+}
+
+# Startup capability detection - scan available tools once, set global flags
+# Prevents repeated command -v checks and enables graceful menu disabling
+detect_available_tools() {
+    command -v rnsd &>/dev/null && HAS_RNSD=true
+    command -v rnstatus &>/dev/null && HAS_RNSTATUS=true
+    command -v rnpath &>/dev/null && HAS_RNPATH=true
+    command -v rnprobe &>/dev/null && HAS_RNPROBE=true
+    command -v rncp &>/dev/null && HAS_RNCP=true
+    command -v rnx &>/dev/null && HAS_RNX=true
+    command -v rnid &>/dev/null && HAS_RNID=true
+    command -v rnodeconf &>/dev/null && HAS_RNODECONF=true
+    command -v nomadnet &>/dev/null && HAS_NOMADNET=true
+    command -v python3 &>/dev/null && HAS_PYTHON3=true
+    command -v git &>/dev/null && HAS_GIT=true
+
+    # pip detection (multiple possible names)
+    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+        HAS_PIP=true
+    fi
+
+    # Node.js detection
+    if command -v node &>/dev/null || command -v nodejs &>/dev/null; then
+        HAS_NODE=true
+    fi
+
+    # MeshChat detection (installed via npm/git)
+    if command -v meshchat &>/dev/null || [ -d "$MESHCHAT_DIR" ]; then
+        HAS_MESHCHAT=true
+    fi
+
+    # Count available RNS tools
+    local rns_tool_count=0
+    [ "$HAS_RNSD" = true ] && ((rns_tool_count++))
+    [ "$HAS_RNSTATUS" = true ] && ((rns_tool_count++))
+    [ "$HAS_RNPATH" = true ] && ((rns_tool_count++))
+    [ "$HAS_RNPROBE" = true ] && ((rns_tool_count++))
+    [ "$HAS_RNCP" = true ] && ((rns_tool_count++))
+    [ "$HAS_RNX" = true ] && ((rns_tool_count++))
+    [ "$HAS_RNID" = true ] && ((rns_tool_count++))
+    [ "$HAS_RNODECONF" = true ] && ((rns_tool_count++))
+
+    log_message "Tools detected: RNS=$rns_tool_count/8 (rnsd=$HAS_RNSD rnstatus=$HAS_RNSTATUS rnpath=$HAS_RNPATH rnprobe=$HAS_RNPROBE rncp=$HAS_RNCP rnx=$HAS_RNX rnid=$HAS_RNID rnodeconf=$HAS_RNODECONF)"
+    log_message "Dependencies: python3=$HAS_PYTHON3 pip=$HAS_PIP node=$HAS_NODE git=$HAS_GIT"
+}
+
+# Format a menu item - dimmed if tool is unavailable
+# Usage: menu_item "label" "available_flag"
+menu_item() {
+    local label="$1"
+    local available="$2"
+    if [ "$available" = true ]; then
+        echo "$label"
+    else
+        echo -e "${YELLOW}$label (not installed)${NC}"
+    fi
 }
 
 print_header() {
@@ -575,6 +648,7 @@ get_cached_lxmf_version() {
 }
 
 # Invalidate all status caches (call after install/service changes)
+# Also re-detects tools so menus update after installs
 invalidate_status_cache() {
     _CACHE_RNSD_STATUS=""
     _CACHE_RNSD_TIME=0
@@ -582,6 +656,7 @@ invalidate_status_cache() {
     _CACHE_RNS_TIME=0
     _CACHE_LXMF_VER=""
     _CACHE_LXMF_TIME=0
+    detect_available_tools
 }
 
 pause_for_input() {
@@ -744,6 +819,24 @@ show_main_menu() {
         print_box_line "${YELLOW}○${NC} LXMF: Not installed"
     fi
 
+    # Tool availability summary
+    local tool_count=0
+    [ "$HAS_RNSD" = true ] && ((tool_count++))
+    [ "$HAS_RNSTATUS" = true ] && ((tool_count++))
+    [ "$HAS_RNPATH" = true ] && ((tool_count++))
+    [ "$HAS_RNPROBE" = true ] && ((tool_count++))
+    [ "$HAS_RNCP" = true ] && ((tool_count++))
+    [ "$HAS_RNX" = true ] && ((tool_count++))
+    [ "$HAS_RNID" = true ] && ((tool_count++))
+    [ "$HAS_RNODECONF" = true ] && ((tool_count++))
+    if [ "$tool_count" -eq 8 ]; then
+        print_box_line "${GREEN}●${NC} RNS tools: ${tool_count}/8 available"
+    elif [ "$tool_count" -gt 0 ]; then
+        print_box_line "${YELLOW}●${NC} RNS tools: ${tool_count}/8 available"
+    else
+        print_box_line "${RED}○${NC} RNS tools: none detected"
+    fi
+
     print_box_bottom
     echo ""
 
@@ -762,7 +855,8 @@ show_main_menu() {
     echo "   8) Backup/Restore Configuration"
     echo "   9) Advanced Options"
     echo ""
-    echo -e "  ${CYAN}─── Help & Exit ───${NC}"
+    echo -e "  ${CYAN}─── Quick & Help ───${NC}"
+    echo "   q) Quick Mode (field operations)"
     echo "   h) Help & Quick Reference"
     echo "   0) Exit"
     echo ""
@@ -2137,15 +2231,23 @@ services_menu() {
 
         echo -e "${BOLD}Service Management:${NC}"
         echo ""
+        echo -e "  ${CYAN}─── Daemon Control ───${NC}"
         echo "   1) Start rnsd daemon"
         echo "   2) Stop rnsd daemon"
         echo "   3) Restart rnsd daemon"
         echo "   4) View detailed status"
-        echo "   5) View network statistics"
-        echo "   6) View path table"
-        echo "   7) Probe destination"
-        echo "   8) Enable auto-start on boot"
-        echo "   9) Disable auto-start on boot"
+        echo ""
+        echo -e "  ${CYAN}─── Network Tools ───${NC}"
+        echo -e "   5) $(menu_item "View network statistics (rnstatus)" "$HAS_RNSTATUS")"
+        echo -e "   6) $(menu_item "View path table (rnpath)" "$HAS_RNPATH")"
+        echo -e "   7) $(menu_item "Probe destination (rnprobe)" "$HAS_RNPROBE")"
+        echo -e "   8) $(menu_item "Transfer file (rncp)" "$HAS_RNCP")"
+        echo -e "   9) $(menu_item "Remote command (rnx)" "$HAS_RNX")"
+        echo ""
+        echo -e "  ${CYAN}─── Identity & Boot ───${NC}"
+        echo -e "  10) $(menu_item "Identity management (rnid)" "$HAS_RNID")"
+        echo "  11) Enable auto-start on boot"
+        echo "  12) Disable auto-start on boot"
         echo ""
         echo "   0) Back to Main Menu"
         echo ""
@@ -2173,7 +2275,7 @@ services_menu() {
                 ;;
             5)
                 print_section "Network Statistics"
-                if command -v rnstatus &> /dev/null; then
+                if [ "$HAS_RNSTATUS" = true ]; then
                     rnstatus -a 2>&1 | head -n 50
                 else
                     print_warning "rnstatus not available - install RNS first"
@@ -2182,7 +2284,7 @@ services_menu() {
                 ;;
             6)
                 print_section "Path Table"
-                if command -v rnpath &> /dev/null; then
+                if [ "$HAS_RNPATH" = true ]; then
                     print_info "Known paths in the Reticulum network:"
                     echo ""
                     rnpath -t 2>&1
@@ -2193,7 +2295,7 @@ services_menu() {
                 ;;
             7)
                 print_section "Probe Destination"
-                if command -v rnprobe &> /dev/null; then
+                if [ "$HAS_RNPROBE" = true ]; then
                     echo -n "Enter destination hash to probe: "
                     read -r PROBE_DEST
                     if [ -n "$PROBE_DEST" ]; then
@@ -2208,10 +2310,149 @@ services_menu() {
                 pause_for_input
                 ;;
             8)
-                setup_autostart
+                print_section "File Transfer (rncp)"
+                if [ "$HAS_RNCP" = true ]; then
+                    echo -e "${BOLD}RNS File Transfer:${NC}"
+                    echo ""
+                    echo "  ${CYAN}Send a file:${NC}"
+                    echo "    rncp /path/to/file <destination_hash>"
+                    echo ""
+                    echo "  ${CYAN}Receive files (listen mode):${NC}"
+                    echo "    rncp -l [-s /save/path]"
+                    echo ""
+                    echo "  ${CYAN}Fetch a file from remote:${NC}"
+                    echo "    rncp -f <filename> <destination_hash>"
+                    echo ""
+                    echo -e "${BOLD}Actions:${NC}"
+                    echo "   s) Send a file now"
+                    echo "   l) Start listening for incoming files"
+                    echo "   0) Cancel"
+                    echo ""
+                    echo -n "Select action: "
+                    read -r RNCP_ACTION
+                    case $RNCP_ACTION in
+                        s|S)
+                            echo -n "File path to send: "
+                            read -r RNCP_FILE
+                            if [ -z "$RNCP_FILE" ]; then
+                                print_info "Cancelled"
+                            elif [ ! -f "$RNCP_FILE" ]; then
+                                print_error "File not found: $RNCP_FILE"
+                            else
+                                echo -n "Destination hash: "
+                                read -r RNCP_DEST
+                                if [ -n "$RNCP_DEST" ]; then
+                                    print_info "Sending $RNCP_FILE to $RNCP_DEST..."
+                                    rncp "$RNCP_FILE" "$RNCP_DEST" 2>&1
+                                else
+                                    print_info "Cancelled"
+                                fi
+                            fi
+                            ;;
+                        l|L)
+                            print_info "Listening for incoming file transfers..."
+                            print_info "Press Ctrl+C to stop listening"
+                            rncp -l -s "$REAL_HOME/Downloads" 2>&1 || true
+                            ;;
+                        *)
+                            print_info "Cancelled"
+                            ;;
+                    esac
+                else
+                    print_warning "rncp not available - install RNS first"
+                fi
                 pause_for_input
                 ;;
             9)
+                print_section "Remote Command (rnx)"
+                if [ "$HAS_RNX" = true ]; then
+                    echo -e "${BOLD}RNS Remote Execution:${NC}"
+                    echo ""
+                    echo "  ${CYAN}Run a remote command:${NC}"
+                    echo "    rnx <destination_hash> \"command\""
+                    echo ""
+                    echo "  ${CYAN}Listen for commands:${NC}"
+                    echo "    rnx -l [-i identity_file]"
+                    echo ""
+                    echo -e "${YELLOW}Note: Remote must be running rnx in listen mode${NC}"
+                    echo ""
+                    echo -n "Destination hash (or 0 to cancel): "
+                    read -r RNX_DEST
+                    if [ -n "$RNX_DEST" ] && [ "$RNX_DEST" != "0" ]; then
+                        echo -n "Command to execute: "
+                        read -r RNX_CMD
+                        if [ -n "$RNX_CMD" ]; then
+                            print_info "Executing on $RNX_DEST: $RNX_CMD"
+                            rnx "$RNX_DEST" "$RNX_CMD" 2>&1
+                        else
+                            print_info "Cancelled"
+                        fi
+                    else
+                        print_info "Cancelled"
+                    fi
+                else
+                    print_warning "rnx not available - install RNS first"
+                fi
+                pause_for_input
+                ;;
+            10)
+                print_section "Identity Management (rnid)"
+                if [ "$HAS_RNID" = true ]; then
+                    echo -e "${BOLD}RNS Identity Management:${NC}"
+                    echo ""
+                    echo "   1) Show my identity hash"
+                    echo "   2) Generate new identity"
+                    echo "   3) View identity file info"
+                    echo "   0) Cancel"
+                    echo ""
+                    echo -n "Select action: "
+                    read -r RNID_ACTION
+                    case $RNID_ACTION in
+                        1)
+                            print_info "Default identity hash:"
+                            rnid 2>&1
+                            ;;
+                        2)
+                            echo -n "Output path (default: ~/.reticulum/identities/new): "
+                            read -r RNID_PATH
+                            if [ -z "$RNID_PATH" ]; then
+                                if ! mkdir -p "$REAL_HOME/.reticulum/identities" 2>/dev/null; then
+                                    print_error "Cannot create identities directory"
+                                    break
+                                fi
+                                RNID_PATH="$REAL_HOME/.reticulum/identities/new_$(date +%Y%m%d_%H%M%S)"
+                            fi
+                            print_info "Generating new identity..."
+                            rnid -g "$RNID_PATH" 2>&1
+                            if [ -f "$RNID_PATH" ]; then
+                                print_success "Identity generated: $RNID_PATH"
+                            fi
+                            ;;
+                        3)
+                            echo -n "Identity file path: "
+                            read -r RNID_FILE
+                            if [ -n "$RNID_FILE" ] && [ -f "$RNID_FILE" ]; then
+                                rnid -i "$RNID_FILE" 2>&1
+                            elif [ -n "$RNID_FILE" ]; then
+                                print_error "File not found: $RNID_FILE"
+                            else
+                                print_info "Cancelled"
+                            fi
+                            ;;
+                        *)
+                            print_info "Cancelled"
+                            ;;
+                    esac
+                else
+                    print_warning "rnid not available - install RNS first"
+                fi
+                pause_for_input
+                ;;
+            11)
+                setup_autostart
+                pause_for_input
+                ;;
+            12)
                 disable_autostart
                 pause_for_input
                 ;;
@@ -2627,65 +2868,231 @@ restore_backup() {
 run_diagnostics() {
     print_section "System Diagnostics"
 
-    echo -e "${BOLD}Running comprehensive system check...${NC}\n"
+    local issues=0
+    local warnings=0
 
-    # Environment info
-    echo -e "${CYAN}Environment:${NC}"
-    echo "  Platform: $OS_TYPE"
-    echo "  Architecture: $ARCHITECTURE"
-    echo "  Raspberry Pi: $IS_RASPBERRY_PI"
-    echo "  WSL: $IS_WSL"
-    [ "$IS_RASPBERRY_PI" = true ] && echo "  Model: $PI_MODEL"
-    echo ""
+    echo -e "${BOLD}Running 6-step diagnostic...${NC}\n"
 
-    # Python check
-    echo -e "${CYAN}Python Environment:${NC}"
-    if check_python; then
-        which python3
-        python3 -c "import sys; print(f'  Executable: {sys.executable}')"
+    # ── Step 1: Environment & Prerequisites ──
+    echo -e "${BLUE}▶ Step 1/6: Environment & Prerequisites${NC}"
+
+    echo "  Platform: $OS_TYPE ($ARCHITECTURE)"
+    [ "$IS_RASPBERRY_PI" = true ] && echo "  Raspberry Pi: $PI_MODEL"
+    [ "$IS_WSL" = true ] && echo "  Running in WSL"
+    [ "$IS_SSH" = true ] && echo "  Connected via SSH"
+
+    if [ "$HAS_PYTHON3" = true ]; then
+        local pyver
+        pyver=$(python3 --version 2>&1)
+        print_success "$pyver"
+    else
+        print_error "Python 3 not found"
+        echo -e "  ${YELLOW}Fix: sudo apt install python3 python3-pip${NC}"
+        ((issues++))
+    fi
+
+    if [ "$HAS_PIP" = true ]; then
+        print_success "pip available"
+    else
+        print_error "pip not found"
+        echo -e "  ${YELLOW}Fix: sudo apt install python3-pip${NC}"
+        ((issues++))
+    fi
+
+    if [ "$PEP668_DETECTED" = true ]; then
+        echo -e "  ${CYAN}[i] PEP 668: Python externally managed (Debian 12+)${NC}"
     fi
     echo ""
 
-    # Pip check
-    echo -e "${CYAN}Package Manager:${NC}"
-    if check_pip; then
-        which "$PIP_CMD"
+    # ── Step 2: RNS Tool Availability ──
+    echo -e "${BLUE}▶ Step 2/6: RNS Tool Availability${NC}"
+
+    local tool_list=(
+        "rnsd:$HAS_RNSD:daemon"
+        "rnstatus:$HAS_RNSTATUS:network status"
+        "rnpath:$HAS_RNPATH:path table"
+        "rnprobe:$HAS_RNPROBE:connectivity probe"
+        "rncp:$HAS_RNCP:file transfer"
+        "rnx:$HAS_RNX:remote execution"
+        "rnid:$HAS_RNID:identity management"
+        "rnodeconf:$HAS_RNODECONF:RNODE configuration"
+    )
+
+    local tool_present=0
+    local tool_missing=0
+    for entry in "${tool_list[@]}"; do
+        local tname tstate tdesc
+        tname="${entry%%:*}"
+        local rest="${entry#*:}"
+        tstate="${rest%%:*}"
+        tdesc="${rest#*:}"
+        if [ "$tstate" = "true" ]; then
+            print_success "$tname ($tdesc)"
+            ((tool_present++))
+        else
+            echo -e "  ${YELLOW}○${NC} $tname ($tdesc) - not installed"
+            ((tool_missing++))
+        fi
+    done
+
+    if [ "$tool_missing" -gt 0 ]; then
+        echo ""
+        echo -e "  ${CYAN}[i] Install missing tools: pip3 install rns${NC}"
+        ((warnings++))
     fi
     echo ""
 
-    # Network interfaces
-    echo -e "${CYAN}Network Interfaces:${NC}"
+    # ── Step 3: Configuration Validation ──
+    echo -e "${BLUE}▶ Step 3/6: Configuration Validation${NC}"
+
+    local config_file="$REAL_HOME/.reticulum/config"
+    if [ -f "$config_file" ]; then
+        print_success "Config file exists: ~/.reticulum/config"
+
+        # Check config file size (empty = problem)
+        local config_size
+        config_size=$(wc -c < "$config_file" 2>/dev/null || echo 0)
+        if [ "$config_size" -lt 10 ]; then
+            print_error "Config file appears empty ($config_size bytes)"
+            echo -e "  ${YELLOW}Fix: Apply a config template from Advanced > Apply Configuration Template${NC}"
+            ((issues++))
+        fi
+
+        # Check for common config issues
+        if grep -q "interface_enabled = false" "$config_file" 2>/dev/null; then
+            print_warning "Some interfaces are disabled in config"
+            ((warnings++))
+        fi
+
+        # Check identity directory
+        if [ -d "$REAL_HOME/.reticulum/storage/identities" ]; then
+            local id_count
+            id_count=$(find "$REAL_HOME/.reticulum/storage/identities" -type f 2>/dev/null | wc -l)
+            echo "  Known identities: $id_count"
+        fi
+    else
+        print_warning "No configuration found"
+        echo -e "  ${YELLOW}Fix: Run first-time setup or start rnsd to create default config${NC}"
+        ((warnings++))
+    fi
+    echo ""
+
+    # ── Step 4: Service Health ──
+    echo -e "${BLUE}▶ Step 4/6: Service Health${NC}"
+
+    if check_service_status "rnsd"; then
+        print_success "rnsd daemon is running"
+
+        # Check uptime via /proc if possible
+        local rnsd_pid
+        rnsd_pid=$(pgrep -x "rnsd" 2>/dev/null | head -1)
+        if [ -n "$rnsd_pid" ] && [ -d "/proc/$rnsd_pid" ]; then
+            local start_time
+            start_time=$(stat -c %Y "/proc/$rnsd_pid" 2>/dev/null)
+            if [ -n "$start_time" ]; then
+                local now_time uptime_secs
+                now_time=$(date +%s)
+                uptime_secs=$((now_time - start_time))
+                if [ "$uptime_secs" -lt 60 ]; then
+                    echo "  Uptime: ${uptime_secs}s"
+                elif [ "$uptime_secs" -lt 3600 ]; then
+                    echo "  Uptime: $((uptime_secs / 60))m"
+                else
+                    echo "  Uptime: $((uptime_secs / 3600))h $((uptime_secs % 3600 / 60))m"
+                fi
+            fi
+        fi
+    else
+        print_warning "rnsd daemon is not running"
+        echo -e "  ${YELLOW}Fix: Start from Services menu or run: rnsd --daemon${NC}"
+        ((warnings++))
+    fi
+
+    # Check autostart
+    if command -v systemctl &>/dev/null; then
+        if systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
+            print_success "Auto-start enabled at boot"
+        else
+            echo -e "  ${CYAN}[i] Auto-start not enabled (enable from Services menu)${NC}"
+        fi
+    fi
+    echo ""
+
+    # ── Step 5: Network & Interfaces ──
+    echo -e "${BLUE}▶ Step 5/6: Network & Interfaces${NC}"
+
     if command -v ip &> /dev/null; then
-        ip -br addr | grep -v "^lo" | while read -r line; do
+        local net_ifaces
+        net_ifaces=$(ip -br addr 2>/dev/null | grep -v "^lo" | grep -c "UP" || echo 0)
+        if [ "$net_ifaces" -gt 0 ]; then
+            print_success "$net_ifaces network interface(s) up"
+            ip -br addr 2>/dev/null | grep -v "^lo" | while read -r line; do
+                echo "  $line"
+            done
+        else
+            print_warning "No active network interfaces found"
+            ((warnings++))
+        fi
+    fi
+
+    # USB serial devices (RNODE)
+    local usb_devices
+    usb_devices=$(find /dev -maxdepth 1 \( -name 'ttyUSB*' -o -name 'ttyACM*' \) 2>/dev/null | wc -l)
+    if [ "$usb_devices" -gt 0 ]; then
+        print_success "$usb_devices USB serial device(s) detected"
+        find /dev -maxdepth 1 \( -name 'ttyUSB*' -o -name 'ttyACM*' \) 2>/dev/null | while read -r dev; do
+            echo "  $dev"
+        done
+
+        # Check dialout group membership
+        if ! groups 2>/dev/null | grep -q "dialout"; then
+            print_warning "User not in dialout group"
+            echo -e "  ${YELLOW}Fix: sudo usermod -aG dialout \$USER && logout${NC}"
+            ((warnings++))
+        fi
+    else
+        echo -e "  ${CYAN}[i] No USB serial devices (RNODE) detected${NC}"
+    fi
+
+    # RNS interface status (if rnstatus available and rnsd running)
+    if [ "$HAS_RNSTATUS" = true ] && check_service_status "rnsd"; then
+        echo ""
+        echo -e "  ${CYAN}Reticulum Interface Status:${NC}"
+        rnstatus 2>&1 | head -n 25 | while read -r line; do
             echo "  $line"
         done
     fi
     echo ""
 
-    # USB devices (for RNODE detection)
-    echo -e "${CYAN}USB Serial Devices:${NC}"
-    if find /dev -maxdepth 1 \( -name 'ttyUSB*' -o -name 'ttyACM*' \) 2>/dev/null | head -10; then
-        echo "  (Possible RNODE devices detected)"
-    else
-        echo "  No USB serial devices found"
-    fi
+    # ── Step 6: Summary & Recommendations ──
+    echo -e "${BLUE}▶ Step 6/6: Summary & Recommendations${NC}"
     echo ""
 
-    # Reticulum config
-    if [ -f "$REAL_HOME/.reticulum/config" ]; then
-        echo -e "${CYAN}Reticulum Configuration:${NC}"
-        print_success "Config file exists: ~/.reticulum/config"
+    if [ "$issues" -eq 0 ] && [ "$warnings" -eq 0 ]; then
+        print_success "All checks passed - system looks healthy"
+    else
+        [ "$issues" -gt 0 ] && print_error "$issues issue(s) found requiring attention"
+        [ "$warnings" -gt 0 ] && print_warning "$warnings warning(s) found"
+        echo ""
+        echo -e "${BOLD}Recommended actions:${NC}"
 
-        if command -v rnstatus &> /dev/null; then
-            echo ""
-            rnstatus 2>&1 | head -n 20
+        if [ "$HAS_RNSD" = false ]; then
+            echo "  1. Install Reticulum: select option 1 from main menu"
+        elif ! check_service_status "rnsd"; then
+            echo "  1. Start rnsd: select option 7 > 1 from main menu"
         fi
-    else
-        print_warning "No Reticulum configuration found"
-        echo "  Run 'rnsd --daemon' to create initial config"
+
+        if [ ! -f "$config_file" ]; then
+            echo "  2. Create configuration: use first-run wizard or Advanced > Templates"
+        fi
+
+        if [ "$usb_devices" -gt 0 ] && ! groups 2>/dev/null | grep -q "dialout"; then
+            echo "  3. Add user to dialout group for RNODE access"
+        fi
     fi
 
     echo ""
+    log_message "Diagnostics complete: $issues issues, $warnings warnings"
 }
 
 #########################################################
@@ -3067,6 +3474,121 @@ view_logs_menu() {
     done
 }
 
+#########################################################
+# Emergency/Quick Mode - field operations
+# Minimal interface for rapid deployment and status checks
+#########################################################
+
+emergency_quick_mode() {
+    while true; do
+        print_header
+        MENU_BREADCRUMB="Main Menu > Quick Mode"
+        print_breadcrumb
+
+        # Compact status box
+        print_box_top
+        print_box_line "${CYAN}${BOLD}Quick Mode${NC} - Field Operations"
+        print_box_divider
+
+        if check_service_status "rnsd"; then
+            print_box_line "${GREEN}●${NC} rnsd: ${GREEN}Running${NC}"
+        else
+            print_box_line "${RED}○${NC} rnsd: ${YELLOW}Stopped${NC}"
+        fi
+
+        if [ "$HAS_RNSTATUS" = true ] && check_service_status "rnsd"; then
+            local iface_count
+            iface_count=$(rnstatus 2>/dev/null | grep -c "interface" || echo "?")
+            print_box_line "  Interfaces: $iface_count"
+        fi
+
+        print_box_bottom
+        echo ""
+
+        echo -e "${BOLD}Quick Actions:${NC}"
+        echo ""
+        echo "   1) Start rnsd daemon"
+        echo "   2) Stop rnsd daemon"
+        echo "   3) Network status (rnstatus)"
+        echo "   4) Path table (rnpath -t)"
+        echo "   5) Probe destination"
+        echo "   6) Send file (rncp)"
+        echo ""
+        echo "   0) Back to Main Menu"
+        echo ""
+        echo -n "Action: "
+        read -r QM_CHOICE
+
+        case $QM_CHOICE in
+            1)
+                if check_service_status "rnsd"; then
+                    print_info "rnsd is already running"
+                else
+                    print_info "Starting rnsd..."
+                    start_services
+                fi
+                pause_for_input
+                ;;
+            2)
+                stop_services
+                pause_for_input
+                ;;
+            3)
+                if [ "$HAS_RNSTATUS" = true ]; then
+                    rnstatus 2>&1
+                else
+                    print_warning "rnstatus not available"
+                fi
+                pause_for_input
+                ;;
+            4)
+                if [ "$HAS_RNPATH" = true ]; then
+                    rnpath -t 2>&1
+                else
+                    print_warning "rnpath not available"
+                fi
+                pause_for_input
+                ;;
+            5)
+                if [ "$HAS_RNPROBE" = true ]; then
+                    echo -n "Destination hash: "
+                    read -r QM_DEST
+                    if [ -n "$QM_DEST" ]; then
+                        rnprobe "$QM_DEST" 2>&1
+                    fi
+                else
+                    print_warning "rnprobe not available"
+                fi
+                pause_for_input
+                ;;
+            6)
+                if [ "$HAS_RNCP" = true ]; then
+                    echo -n "File to send: "
+                    read -r QM_FILE
+                    if [ -n "$QM_FILE" ] && [ -f "$QM_FILE" ]; then
+                        echo -n "Destination hash: "
+                        read -r QM_DEST
+                        if [ -n "$QM_DEST" ]; then
+                            rncp "$QM_FILE" "$QM_DEST" 2>&1
+                        fi
+                    elif [ -n "$QM_FILE" ]; then
+                        print_error "File not found: $QM_FILE"
+                    fi
+                else
+                    print_warning "rncp not available"
+                fi
+                pause_for_input
+                ;;
+            0|"")
+                return
+                ;;
+            *)
+                print_error "Invalid option"
+                ;;
+        esac
+    done
+}
+
 advanced_menu() {
     while true; do
         print_header
@@ -3409,6 +3931,7 @@ first_run_wizard() {
 main() {
     # Initialize
     detect_environment
+    detect_available_tools
     log_message "=== RNS Management Tool Started ==="
     log_message "Version: $SCRIPT_VERSION"
     log_message "REAL_HOME=$REAL_HOME, SCRIPT_DIR=$SCRIPT_DIR"
@@ -3480,6 +4003,10 @@ main() {
             9)
                 # Advanced Options
                 safe_call "Advanced Options" advanced_menu
+                ;;
+            q|Q)
+                # Quick Mode / Emergency
+                safe_call "Quick Mode" emergency_quick_mode
                 ;;
             h|H|\?)
                 # Help
