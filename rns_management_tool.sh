@@ -90,7 +90,7 @@ resolve_real_home() {
 REAL_HOME="$(resolve_real_home)"
 
 # Global variables
-SCRIPT_VERSION="0.3.3-beta"
+SCRIPT_VERSION="0.3.4-beta"
 BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$REAL_HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"
@@ -124,12 +124,14 @@ HAS_GIT=false
 # UI Constants
 BOX_WIDTH=58
 MENU_BREADCRUMB=""
+SESSION_START_TIME=$(date +%s)
 
 # Status cache (adapted from meshforge status_bar.py)
 # Avoids hammering pip3/pgrep on every menu redraw
 STATUS_CACHE_TTL=10  # seconds
 _CACHE_RNSD_STATUS=""
 _CACHE_RNSD_TIME=0
+_CACHE_RNSD_PID=""
 _CACHE_RNS_VER=""
 _CACHE_RNS_TIME=0
 _CACHE_LXMF_VER=""
@@ -303,8 +305,14 @@ menu_item() {
     fi
 }
 
+clear_screen() {
+    # ANSI escape sequence clear (adapted from meshforge PR #800)
+    # Eliminates visible flash caused by subprocess clear command
+    printf '\033[H\033[2J'
+}
+
 print_header() {
-    clear
+    clear_screen
     echo -e "\n${CYAN}${BOLD}╔════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}${BOLD}║                                                        ║${NC}"
     echo -e "${CYAN}${BOLD}║          RNS MANAGEMENT TOOL v${SCRIPT_VERSION}                 ║${NC}"
@@ -319,6 +327,9 @@ print_header() {
     else
         echo -e "${GREEN}Platform:${NC} $OS_TYPE $OS_VERSION ($ARCHITECTURE)"
     fi
+
+    # Compact status line (meshforge status_bar.py pattern)
+    echo -e "  $(get_status_line)"
     echo ""
 }
 
@@ -592,18 +603,42 @@ is_rnsd_running() {
 
 # Safe call wrapper (adapted from meshforge _safe_call pattern)
 # Wraps menu actions so a function failure doesn't crash the whole script
+# Provides MeshForge-style error categorization with targeted recovery hints
 # Usage: safe_call "Label" function_name [args...]
 safe_call() {
     local label="$1"
     shift
+
+    # Run command directly (not captured) to preserve interactivity
     if "$@"; then
         return 0
-    else
-        local rc=$?
-        print_error "$label failed (exit code: $rc)"
-        log_error "safe_call: '$label' failed with exit code $rc"
-        return $rc
     fi
+
+    local rc=$?
+    log_error "safe_call: '$label' failed with exit code $rc"
+
+    # MeshForge-style error categorization (adapted from _safe_call)
+    # Analyze exit code for targeted recovery hints
+    case $rc in
+        126)
+            print_error "$label: Permission denied - check file permissions (chmod +x)"
+            ;;
+        127)
+            print_error "$label: Command not found - install required tools first"
+            ;;
+        124)
+            print_error "$label: Operation timed out - check network connectivity"
+            ;;
+        130)
+            # Ctrl+C — not an error, just user interrupt
+            print_info "$label: Interrupted by user"
+            ;;
+        *)
+            print_error "$label failed (exit code: $rc)"
+            ;;
+    esac
+
+    return $rc
 }
 
 # Cached status queries (adapted from meshforge status_bar.py)
@@ -615,12 +650,42 @@ get_cached_rnsd_status() {
     if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_RNSD_STATUS" ]; then
         if is_rnsd_running; then
             _CACHE_RNSD_STATUS="running"
+            _CACHE_RNSD_PID=$(pgrep -x "rnsd" 2>/dev/null | head -1)
         else
             _CACHE_RNSD_STATUS="stopped"
+            _CACHE_RNSD_PID=""
         fi
         _CACHE_RNSD_TIME=$now
     fi
     echo "$_CACHE_RNSD_STATUS"
+}
+
+# Get rnsd process uptime as human-readable string
+# Returns empty string if not running (MeshForge single-source-of-truth pattern)
+get_rnsd_uptime() {
+    local pid="${_CACHE_RNSD_PID:-}"
+    [ -z "$pid" ] && echo "" && return
+
+    # Read process start time from /proc (avoids extra subprocess)
+    if [ -d "/proc/$pid" ]; then
+        local elapsed
+        elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+        if [ -n "$elapsed" ] && [ "$elapsed" -gt 0 ]; then
+            local days hours mins
+            days=$((elapsed / 86400))
+            hours=$(( (elapsed % 86400) / 3600 ))
+            mins=$(( (elapsed % 3600) / 60 ))
+            if [ "$days" -gt 0 ]; then
+                echo "${days}d ${hours}h"
+            elif [ "$hours" -gt 0 ]; then
+                echo "${hours}h ${mins}m"
+            else
+                echo "${mins}m"
+            fi
+            return
+        fi
+    fi
+    echo ""
 }
 
 get_cached_rns_version() {
@@ -652,11 +717,68 @@ get_cached_lxmf_version() {
 invalidate_status_cache() {
     _CACHE_RNSD_STATUS=""
     _CACHE_RNSD_TIME=0
+    _CACHE_RNSD_PID=""
     _CACHE_RNS_VER=""
     _CACHE_RNS_TIME=0
     _CACHE_LXMF_VER=""
     _CACHE_LXMF_TIME=0
     detect_available_tools
+}
+
+# Compact status line (adapted from meshforge status_bar.py get_enhanced_status_line)
+# Returns: "v0.3.3 | rnsd:● | rns:0.8.x | tools:8/8 | 5m"
+get_status_line() {
+    local parts=()
+    parts+=("v${SCRIPT_VERSION}")
+
+    # rnsd indicator (single char, cached)
+    local rnsd_state
+    rnsd_state=$(get_cached_rnsd_status)
+    if [ "$rnsd_state" = "running" ]; then
+        parts+=("rnsd:${GREEN}*${NC}")
+    else
+        parts+=("rnsd:${RED}-${NC}")
+    fi
+
+    # RNS version (cached)
+    local rns_ver
+    rns_ver=$(get_cached_rns_version)
+    if [ -n "$rns_ver" ]; then
+        parts+=("rns:${rns_ver}")
+    else
+        parts+=("rns:${YELLOW}--${NC}")
+    fi
+
+    # Tool count
+    local tc=0
+    [ "$HAS_RNSD" = true ] && ((tc++))
+    [ "$HAS_RNSTATUS" = true ] && ((tc++))
+    [ "$HAS_RNPATH" = true ] && ((tc++))
+    [ "$HAS_RNPROBE" = true ] && ((tc++))
+    [ "$HAS_RNCP" = true ] && ((tc++))
+    [ "$HAS_RNX" = true ] && ((tc++))
+    [ "$HAS_RNID" = true ] && ((tc++))
+    [ "$HAS_RNODECONF" = true ] && ((tc++))
+    parts+=("tools:${tc}/8")
+
+    # SSH indicator (meshforge hardware detection pattern)
+    if [ "$IS_SSH" = true ]; then
+        parts+=("SSH")
+    fi
+
+    # Session uptime
+    local now elapsed_min
+    now=$(date +%s)
+    elapsed_min=$(( (now - SESSION_START_TIME) / 60 ))
+    if [ "$elapsed_min" -lt 1 ]; then
+        parts+=("<1m")
+    else
+        parts+=("${elapsed_min}m")
+    fi
+
+    # Join with separator
+    local IFS=' | '
+    echo -e "${parts[*]}"
 }
 
 pause_for_input() {
@@ -793,10 +915,15 @@ show_main_menu() {
     print_box_divider
 
     # Check rnsd status (cached, avoids pgrep on every redraw)
-    local rnsd_state
+    local rnsd_state rnsd_uptime
     rnsd_state=$(get_cached_rnsd_status)
     if [ "$rnsd_state" = "running" ]; then
-        print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+        rnsd_uptime=$(get_rnsd_uptime)
+        if [ -n "$rnsd_uptime" ]; then
+            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${rnsd_uptime})"
+        else
+            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+        fi
     else
         print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
     fi
@@ -2203,10 +2330,15 @@ services_menu() {
         print_box_line "${CYAN}${BOLD}Service Status${NC}"
         print_box_divider
 
-        local svc_rnsd_state
+        local svc_rnsd_state svc_uptime
         svc_rnsd_state=$(get_cached_rnsd_status)
         if [ "$svc_rnsd_state" = "running" ]; then
-            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+            svc_uptime=$(get_rnsd_uptime)
+            if [ -n "$svc_uptime" ]; then
+                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${svc_uptime})"
+            else
+                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+            fi
             # Boot persistence warning (meshforge pattern)
             if command -v systemctl &>/dev/null; then
                 if ! systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then

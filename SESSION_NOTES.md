@@ -2,6 +2,124 @@
 
 ---
 
+## Session 6: TUI Improvements from MeshForge Patterns (PR #800, status_bar.py, _safe_call)
+**Date:** 2026-02-12
+**Branch:** `claude/improve-tui-meshforge-obiAP`
+**Parent:** claude/improve-app-reliability-zPjB1 (merged as PR #21)
+
+### Objective
+Pull diff and patterns from `Nursedude/meshforge` (800 PRs, v0.5.4-beta) to improve the TUI on this app. Focused on PR #800 (screen flash fix), status_bar.py (compact status line), and _safe_call (error categorization).
+
+### MeshForge Patterns Analyzed
+
+1. **PR #800** - Eliminate TUI screen flashing and contradicting service status
+   - Replaced 134 `subprocess.run(['clear'])` calls with ANSI `clear_screen()` in backend.py
+   - Consolidated duplicate status checks into single source of truth
+
+2. **status_bar.py** - Compact status line with TTL-based caching
+   - Format: `"MeshForge v0.4.7 | meshtasticd:* | rnsd:- | mqtt:- | USB:* | nodes:5"`
+   - Three symbols: `*` running, `-` stopped, `?` unknown
+   - Enhanced status line with hardware detection (SPI/USB)
+
+3. **main.py / _safe_call()** - Error categorization with targeted recovery hints
+   - Catches ImportError, TimeoutExpired, PermissionError, FileNotFoundError, ConnectionError
+   - Logs full tracebacks to file, shows clean messages in TUI
+
+4. **PR #797** - Feature accessibility improvements
+   - Exposed 6 hidden modules to TUI menus
+   - Wired existing utilities directly into menu system (no rebuild)
+
+5. **backend.py (DialogBackend)** - whiptail/dialog abstraction
+   - 7 dialog methods: msgbox, yesno, menu, inputbox, infobox, gauge, checklist
+   - Backend detection prioritizing whiptail over dialog
+   - Default dimensions 78x22, 14-line list height
+
+### Changes Applied
+
+#### 1. ANSI clear_screen() (from MeshForge PR #800)
+- **Line:** `rns_management_tool.sh:305-310`
+- New `clear_screen()` function: `printf '\033[H\033[2J'`
+- Replaces subprocess `clear` call in `print_header()`
+- Eliminates visible flash between screen redraws
+
+#### 2. Compact Status Line (from MeshForge status_bar.py)
+- **Line:** `rns_management_tool.sh:728-783`
+- New `get_status_line()` function
+- Shows in every header: `v0.3.4 | rnsd:* | rns:0.8.x | tools:8/8 | SSH | 5m`
+- `SESSION_START_TIME` tracks session uptime
+- SSH indicator when connected remotely
+- All values use existing TTL cache (no extra subprocess calls)
+
+#### 3. Enhanced safe_call() (from MeshForge _safe_call pattern)
+- **Line:** `rns_management_tool.sh:603-641`
+- Exit code categorization with targeted recovery hints:
+  - 126: Permission denied (chmod +x)
+  - 127: Command not found (install tools first)
+  - 124: Operation timed out (check network)
+  - 130: Ctrl+C interrupt (informational, not error)
+- Preserves interactive function output (no capture/subshell)
+
+#### 4. rnsd Uptime Display (from MeshForge single-source-of-truth pattern)
+- **Line:** `rns_management_tool.sh:660-688`
+- New `get_rnsd_uptime()` function using cached PID + `ps -o etimes=`
+- PID captured during `get_cached_rnsd_status()` (single check)
+- Shows in both main menu and services menu: `"rnsd daemon: Running (up 2h 15m)"`
+- Human-readable format: `5m`, `2h 15m`, `3d 7h`
+
+#### 5. SSH Indicator in Status Line
+- Shows `SSH` tag in compact status line when connected via SSH session
+- Uses existing `IS_SSH` detection (no new subprocess)
+
+### Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Script lines | 4,052 | 4,184 |
+| Version | 0.3.3-beta | 0.3.4-beta |
+| Lines added | - | 142 |
+| Lines removed | - | 10 |
+| `clear` subprocess calls | 1 | 0 |
+| ANSI clear calls | 0 | 1 |
+| `bash -n` | PASS | PASS |
+
+### Design Decisions
+
+- **ANSI clear over subprocess**: MeshForge PR #800 demonstrated that `subprocess.run(['clear'])` causes visible flash across 23 TUI files. The ANSI approach `\033[H\033[2J` is instantaneous. Applied to the single `clear` call in `print_header()`.
+- **Status line in header, not footer**: MeshForge uses a status bar in dialog subtitles. Since we use direct terminal output (not whiptail), placing the compact line in the header means it's visible on every screen without extra plumbing.
+- **safe_call preserves interactivity**: Unlike MeshForge's Python `_safe_call()` which catches exceptions, bash functions that need user input (menus, prompts) would break if captured with `$()`. The exit code categorization approach gives similar value without breaking interactivity.
+- **PID cached alongside status**: Instead of making a separate pgrep call for uptime, the PID is captured during the existing status check. This follows MeshForge PR #800's "single source of truth" principle.
+- **Session uptime tracks tool session, not daemon uptime**: MeshForge status bar shows system uptime. For a CLI tool, session duration is more useful for operator awareness.
+
+### Session Entropy Notes
+
+Session stayed clean and focused. Six changes, all in a single file, all following established patterns. No unintended side effects. Good stopping point before the more complex whiptail backend integration.
+
+### Remaining Work for Future Sessions
+
+**P1 (High Impact):**
+- [ ] Add `whiptail`/`dialog` backend option (meshforge DialogBackend pattern) - biggest TUI uplift
+- [ ] Port `first_run_mixin.py` first-run wizard UX improvements
+- [ ] Add log rotation for `UPDATE_LOG` (meshforge 1MB rotation pattern)
+
+**P2 (Medium Impact):**
+- [ ] Extract long functions (services_menu 272 lines, run_diagnostics 228 lines) into helpers
+- [ ] Add `--quick` CLI flag for non-interactive quick status
+- [ ] Port conflict resolver pattern for port/service conflicts
+- [ ] Add health score calculation (meshforge health_score.py pattern)
+
+**P3 (Polish):**
+- [ ] Add keyboard shortcuts overlay (? in any menu)
+- [ ] Config drift detection (meshforge config_drift.py pattern)
+- [ ] Signal/battery forecasting for RNODE devices
+
+**Cross-cutting:**
+- PowerShell parity (ps1 hasn't received any session 1-6 improvements)
+- Integration test coverage
+- RNODE hardware testing
+- Cross-platform field testing
+
+---
+
 ## Session 5: Reliability Improvements - Capability Detection, Enhanced Diagnostics, Full RNS Utility Integration
 **Date:** 2026-02-12
 **Branch:** claude/improve-app-reliability-zPjB1
