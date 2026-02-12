@@ -108,6 +108,16 @@ ARCHITECTURE=""
 BOX_WIDTH=58
 MENU_BREADCRUMB=""
 
+# Status cache (adapted from meshforge status_bar.py)
+# Avoids hammering pip3/pgrep on every menu redraw
+STATUS_CACHE_TTL=10  # seconds
+_CACHE_RNSD_STATUS=""
+_CACHE_RNSD_TIME=0
+_CACHE_RNS_VER=""
+_CACHE_RNS_TIME=0
+_CACHE_LXMF_VER=""
+_CACHE_LXMF_TIME=0
+
 # Log levels (adapted from meshforge logging_config.py)
 LOG_LEVEL_DEBUG=0
 LOG_LEVEL_INFO=1
@@ -131,6 +141,33 @@ run_with_timeout() {
         # Fallback if timeout command not available
         "$@"
     fi
+}
+
+# Retry with exponential backoff (adapted from meshforge install_reliability_triage.md)
+# Usage: retry_with_backoff <max_retries> <command...>
+# Retries with 2s, 4s, 8s... delays between attempts
+retry_with_backoff() {
+    local max_retries="$1"
+    shift
+    local attempt=1
+    local delay=2
+
+    while [ $attempt -le "$max_retries" ]; do
+        if "$@"; then
+            return 0
+        fi
+
+        if [ $attempt -lt "$max_retries" ]; then
+            print_warning "Attempt $attempt/$max_retries failed, retrying in ${delay}s..."
+            log_warn "Retry $attempt/$max_retries for: $*"
+            sleep "$delay"
+            delay=$((delay * 2))
+        fi
+        ((attempt++))
+    done
+
+    log_error "All $max_retries attempts failed for: $*"
+    return 1
 }
 
 #########################################################
@@ -459,6 +496,66 @@ validate_device_port() {
     return 0
 }
 
+# Check if rnsd process is running with specific matching
+# (adapted from meshforge service_menu_mixin.py - avoids false positives)
+is_rnsd_running() {
+    # Use -x for exact match on process name, fall back to -f with anchored pattern
+    pgrep -x "rnsd" > /dev/null 2>&1 || \
+        pgrep -f "^rnsd\b" > /dev/null 2>&1 || \
+        pgrep -f "[r]nsd --daemon" > /dev/null 2>&1
+}
+
+# Cached status queries (adapted from meshforge status_bar.py)
+# Returns cached value if within TTL, otherwise refreshes
+get_cached_rnsd_status() {
+    local now
+    now=$(date +%s)
+    local age=$(( now - _CACHE_RNSD_TIME ))
+    if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_RNSD_STATUS" ]; then
+        if is_rnsd_running; then
+            _CACHE_RNSD_STATUS="running"
+        else
+            _CACHE_RNSD_STATUS="stopped"
+        fi
+        _CACHE_RNSD_TIME=$now
+    fi
+    echo "$_CACHE_RNSD_STATUS"
+}
+
+get_cached_rns_version() {
+    local now
+    now=$(date +%s)
+    local age=$(( now - _CACHE_RNS_TIME ))
+    if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_RNS_VER" ]; then
+        _CACHE_RNS_VER=$(pip3 show rns 2>/dev/null | grep "^Version:" | awk '{print $2}')
+        [ -z "$_CACHE_RNS_VER" ] && _CACHE_RNS_VER=""
+        _CACHE_RNS_TIME=$now
+    fi
+    echo "$_CACHE_RNS_VER"
+}
+
+get_cached_lxmf_version() {
+    local now
+    now=$(date +%s)
+    local age=$(( now - _CACHE_LXMF_TIME ))
+    if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_LXMF_VER" ]; then
+        _CACHE_LXMF_VER=$(pip3 show lxmf 2>/dev/null | grep "^Version:" | awk '{print $2}')
+        [ -z "$_CACHE_LXMF_VER" ] && _CACHE_LXMF_VER=""
+        _CACHE_LXMF_TIME=$now
+    fi
+    echo "$_CACHE_LXMF_VER"
+}
+
+# Invalidate all status caches (call after install/service changes)
+invalidate_status_cache() {
+    _CACHE_RNSD_STATUS=""
+    _CACHE_RNSD_TIME=0
+    _CACHE_RNS_VER=""
+    _CACHE_RNS_TIME=0
+    _CACHE_LXMF_VER=""
+    _CACHE_LXMF_TIME=0
+}
+
 pause_for_input() {
     echo -e "\n${YELLOW}Press Enter to continue...${NC}"
     read -r
@@ -479,10 +576,25 @@ show_spinner() {
     printf "    \r"
 }
 
+# Strip ANSI escape codes for accurate string length measurement
+# (adapted from meshforge console.py visible_length)
+strip_ansi() {
+    local text="$1"
+    # Remove all ANSI escape sequences: CSI sequences, OSC, and simple escapes
+    echo -e "$text" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][AB012]//g'
+}
+
 # Enhanced UI Functions
 print_box_line() {
     local content="$1"
-    local padding=$((BOX_WIDTH - ${#content} - 4))
+    # Use stripped length to avoid ANSI codes inflating padding calculation
+    local visible_len=${#content}
+    if [ "$HAS_COLOR" = true ]; then
+        local stripped
+        stripped=$(strip_ansi "$content")
+        visible_len=${#stripped}
+    fi
+    local padding=$((BOX_WIDTH - visible_len - 4))
     [ $padding -lt 0 ] && padding=0
     printf "${BOLD}│${NC} %s%*s ${BOLD}│${NC}\n" "$content" "$padding" ""
 }
@@ -587,32 +699,33 @@ show_main_menu() {
     print_header
     MENU_BREADCRUMB=""
 
-    # Quick status dashboard with dynamic formatting
+    # Quick status dashboard with cached queries (meshforge status_bar.py pattern)
     print_box_top
     print_box_line "${CYAN}${BOLD}Quick Status${NC}"
     print_box_divider
 
-    # Check rnsd status
-    if pgrep -f "rnsd" > /dev/null 2>&1; then
-        local rnsd_status="${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+    # Check rnsd status (cached, avoids pgrep on every redraw)
+    local rnsd_state
+    rnsd_state=$(get_cached_rnsd_status)
+    if [ "$rnsd_state" = "running" ]; then
+        print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
     else
-        local rnsd_status="${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
+        print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
     fi
-    print_box_line "$rnsd_status"
 
-    # Check RNS installed
-    if command -v rnstatus &> /dev/null; then
-        local rns_ver
-        rns_ver=$(pip3 show rns 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "?")
+    # Check RNS installed (cached version query)
+    local rns_ver
+    rns_ver=$(get_cached_rns_version)
+    if [ -n "$rns_ver" ]; then
         print_box_line "${GREEN}●${NC} RNS: v${rns_ver}"
     else
         print_box_line "${YELLOW}○${NC} RNS: ${YELLOW}Not installed${NC}"
     fi
 
-    # Check LXMF installed
-    if pip3 show lxmf &>/dev/null; then
-        local lxmf_ver
-        lxmf_ver=$(pip3 show lxmf 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    # Check LXMF installed (cached version query)
+    local lxmf_ver
+    lxmf_ver=$(get_cached_lxmf_version)
+    if [ -n "$lxmf_ver" ]; then
         print_box_line "${GREEN}●${NC} LXMF: v${lxmf_ver}"
     else
         print_box_line "${YELLOW}○${NC} LXMF: Not installed"
@@ -777,20 +890,17 @@ install_prerequisites() {
     echo -e "${YELLOW}The following packages will be installed:${NC}"
     printf '  - %s\n' "${packages[@]}"
     echo ""
-    echo -n "Proceed with installation? (Y/n): "
-    read -r PROCEED
-
-    if [[ "$PROCEED" =~ ^[Nn]$ ]]; then
+    if ! confirm_action "Proceed with installation?" "y"; then
         print_warning "Skipping prerequisites installation"
         return 1
     fi
 
     print_info "Updating package lists..."
-    if run_with_timeout "$APT_TIMEOUT" sudo apt update 2>&1 | tee -a "$UPDATE_LOG"; then
+    if retry_with_backoff 3 run_with_timeout "$APT_TIMEOUT" sudo apt update 2>&1 | tee -a "$UPDATE_LOG"; then
         print_success "Package lists updated"
 
         print_info "Installing prerequisites..."
-        if run_with_timeout "$APT_TIMEOUT" sudo apt install -y "${packages[@]}" 2>&1 | tee -a "$UPDATE_LOG"; then
+        if retry_with_backoff 2 run_with_timeout "$APT_TIMEOUT" sudo apt install -y "${packages[@]}" 2>&1 | tee -a "$UPDATE_LOG"; then
             print_success "Prerequisites installed successfully"
             log_message "Prerequisites installed: ${packages[*]}"
             return 0
@@ -840,8 +950,8 @@ install_nodejs_modern() {
         run_with_timeout "$APT_TIMEOUT" sudo apt install -y curl 2>&1 | tee -a "$UPDATE_LOG"
     fi
 
-    # Install NodeSource repository for Node.js 22.x (LTS)
-    if run_with_timeout "$NETWORK_TIMEOUT" curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - 2>&1 | tee -a "$UPDATE_LOG"; then
+    # Install NodeSource repository for Node.js 22.x (LTS) - with retry
+    if retry_with_backoff 3 run_with_timeout "$NETWORK_TIMEOUT" curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - 2>&1 | tee -a "$UPDATE_LOG"; then
         print_success "NodeSource repository configured"
 
         # Install Node.js (includes npm)
@@ -879,11 +989,7 @@ check_nodejs_version() {
 
         if [ "$NODE_MAJOR" -lt 18 ]; then
             print_error "Node.js version $NODE_VERSION is too old (requires 18+)"
-            echo -e "${YELLOW}Would you like to upgrade Node.js now?${NC}"
-            echo -n "Upgrade Node.js? (Y/n): "
-            read -r UPGRADE_NODE
-
-            if [[ ! "$UPGRADE_NODE" =~ ^[Nn]$ ]]; then
+            if confirm_action "Upgrade Node.js now?" "y"; then
                 install_nodejs_modern
                 return $?
             else
@@ -970,10 +1076,8 @@ rnode_autoinstall() {
     echo -e "${YELLOW}This will automatically detect and flash your RNODE device.${NC}"
     echo -e "${YELLOW}Make sure your device is connected via USB.${NC}"
     echo ""
-    echo -n "Continue? (Y/n): "
-    read -r CONTINUE
 
-    if [[ ! "$CONTINUE" =~ ^[Nn]$ ]]; then
+    if confirm_action "Continue?" "y"; then
         print_info "Running rnodeconf --autoinstall..."
         echo ""
         rnodeconf --autoinstall 2>&1 | tee -a "$UPDATE_LOG"
@@ -1315,8 +1419,8 @@ update_pip_package() {
         log_message "Updating $display_name from $OLD_VERSION"
     fi
 
-    # Try update with --break-system-packages flag (needed on newer systems)
-    if run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install "$package" --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    # Try update with --break-system-packages flag (needed on newer systems) - with retry
+    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install "$package" --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         NEW_VERSION=$(get_installed_version "$package")
 
         if [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
@@ -1350,32 +1454,91 @@ install_reticulum_ecosystem() {
     echo "  • NomadNet - Terminal messaging client (optional)"
     echo ""
 
-    # Update components in dependency order
-    local success=true
-
-    # RNS first (core dependency)
-    update_pip_package "rns" "RNS (Reticulum)" || success=false
-    sleep 1
-
-    # LXMF (depends on RNS)
-    update_pip_package "lxmf" "LXMF" || success=false
-    sleep 1
-
-    # Ask about NomadNet
-    echo ""
-    echo -e "${YELLOW}Would you like to install NomadNet (terminal client)?${NC}"
-    echo -n "Install NomadNet? (Y/n): "
-    read -r INSTALL_NOMAD
-
-    if [[ ! "$INSTALL_NOMAD" =~ ^[Nn]$ ]]; then
-        update_pip_package "nomadnet" "NomadNet" || success=false
+    # Ask about NomadNet upfront so progress steps are accurate
+    local install_nomad=false
+    if confirm_action "Include NomadNet (terminal client)?" "y"; then
+        install_nomad=true
     fi
 
+    # Step-based progress display (wire up dead code from meshforge pattern)
+    if [ "$install_nomad" = true ]; then
+        init_operation "Installing Reticulum Ecosystem" \
+            "Install/update RNS (core)" \
+            "Verify RNS installation" \
+            "Install/update LXMF" \
+            "Verify LXMF installation" \
+            "Install/update NomadNet" \
+            "Verify NomadNet installation"
+    else
+        init_operation "Installing Reticulum Ecosystem" \
+            "Install/update RNS (core)" \
+            "Verify RNS installation" \
+            "Install/update LXMF" \
+            "Verify LXMF installation"
+    fi
+
+    local success=true
+
+    # RNS first (core dependency) - with retry
+    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install rns --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        next_step "success"
+        # Verify RNS installation (meshforge post-install verify pattern)
+        if python3 -c "import RNS; print(f'RNS {RNS.__version__}')" 2>/dev/null; then
+            next_step "success"
+        else
+            next_step "fail"
+            print_warning "RNS installed but import verification failed"
+            success=false
+        fi
+    else
+        next_step "fail"
+        next_step "skip"
+        success=false
+    fi
+
+    # LXMF (depends on RNS) - with retry
+    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install lxmf --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        next_step "success"
+        # Verify LXMF installation
+        if python3 -c "import LXMF; print(f'LXMF {LXMF.__version__}')" 2>/dev/null; then
+            next_step "success"
+        else
+            next_step "fail"
+            print_warning "LXMF installed but import verification failed"
+            success=false
+        fi
+    else
+        next_step "fail"
+        next_step "skip"
+        success=false
+    fi
+
+    # NomadNet (optional)
+    if [ "$install_nomad" = true ]; then
+        if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install nomadnet --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+            next_step "success"
+            if python3 -c "import nomadnet" 2>/dev/null; then
+                next_step "success"
+            else
+                next_step "fail"
+                print_warning "NomadNet installed but import verification failed"
+            fi
+        else
+            next_step "fail"
+            next_step "skip"
+            success=false
+        fi
+    fi
+
+    # Invalidate version cache so dashboard refreshes
+    invalidate_status_cache
+
     if [ "$success" = true ]; then
-        print_success "Reticulum ecosystem installation completed"
+        complete_operation "success"
         return 0
     else
-        print_error "Some components failed to install"
+        complete_operation "fail"
+        show_error_help "pip" ""
         return 1
     fi
 }
@@ -1396,14 +1559,17 @@ check_meshchat_installed() {
 install_meshchat() {
     print_section "Installing MeshChat"
 
+    # Disk space pre-check (MeshChat clone + npm install needs ~500MB)
+    if ! check_disk_space 500 "$REAL_HOME"; then
+        print_error "Insufficient disk space for MeshChat installation"
+        return 1
+    fi
+
     # Check for Node.js
     if ! command -v npm &> /dev/null; then
         print_warning "Node.js/npm not found"
         echo -e "${YELLOW}MeshChat requires Node.js 18+${NC}"
-        echo -n "Install Node.js now? (Y/n): "
-        read -r INSTALL_NODE
-
-        if [[ ! "$INSTALL_NODE" =~ ^[Nn]$ ]]; then
+        if confirm_action "Install Node.js now?" "y"; then
             install_nodejs_modern || return 1
         else
             return 1
@@ -1418,59 +1584,90 @@ install_meshchat() {
         run_with_timeout "$APT_TIMEOUT" sudo apt update && run_with_timeout "$APT_TIMEOUT" sudo apt install -y git
     fi
 
-    print_info "Cloning MeshChat repository..."
     log_message "Installing MeshChat"
+    local is_update=false
 
     if [ -d "$MESHCHAT_DIR" ]; then
         print_warning "MeshChat directory already exists"
-        echo -n "Update existing installation? (Y/n): "
-        read -r UPDATE_EXISTING
-
-        if [[ ! "$UPDATE_EXISTING" =~ ^[Nn]$ ]]; then
-            pushd "$MESHCHAT_DIR" > /dev/null || return 1
-            print_info "Updating from git..."
-            run_with_timeout "$GIT_TIMEOUT" git pull origin main 2>&1 | tee -a "$UPDATE_LOG"
+        if confirm_action "Update existing installation?" "y"; then
+            is_update=true
         else
-            return 1
-        fi
-    else
-        if run_with_timeout "$GIT_TIMEOUT" git clone https://github.com/liamcottle/reticulum-meshchat.git "$MESHCHAT_DIR" 2>&1 | tee -a "$UPDATE_LOG"; then
-            pushd "$MESHCHAT_DIR" > /dev/null || return 1
-        else
-            print_error "Failed to clone MeshChat repository"
             return 1
         fi
     fi
 
-    print_info "Installing dependencies..."
-    if run_with_timeout "$NETWORK_TIMEOUT" npm install 2>&1 | tee -a "$UPDATE_LOG"; then
-        print_success "Dependencies installed"
+    # Step-based progress (wiring up init_operation from meshforge pattern)
+    init_operation "Installing MeshChat" \
+        "Clone/update repository" \
+        "Install npm dependencies" \
+        "Security audit" \
+        "Build application" \
+        "Verify installation"
 
-        # Security audit
-        print_info "Running security audit..."
-        npm audit fix --audit-level=moderate 2>&1 | tee -a "$UPDATE_LOG" || true
-
-        print_info "Building MeshChat..."
-        if npm run build 2>&1 | tee -a "$UPDATE_LOG"; then
-            MESHCHAT_VERSION=$(grep '"version"' package.json | head -1 | awk -F'"' '{print $4}')
-            print_success "MeshChat v$MESHCHAT_VERSION installed successfully"
-            log_message "MeshChat installed: $MESHCHAT_VERSION"
-
-            # Create launcher
-            create_meshchat_launcher
-
-            popd > /dev/null
-            return 0
+    # Step 1: Clone or update
+    if [ "$is_update" = true ]; then
+        pushd "$MESHCHAT_DIR" > /dev/null || return 1
+        ensure_git_safe_directory "$MESHCHAT_DIR"
+        if retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git pull origin main 2>&1 | tee -a "$UPDATE_LOG"; then
+            next_step "success"
         else
-            print_error "Failed to build MeshChat"
+            next_step "fail"
             popd > /dev/null
+            complete_operation "fail"
             return 1
         fi
     else
-        print_error "Failed to install dependencies"
+        if retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git clone https://github.com/liamcottle/reticulum-meshchat.git "$MESHCHAT_DIR" 2>&1 | tee -a "$UPDATE_LOG"; then
+            pushd "$MESHCHAT_DIR" > /dev/null || return 1
+            next_step "success"
+        else
+            next_step "fail"
+            print_error "Failed to clone MeshChat repository"
+            complete_operation "fail"
+            show_error_help "git" ""
+            return 1
+        fi
+    fi
+
+    # Step 2: npm install (with retry)
+    if retry_with_backoff 2 run_with_timeout "$NETWORK_TIMEOUT" npm install 2>&1 | tee -a "$UPDATE_LOG"; then
+        next_step "success"
+    else
+        next_step "fail"
         popd > /dev/null
+        complete_operation "fail"
+        show_error_help "nodejs" ""
         return 1
     fi
+
+    # Step 3: Security audit (non-fatal)
+    npm audit fix --audit-level=moderate 2>&1 | tee -a "$UPDATE_LOG" || true
+    next_step "success"
+
+    # Step 4: Build
+    if npm run build 2>&1 | tee -a "$UPDATE_LOG"; then
+        next_step "success"
+    else
+        next_step "fail"
+        popd > /dev/null
+        complete_operation "fail"
+        return 1
+    fi
+
+    # Step 5: Verify installation
+    if [ -f "package.json" ]; then
+        MESHCHAT_VERSION=$(grep '"version"' package.json | head -1 | awk -F'"' '{print $4}')
+        print_success "MeshChat v$MESHCHAT_VERSION installed successfully"
+        log_message "MeshChat installed: $MESHCHAT_VERSION"
+        create_meshchat_launcher
+        next_step "success"
+    else
+        next_step "fail"
+    fi
+
+    popd > /dev/null
+    complete_operation "success"
+    return 0
 }
 
 create_meshchat_launcher() {
@@ -1525,9 +1722,7 @@ install_sideband() {
         echo "Sideband requires a graphical environment to run."
         echo "On headless systems, consider using NomadNet (terminal client) instead."
         echo ""
-        echo -n "Continue anyway? (y/N): "
-        read -r CONTINUE
-        if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
+        if ! confirm_action "Continue anyway?"; then
             return 1
         fi
     fi
@@ -1628,10 +1823,7 @@ install_sideband_source() {
 
     if [ -d "$SIDEBAND_DIR" ]; then
         print_warning "Sideband directory already exists"
-        echo -n "Update existing installation? (Y/n): "
-        read -r UPDATE_EXISTING
-
-        if [[ ! "$UPDATE_EXISTING" =~ ^[Nn]$ ]]; then
+        if confirm_action "Update existing installation?" "y"; then
             pushd "$SIDEBAND_DIR" > /dev/null || return 1
             print_info "Updating from git..."
             git pull origin main 2>&1 | tee -a "$UPDATE_LOG"
@@ -1678,9 +1870,7 @@ download_sideband_appimage() {
 
     # Try to open browser if available
     if command -v xdg-open &> /dev/null && [ -n "$DISPLAY" ]; then
-        echo -n "Open releases page in browser? (Y/n): "
-        read -r OPEN_BROWSER
-        if [[ ! "$OPEN_BROWSER" =~ ^[Nn]$ ]]; then
+        if confirm_action "Open releases page in browser?" "y"; then
             xdg-open "$appimage_url" 2>/dev/null &
             print_success "Opened browser"
         fi
@@ -1752,21 +1942,32 @@ EOF
 stop_services() {
     print_section "Stopping Services"
 
-    # Stop rnsd if running
-    if pgrep -f "rnsd" > /dev/null; then
+    # Stop rnsd if running (improved detection from meshforge service_menu_mixin.py)
+    if is_rnsd_running; then
         print_info "Stopping rnsd daemon..."
-        rnsd --daemon stop 2>/dev/null || pkill -f rnsd 2>/dev/null
-        sleep 2
-        if ! pgrep -f "rnsd" > /dev/null; then
+        rnsd --daemon stop 2>/dev/null || pkill -x rnsd 2>/dev/null
+
+        # Poll with timeout instead of hardcoded sleep (meshforge pattern)
+        local wait_count=0
+        local max_wait=10
+        while is_rnsd_running && [ $wait_count -lt $max_wait ]; do
+            sleep 1
+            ((wait_count++))
+        done
+
+        if ! is_rnsd_running; then
             print_success "rnsd stopped"
             log_message "Stopped rnsd daemon"
         else
-            print_warning "rnsd may still be running"
+            print_warning "rnsd may still be running after ${max_wait}s"
+            log_warn "rnsd did not stop within ${max_wait}s"
         fi
+    else
+        print_info "rnsd is not running"
     fi
 
-    # Check for nomadnet processes
-    if pgrep -f "nomadnet" > /dev/null; then
+    # Check for nomadnet processes (more specific match)
+    if pgrep -x "nomadnet" > /dev/null 2>&1 || pgrep -f "^nomadnet\b" > /dev/null 2>&1; then
         print_warning "NomadNet is running - please close it manually"
         echo -n "Press Enter when NomadNet is closed..."
         read -r
@@ -1774,30 +1975,34 @@ stop_services() {
     fi
 
     # Check for MeshChat processes
-    if pgrep -f "meshchat\|electron" > /dev/null; then
+    if pgrep -f "reticulum-meshchat" > /dev/null 2>&1; then
         print_warning "MeshChat appears to be running - please close it manually"
         echo -n "Press Enter when MeshChat is closed..."
         read -r
         log_message "User closed MeshChat manually"
     fi
 
+    # Invalidate status cache after service changes
+    invalidate_status_cache
     print_success "Services stopped"
 }
 
 start_services() {
     print_section "Starting Services"
 
-    echo -e "${YELLOW}Would you like to start the rnsd daemon?${NC}"
-    echo -n "Start rnsd? (Y/n): "
-    read -r START_RNSD
-
-    if [[ ! "$START_RNSD" =~ ^[Nn]$ ]]; then
+    if confirm_action "Start the rnsd daemon?" "y"; then
         print_info "Starting rnsd daemon..."
         if rnsd --daemon 2>&1 | tee -a "$UPDATE_LOG"; then
-            sleep 2
+            # Poll with timeout instead of hardcoded sleep (meshforge pattern)
+            local wait_count=0
+            local max_wait=10
+            while ! is_rnsd_running && [ $wait_count -lt $max_wait ]; do
+                sleep 1
+                ((wait_count++))
+            done
 
             # Verify it's running
-            if pgrep -f "rnsd" > /dev/null; then
+            if is_rnsd_running; then
                 print_success "rnsd daemon started"
                 log_message "Started rnsd daemon successfully"
 
@@ -1805,13 +2010,17 @@ start_services() {
                 print_info "Network status:"
                 rnstatus 2>&1 | head -n 15
             else
-                print_error "rnsd failed to start"
-                print_info "Try starting manually: rnsd --daemon"
+                print_error "rnsd failed to start after ${max_wait}s"
+                show_error_help "service" ""
             fi
         else
             print_error "Failed to start rnsd"
+            show_error_help "service" ""
         fi
     fi
+
+    # Invalidate status cache after service changes
+    invalidate_status_cache
 }
 
 show_service_status() {
@@ -1819,8 +2028,8 @@ show_service_status() {
 
     echo -e "${BOLD}Reticulum Network Status:${NC}\n"
 
-    # Check rnsd
-    if pgrep -f "rnsd" > /dev/null; then
+    # Check rnsd (using improved detection)
+    if is_rnsd_running; then
         print_success "rnsd daemon: Running"
         if command -v rnstatus &> /dev/null; then
             echo ""
@@ -1885,20 +2094,28 @@ services_menu() {
         MENU_BREADCRUMB="Main Menu > Services"
         print_breadcrumb
 
-        # Show current status at top
+        # Show current status at top (using cached + improved detection)
         print_box_top
         print_box_line "${CYAN}${BOLD}Service Status${NC}"
         print_box_divider
 
-        if pgrep -f "rnsd" > /dev/null 2>&1; then
+        local svc_rnsd_state
+        svc_rnsd_state=$(get_cached_rnsd_status)
+        if [ "$svc_rnsd_state" = "running" ]; then
             print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+            # Boot persistence warning (meshforge pattern)
+            if command -v systemctl &>/dev/null; then
+                if ! systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
+                    print_box_line "  ${YELLOW}! not enabled at boot${NC}"
+                fi
+            fi
         else
             print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
         fi
 
-        # Check for meshtasticd
+        # Check for meshtasticd (more specific match)
         if command -v meshtasticd &>/dev/null; then
-            if pgrep -f "meshtasticd" > /dev/null 2>&1; then
+            if pgrep -x "meshtasticd" > /dev/null 2>&1; then
                 print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
             else
                 print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
@@ -1935,7 +2152,6 @@ services_menu() {
             3)
                 print_info "Restarting rnsd daemon..."
                 stop_services
-                sleep 2
                 start_services
                 pause_for_input
                 ;;
@@ -2260,10 +2476,7 @@ create_backup() {
     echo "  • ~/.nomadnetwork/"
     echo "  • ~/.lxmf/"
     echo ""
-    echo -n "Create backup? (Y/n): "
-    read -r BACKUP_CHOICE
-
-    if [[ "$BACKUP_CHOICE" =~ ^[Nn]$ ]]; then
+    if ! confirm_action "Create backup?" "y"; then
         print_warning "Skipping backup"
         log_message "User skipped backup"
         return 0
@@ -2351,10 +2564,7 @@ restore_backup() {
         local selected_backup="${backups[$((BACKUP_CHOICE-1))]}"
 
         echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
-        echo -n "Continue? (y/N): "
-        read -r CONFIRM
-
-        if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+        if confirm_action "Continue?"; then
             print_info "Restoring from: $selected_backup"
 
             # Restore configs
@@ -2696,20 +2906,17 @@ update_system_packages() {
 
     echo -e "${YELLOW}Update all system packages?${NC}"
     echo "This will run: sudo apt update && sudo apt upgrade -y"
-    echo -n "Proceed? (Y/n): "
-    read -r UPDATE_SYSTEM
-
-    if [[ "$UPDATE_SYSTEM" =~ ^[Nn]$ ]]; then
+    if ! confirm_action "Proceed?" "y"; then
         print_warning "Skipping system updates"
         return 0
     fi
 
     print_info "Updating package lists..."
-    if run_with_timeout "$APT_TIMEOUT" sudo apt update 2>&1 | tee -a "$UPDATE_LOG"; then
+    if retry_with_backoff 3 run_with_timeout "$APT_TIMEOUT" sudo apt update 2>&1 | tee -a "$UPDATE_LOG"; then
         print_success "Package lists updated"
 
         print_info "Upgrading packages (this may take several minutes)..."
-        if run_with_timeout "$APT_TIMEOUT" sudo apt upgrade -y 2>&1 | tee -a "$UPDATE_LOG"; then
+        if retry_with_backoff 2 run_with_timeout "$APT_TIMEOUT" sudo apt upgrade -y 2>&1 | tee -a "$UPDATE_LOG"; then
             print_success "System packages updated"
             log_message "System packages upgraded successfully"
             NEEDS_REBOOT=true
@@ -2720,6 +2927,7 @@ update_system_packages() {
         fi
     else
         print_error "Failed to update package lists"
+        show_error_help "network" ""
         return 1
     fi
 }
@@ -2795,10 +3003,8 @@ main() {
             1)
                 # Install/Update Reticulum
                 if ! check_python || ! check_pip; then
-                    echo -e "\n${YELLOW}Prerequisites missing. Install them now?${NC}"
-                    echo -n "Install prerequisites? (Y/n): "
-                    read -r INSTALL_PREREQ
-                    if [[ ! "$INSTALL_PREREQ" =~ ^[Nn]$ ]]; then
+                    echo -e "\n${YELLOW}Prerequisites missing.${NC}"
+                    if confirm_action "Install prerequisites now?" "y"; then
                         install_prerequisites
                     else
                         pause_for_input
@@ -2864,9 +3070,7 @@ main() {
 
                 if [ "$NEEDS_REBOOT" = true ]; then
                     echo -e "${YELLOW}${BOLD}System reboot recommended${NC}"
-                    echo -n "Reboot now? (y/N): "
-                    read -r REBOOT_NOW
-                    if [[ "$REBOOT_NOW" =~ ^[Yy]$ ]]; then
+                    if confirm_action "Reboot now?"; then
                         sudo reboot
                     fi
                 fi
