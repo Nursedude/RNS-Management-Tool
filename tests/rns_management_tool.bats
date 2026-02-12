@@ -95,8 +95,8 @@ teardown() {
 # Version Tests
 #########################################################
 
-@test "Version is set to 0.3.2-beta" {
-    grep -q 'SCRIPT_VERSION="0.3.2-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
+@test "Version is set to 0.3.3-beta" {
+    grep -q 'SCRIPT_VERSION="0.3.3-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
 }
 
 #########################################################
@@ -233,7 +233,110 @@ teardown() {
     local outside_pgrep
     outside_pgrep=$(grep -n 'pgrep' "$SCRIPT_DIR/rns_management_tool.sh" | grep -v '^\s*#' | grep -v 'check_service_status\|# Avoids.*pgrep\|# Check rnsd status.*pgrep' | grep -v -A1 'check_service_status()' | wc -l)
     # pgrep should only appear inside check_service_status function block
-    [ "$outside_pgrep" -le 7 ]
+    # +1 for the rnsd_pid line in diagnostics
+    [ "$outside_pgrep" -le 8 ]
+}
+
+#########################################################
+# Session 5: Reliability Improvements
+#########################################################
+
+@test "detect_available_tools function exists" {
+    grep -q 'detect_available_tools()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "detect_available_tools is called at startup" {
+    grep -q 'detect_available_tools' "$SCRIPT_DIR/rns_management_tool.sh"
+    # Verify it's called in main()
+    grep -A5 'main()' "$SCRIPT_DIR/rns_management_tool.sh" | grep -q 'detect_available_tools'
+}
+
+@test "Tool availability flags are defined" {
+    grep -q 'HAS_RNSD=false' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'HAS_RNSTATUS=false' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'HAS_RNPATH=false' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'HAS_RNPROBE=false' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'HAS_RNCP=false' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'HAS_RNX=false' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'HAS_RNID=false' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'HAS_RNODECONF=false' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "All 8 RNS tools are scanned in detect_available_tools" {
+    # Verify detect_available_tools checks all 8 RNS utilities
+    local script="$SCRIPT_DIR/rns_management_tool.sh"
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rnsd' &&
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rnstatus' &&
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rnpath' &&
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rnprobe' &&
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rncp' &&
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rnx' &&
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rnid' &&
+    grep -A30 'detect_available_tools()' "$script" | grep -q 'command -v rnodeconf'
+}
+
+@test "invalidate_status_cache re-detects tools" {
+    grep -A10 'invalidate_status_cache()' "$SCRIPT_DIR/rns_management_tool.sh" | grep -q 'detect_available_tools'
+}
+
+@test "menu_item helper function exists" {
+    grep -q 'menu_item()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Tool count shown in main menu dashboard" {
+    grep -q 'RNS tools:.*available' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "rncp file transfer menu option exists" {
+    grep -q 'File Transfer (rncp)\|Transfer file (rncp)' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "rnx remote execution menu option exists" {
+    grep -q 'Remote Command (rnx)\|Remote command (rnx)' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "rnid identity management menu option exists" {
+    grep -q 'Identity Management (rnid)\|Identity management (rnid)' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "6-step diagnostics implemented" {
+    grep -q 'Step 1/6' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'Step 2/6' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'Step 3/6' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'Step 4/6' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'Step 5/6' "$SCRIPT_DIR/rns_management_tool.sh" &&
+    grep -q 'Step 6/6' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Diagnostics provides actionable remediation suggestions" {
+    grep -q 'Fix:' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Diagnostics checks config file validity" {
+    # Step 3 should validate config file exists and isn't empty
+    grep -q 'config_size\|Config file appears empty' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Emergency quick mode function exists" {
+    grep -q 'emergency_quick_mode()' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Quick mode accessible from main menu" {
+    grep -q 'q) Quick Mode\|q|Q)' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Quick mode uses safe_call in main dispatch" {
+    grep -q 'safe_call.*Quick Mode.*emergency_quick_mode\|safe_call "Quick Mode" emergency_quick_mode' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Services menu has structured sections" {
+    # Verify the services menu uses section headers
+    grep -q 'Daemon Control\|Network Tools\|Identity & Boot' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "Services menu uses capability flags" {
+    # Verify services menu uses HAS_* flags instead of command -v
+    grep -q 'HAS_RNSTATUS.*true\|HAS_RNPATH.*true\|HAS_RNPROBE.*true' "$SCRIPT_DIR/rns_management_tool.sh"
 }
 
 #########################################################
