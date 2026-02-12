@@ -601,6 +601,104 @@ is_rnsd_running() {
     check_service_status "rnsd"
 }
 
+# meshtasticd HTTP API health check (ported from meshforge meshtastic_http.py)
+# Probes meshtasticd's HTTP API on common ports to verify web server is reachable.
+# Primary probe: /json/report (accepts any valid JSON object)
+# Secondary probe: /api/v1/fromradio (protobuf endpoint, always present on webserver)
+# Sets MESHTASTICD_HTTP_URL on success for use by other functions.
+# Returns: 0 if reachable, 1 if not
+MESHTASTICD_HTTP_URL=""
+check_meshtasticd_http_api() {
+    MESHTASTICD_HTTP_URL=""
+
+    if ! command -v curl &>/dev/null; then
+        return 1
+    fi
+
+    # Port list mirrors meshforge probe order: HTTPS first, then HTTP, then legacy TCP
+    local ports=(443 9443 80 4403)
+    local schemes
+
+    for port in "${ports[@]}"; do
+        # Determine scheme(s) to try based on port
+        if [ "$port" -eq 80 ]; then
+            schemes=("http")
+        else
+            schemes=("https" "http")
+        fi
+
+        for scheme in "${schemes[@]}"; do
+            local base_url="${scheme}://127.0.0.1:${port}"
+
+            # Primary probe: /json/report — accept any valid JSON object
+            local response
+            response=$(curl -sk --connect-timeout 3 --max-time 5 \
+                -H "Accept: application/json" \
+                "${base_url}/json/report" 2>/dev/null)
+            if [ $? -eq 0 ] && [ -n "$response" ]; then
+                # Verify it's a JSON object (starts with {)
+                local trimmed
+                trimmed=$(echo "$response" | sed 's/^[[:space:]]*//')
+                if [[ "$trimmed" == "{"* ]]; then
+                    MESHTASTICD_HTTP_URL="$base_url"
+                    return 0
+                fi
+            fi
+
+            # Secondary probe: /api/v1/fromradio (protobuf endpoint)
+            # 200 = data available, 204 = no data but server alive
+            # 400/404/405 = server running but endpoint error (still counts)
+            local http_code
+            http_code=$(curl -sk --connect-timeout 3 --max-time 5 \
+                -o /dev/null -w "%{http_code}" \
+                -H "Accept: application/x-protobuf" \
+                "${base_url}/api/v1/fromradio" 2>/dev/null)
+            case "$http_code" in
+                200|204|400|404|405)
+                    MESHTASTICD_HTTP_URL="$base_url"
+                    return 0
+                    ;;
+            esac
+        done
+    done
+
+    return 1
+}
+
+# meshtasticd config validation (ported from meshforge dashboard_mixin._check_webserver_config)
+# Checks if /etc/meshtasticd/config.yaml has the Webserver section enabled.
+# Returns a diagnostic hint string via stdout.
+check_meshtasticd_webserver_config() {
+    local config_path="/etc/meshtasticd/config.yaml"
+
+    if [ ! -f "$config_path" ]; then
+        echo "Fix: $config_path not found"
+        return 1
+    fi
+
+    if ! [ -r "$config_path" ]; then
+        echo "Cannot read config (try running with sudo)"
+        return 1
+    fi
+
+    # Check if Webserver section exists at all
+    if ! grep -q "Webserver:" "$config_path" 2>/dev/null; then
+        echo "Fix: Add 'Webserver:' section with 'Port: 443' to $config_path"
+        return 1
+    fi
+
+    # Check if it's commented out (all Webserver lines start with #)
+    local uncommented
+    uncommented=$(grep "Webserver:" "$config_path" 2>/dev/null | grep -v "^[[:space:]]*#" | head -1)
+    if [ -z "$uncommented" ]; then
+        echo "Fix: Webserver section is commented out in $config_path"
+        return 1
+    fi
+
+    echo "Config has Webserver section — check meshtasticd logs if API unreachable"
+    return 0
+}
+
 # Safe call wrapper (adapted from meshforge _safe_call pattern)
 # Wraps menu actions so a function failure doesn't crash the whole script
 # Provides MeshForge-style error categorization with targeted recovery hints
@@ -2271,6 +2369,29 @@ show_service_status() {
         echo -e "  ${CYAN}Start with:${NC} rnsd --daemon"
     fi
 
+    # meshtasticd status with HTTP API check (ported from meshforge)
+    if command -v meshtasticd &>/dev/null; then
+        echo ""
+        echo -e "${BOLD}meshtasticd:${NC}"
+        if check_service_status "meshtasticd"; then
+            local mtd_ver
+            mtd_ver=$(meshtasticd --version 2>&1 | head -1 || echo "unknown")
+            print_success "meshtasticd: Running ($mtd_ver)"
+
+            if check_meshtasticd_http_api; then
+                print_success "HTTP API: $MESHTASTICD_HTTP_URL"
+            else
+                print_warning "HTTP API: Not reachable"
+                local hint
+                hint=$(check_meshtasticd_webserver_config)
+                echo -e "  ${YELLOW}${hint}${NC}"
+            fi
+        else
+            print_warning "meshtasticd: Installed but not running"
+            echo -e "  ${CYAN}Start with:${NC} sudo systemctl start meshtasticd"
+        fi
+    fi
+
     echo ""
     echo -e "${BOLD}Installed Components:${NC}\n"
 
@@ -2349,10 +2470,16 @@ services_menu() {
             print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
         fi
 
-        # Check for meshtasticd (more specific match)
+        # Check for meshtasticd with HTTP API status (ported from meshforge)
         if command -v meshtasticd &>/dev/null; then
             if check_service_status "meshtasticd"; then
                 print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
+                # Probe HTTP API inline (fast curl check)
+                if check_meshtasticd_http_api; then
+                    print_box_line "  ${GREEN}●${NC} HTTP API: ${GREEN}${MESHTASTICD_HTTP_URL}${NC}"
+                else
+                    print_box_line "  ${YELLOW}!${NC} HTTP API: ${YELLOW}Not reachable${NC}"
+                fi
             else
                 print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
             fi
@@ -2363,12 +2490,20 @@ services_menu() {
 
         echo -e "${BOLD}Service Management:${NC}"
         echo ""
-        echo -e "  ${CYAN}─── Daemon Control ───${NC}"
+        echo -e "  ${CYAN}─── rnsd Daemon Control ───${NC}"
         echo "   1) Start rnsd daemon"
         echo "   2) Stop rnsd daemon"
         echo "   3) Restart rnsd daemon"
         echo "   4) View detailed status"
         echo ""
+        if command -v meshtasticd &>/dev/null; then
+            echo -e "  ${CYAN}─── meshtasticd Control ───${NC}"
+            echo "  m1) Start meshtasticd"
+            echo "  m2) Stop meshtasticd"
+            echo "  m3) Restart meshtasticd"
+            echo "  m4) Check HTTP API & config"
+            echo ""
+        fi
         echo -e "  ${CYAN}─── Network Tools ───${NC}"
         echo -e "   5) $(menu_item "View network statistics (rnstatus)" "$HAS_RNSTATUS")"
         echo -e "   6) $(menu_item "View path table (rnpath)" "$HAS_RNPATH")"
@@ -2586,6 +2721,157 @@ services_menu() {
                 ;;
             12)
                 disable_autostart
+                pause_for_input
+                ;;
+            m1|M1)
+                # meshtasticd start (ported from meshforge/reticulum_updater.sh)
+                print_section "Starting meshtasticd"
+                if ! command -v meshtasticd &>/dev/null; then
+                    print_error "meshtasticd is not installed"
+                elif check_service_status "meshtasticd"; then
+                    print_info "meshtasticd is already running"
+                else
+                    print_info "Starting meshtasticd service..."
+                    if sudo systemctl start meshtasticd 2>&1; then
+                        sleep 3
+                        if check_service_status "meshtasticd"; then
+                            print_success "meshtasticd service started"
+                            log_message "Started meshtasticd service"
+                            # Check HTTP API availability after start
+                            if check_meshtasticd_http_api; then
+                                print_success "HTTP API available at $MESHTASTICD_HTTP_URL"
+                            else
+                                print_info "HTTP API not yet available (may need a few seconds)"
+                            fi
+                        else
+                            print_error "meshtasticd failed to start"
+                            echo -e "  ${CYAN}Check logs:${NC} sudo journalctl -u meshtasticd --no-pager -n 20"
+                        fi
+                    else
+                        print_error "Failed to start meshtasticd"
+                        echo -e "  ${CYAN}Check status:${NC} sudo systemctl status meshtasticd"
+                    fi
+                fi
+                invalidate_status_cache
+                pause_for_input
+                ;;
+            m2|M2)
+                # meshtasticd stop
+                print_section "Stopping meshtasticd"
+                if ! command -v meshtasticd &>/dev/null; then
+                    print_error "meshtasticd is not installed"
+                elif ! check_service_status "meshtasticd"; then
+                    print_info "meshtasticd is not running"
+                else
+                    print_info "Stopping meshtasticd service..."
+                    if sudo systemctl stop meshtasticd 2>&1; then
+                        sleep 2
+                        if ! check_service_status "meshtasticd"; then
+                            print_success "meshtasticd stopped"
+                            log_message "Stopped meshtasticd service"
+                        else
+                            print_warning "meshtasticd may still be stopping..."
+                        fi
+                    else
+                        print_error "Failed to stop meshtasticd"
+                    fi
+                fi
+                invalidate_status_cache
+                pause_for_input
+                ;;
+            m3|M3)
+                # meshtasticd restart
+                print_section "Restarting meshtasticd"
+                if ! command -v meshtasticd &>/dev/null; then
+                    print_error "meshtasticd is not installed"
+                else
+                    print_info "Restarting meshtasticd service..."
+                    if sudo systemctl restart meshtasticd 2>&1; then
+                        sleep 3
+                        if check_service_status "meshtasticd"; then
+                            print_success "meshtasticd restarted"
+                            log_message "Restarted meshtasticd service"
+                            if check_meshtasticd_http_api; then
+                                print_success "HTTP API available at $MESHTASTICD_HTTP_URL"
+                            else
+                                print_info "HTTP API not yet available (may need a few seconds)"
+                            fi
+                        else
+                            print_error "meshtasticd failed to restart"
+                            echo -e "  ${CYAN}Check logs:${NC} sudo journalctl -u meshtasticd --no-pager -n 20"
+                        fi
+                    else
+                        print_error "Failed to restart meshtasticd"
+                    fi
+                fi
+                invalidate_status_cache
+                pause_for_input
+                ;;
+            m4|M4)
+                # meshtasticd HTTP API & config check (ported from meshforge diagnostics)
+                print_section "meshtasticd HTTP API & Configuration"
+                if ! command -v meshtasticd &>/dev/null; then
+                    print_error "meshtasticd is not installed"
+                else
+                    # Version info
+                    local mtd_ver
+                    mtd_ver=$(meshtasticd --version 2>&1 | head -1 || echo "unknown")
+                    echo -e "  Version: ${BOLD}${mtd_ver}${NC}"
+                    echo ""
+
+                    # Service status
+                    echo -e "${BOLD}Service Status:${NC}"
+                    if check_service_status "meshtasticd"; then
+                        print_success "meshtasticd service is running"
+                    else
+                        print_warning "meshtasticd service is not running"
+                        echo -e "  ${YELLOW}Start with: sudo systemctl start meshtasticd${NC}"
+                    fi
+                    echo ""
+
+                    # Config validation
+                    echo -e "${BOLD}Configuration:${NC}"
+                    local config_hint
+                    config_hint=$(check_meshtasticd_webserver_config)
+                    local config_rc=$?
+                    if [ $config_rc -eq 0 ]; then
+                        print_success "$config_hint"
+                    else
+                        print_warning "$config_hint"
+                    fi
+                    echo ""
+
+                    # HTTP API probe
+                    echo -e "${BOLD}HTTP API Probe:${NC}"
+                    echo "  Testing ports 443, 9443, 80, 4403..."
+                    if check_meshtasticd_http_api; then
+                        print_success "HTTP API reachable at $MESHTASTICD_HTTP_URL"
+
+                        # Try to fetch node count from /json/nodes
+                        local nodes_response
+                        nodes_response=$(curl -sk --connect-timeout 3 --max-time 5 \
+                            "${MESHTASTICD_HTTP_URL}/json/nodes" 2>/dev/null)
+                        if [ -n "$nodes_response" ]; then
+                            # Count node entries (rough heuristic: count "num" keys)
+                            local node_count
+                            node_count=$(echo "$nodes_response" | grep -o '"num"' | wc -l)
+                            if [ "$node_count" -gt 0 ]; then
+                                print_success "$node_count node(s) visible via HTTP API"
+                            fi
+                        fi
+                    else
+                        print_error "HTTP API not reachable on any port"
+                        echo ""
+                        echo -e "  ${BOLD}Troubleshooting:${NC}"
+                        echo "  1. Verify meshtasticd is running: sudo systemctl status meshtasticd"
+                        echo "  2. Check config has Webserver section: /etc/meshtasticd/config.yaml"
+                        echo "  3. Example config entry:"
+                        echo -e "     ${CYAN}Webserver:${NC}"
+                        echo -e "     ${CYAN}  Port: 443${NC}"
+                        echo -e "     ${CYAN}  RootPath: /usr/share/meshtasticd/web${NC}"
+                        echo "  4. Check logs: sudo journalctl -u meshtasticd --no-pager -n 30"
+                    fi
+                fi
                 pause_for_input
                 ;;
             0|"")
@@ -3146,6 +3432,31 @@ run_diagnostics() {
             print_success "Auto-start enabled at boot"
         else
             echo -e "  ${CYAN}[i] Auto-start not enabled (enable from Services menu)${NC}"
+        fi
+    fi
+
+    # meshtasticd health check (ported from meshforge dashboard_mixin.py)
+    if command -v meshtasticd &>/dev/null; then
+        echo ""
+        echo -e "  ${CYAN}meshtasticd Integration:${NC}"
+
+        if check_service_status "meshtasticd"; then
+            print_success "meshtasticd service is running"
+
+            # Probe HTTP API (meshforge meshtastic_http.py pattern)
+            if check_meshtasticd_http_api; then
+                print_success "meshtasticd HTTP API reachable at $MESHTASTICD_HTTP_URL"
+            else
+                print_warning "meshtasticd HTTP API not reachable (tried ports 443, 9443, 80, 4403)"
+                local config_hint
+                config_hint=$(check_meshtasticd_webserver_config)
+                echo -e "  ${YELLOW}${config_hint}${NC}"
+                ((warnings++))
+            fi
+        else
+            print_warning "meshtasticd installed but not running"
+            echo -e "  ${YELLOW}Fix: sudo systemctl start meshtasticd${NC}"
+            ((warnings++))
         fi
     fi
     echo ""
