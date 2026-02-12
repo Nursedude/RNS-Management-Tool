@@ -2,6 +2,140 @@
 
 ---
 
+## Session 4: Tier 1 Completion + Tier 2 Features
+**Date:** 2026-02-12
+**Branch:** claude/session-structure-setup-czBb7
+**Parent:** claude/shellcheck-linting-docs-tVaut (merged as PR #19)
+
+### Objective
+Complete remaining Tier 1 MeshForge improvements (config templates, centralized service check, safe_call wrapper) and implement high-value Tier 2 features (first-run wizard, config editor, RNS path/probe tools).
+
+### Changes Applied
+
+#### Tier 1 Completions
+
+| # | Feature | Status | Details |
+|---|---------|--------|---------|
+| 1 | Centralized `check_service_status()` | DONE | Single function for all service detection (rnsd, meshtasticd, nomadnet, meshchat) |
+| 2 | `safe_call()` wrapper | DONE | Wraps main menu dispatch - function failures show error instead of crashing |
+| 3 | Config Templates | DONE | 4 templates in `config_templates/` with backup-before-apply |
+| 4 | Scattered pgrep → centralized | DONE | All pgrep calls now inside `check_service_status()` |
+
+#### Tier 2 New Features
+
+| # | Feature | Status | Details |
+|---|---------|--------|---------|
+| 5 | First-Run Wizard | DONE | Detects no config, guides: install → template → start rnsd |
+| 6 | Config Editor | DONE | `edit_config_file()` - launches $EDITOR with mandatory backup first |
+| 7 | Config Template Applier | DONE | `apply_config_template()` - browse, preview, apply with backup |
+| 8 | RNS Path Table | DONE | `rnpath -t` exposed in services menu (option 6) |
+| 9 | RNS Probe | DONE | `rnprobe` destination testing in services menu (option 7) |
+
+#### Config Templates Created (Verified Against Official Docs)
+
+| Template | File | Use Case |
+|----------|------|----------|
+| Minimal | `config_templates/minimal.conf` | Local network only (AutoInterface) |
+| LoRa RNODE | `config_templates/lora_rnode.conf` | RNODE radio + LAN, 6 regional freq examples |
+| TCP Client | `config_templates/tcp_client.conf` | Internet connectivity via Dublin Hub + community nodes |
+| Transport Node | `config_templates/transport_node.conf` | Full routing node with Backbone + TCP + optional LoRa |
+
+All templates:
+- Marked as `REFERENCE TEMPLATE` (not meant for direct editing)
+- Frequencies verified against [Popular RNode Settings wiki](https://github.com/markqvist/Reticulum/wiki/Popular-RNode-Settings)
+- Community nodes verified against [Community Node List wiki](https://github.com/markqvist/Reticulum/wiki/Community-Node-List)
+- US default frequency: 914875000 Hz (matches community standard)
+
+#### MeshForge Safety Principles Applied
+
+- **Config templates**: Apply function creates timestamped backup before overwriting (`config.backup.YYYYMMDD_HHMMSS`)
+- **Config editor**: Creates backup before launching editor
+- **First-run wizard**: Only triggers when `~/.reticulum/config` does not exist (non-destructive)
+- **Original config files are never wiped** without explicit backup + confirmation
+
+### Menu Structure Changes
+
+**Advanced Menu** (reorganized):
+```
+Advanced Options:
+  ─── Configuration ───
+   1) View Configuration Files
+   2) Edit Configuration File        ← NEW
+   3) Apply Configuration Template   ← NEW
+  ─── Maintenance ───
+   4) Update System Packages
+   5) Reinstall All Components
+   6) Clean Cache and Temporary Files
+   7) View/Search Logs
+   8) Reset to Factory Defaults
+```
+
+**Services Menu** (expanded):
+```
+Service Management:
+   1-5) (unchanged)
+   6) View path table     ← NEW (rnpath -t)
+   7) Probe destination   ← NEW (rnprobe)
+   8) Enable auto-start on boot
+   9) Disable auto-start on boot
+```
+
+### Design Decisions
+
+- **`check_service_status()` uses case dispatch**: Each service has its own detection strategy (rnsd=pgrep, meshtasticd=systemctl+pgrep, etc.) rather than one-size-fits-all
+- **`safe_call()` is lightweight**: Just `$@ || print_error` - no subshell overhead. Applied to main menu dispatch only (submenus have their own error handling)
+- **First-run wizard auto-skips**: Returns immediately if `~/.reticulum/config` exists - zero overhead for existing users
+- **Config templates use `cp` not symlink**: Users should edit their config freely without affecting the template
+- **Version bumped to 0.3.2-beta**: Reflects new feature additions
+
+### Test Suite Updates
+
+- 13 new BATS tests added (32 → 45 total):
+  - `check_service_status` function exists
+  - `safe_call` wrapper exists and is used in main menu
+  - `first_run_wizard` function exists
+  - Config templates directory and all 4 files exist
+  - Templates marked as reference files
+  - `apply_config_template` creates backup before overwriting
+  - `edit_config_file` function exists
+  - `rnpath -t` and `rnprobe` menu options exist
+  - No raw pgrep calls outside centralized function
+- Version test updated to 0.3.2-beta
+- `bash -n` syntax validation: PASS
+
+### Current State
+
+- Script: 3,525 lines (was ~2,900 pre-session-1)
+- Version: 0.3.2-beta
+- All `bash -n` syntax checks pass
+- No eval usage (RNS001)
+- All pgrep centralized in `check_service_status()`
+- All config operations create backups before modifying
+
+### Session Entropy Notes
+
+Session is clean - no entropy detected. All changes are focused and tested.
+
+### Remaining Work for Future Sessions
+
+**Tier 2 Remaining:**
+- Emergency/Quick Mode (field operations: start rnsd, check status, LXMF send)
+- Enhanced Diagnostics (actionable suggestions, 6-step diagnostic like MeshForge)
+
+**Tier 3:**
+- Script modularization (split into sourced files)
+- RNS Interface Management from TUI
+- Network Statistics Dashboard
+- Capability Detection at startup (scan tools once, disable unavailable menus)
+
+**Cross-cutting:**
+- PowerShell parity (ps1 hasn't received any session 1-4 improvements)
+- Integration test coverage (service polling, status cache, retry, backup round-trip)
+- RNODE hardware testing (21+ boards need real-world validation)
+- Cross-platform field testing (RPi, desktop Linux, Windows 11, WSL2)
+
+---
+
 ## Session 3: ShellCheck Lint Audit & Documentation
 **Date:** 2026-02-12
 **Branch:** claude/shellcheck-linting-docs-tVaut

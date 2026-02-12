@@ -90,7 +90,7 @@ resolve_real_home() {
 REAL_HOME="$(resolve_real_home)"
 
 # Global variables
-SCRIPT_VERSION="0.3.1-beta"
+SCRIPT_VERSION="0.3.2-beta"
 BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$REAL_HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"
@@ -477,13 +477,60 @@ validate_device_port() {
     return 0
 }
 
-# Check if rnsd process is running with specific matching
-# (adapted from meshforge service_menu_mixin.py - avoids false positives)
+# Centralized service status check (adapted from meshforge service_check.py)
+# Single source of truth for all service detection - avoids scattered pgrep calls
+# Usage: check_service_status <service_name>
+# Returns: 0 if running, 1 if stopped
+check_service_status() {
+    local service="$1"
+    case "$service" in
+        rnsd)
+            # rnsd is typically user-space; check process with exact match first,
+            # fall back to anchored patterns to avoid false positives
+            pgrep -x "rnsd" > /dev/null 2>&1 || \
+                pgrep -f "^rnsd\b" > /dev/null 2>&1 || \
+                pgrep -f "[r]nsd --daemon" > /dev/null 2>&1
+            ;;
+        meshtasticd)
+            # meshtasticd may be systemd-managed
+            if command -v systemctl &>/dev/null && systemctl is-active --quiet meshtasticd 2>/dev/null; then
+                return 0
+            fi
+            pgrep -x "meshtasticd" > /dev/null 2>&1
+            ;;
+        nomadnet)
+            pgrep -x "nomadnet" > /dev/null 2>&1 || \
+                pgrep -f "^nomadnet\b" > /dev/null 2>&1
+            ;;
+        meshchat)
+            pgrep -f "reticulum-meshchat" > /dev/null 2>&1
+            ;;
+        *)
+            # Generic: try exact match
+            pgrep -x "$service" > /dev/null 2>&1
+            ;;
+    esac
+}
+
+# Convenience wrapper (backward-compatible)
 is_rnsd_running() {
-    # Use -x for exact match on process name, fall back to -f with anchored pattern
-    pgrep -x "rnsd" > /dev/null 2>&1 || \
-        pgrep -f "^rnsd\b" > /dev/null 2>&1 || \
-        pgrep -f "[r]nsd --daemon" > /dev/null 2>&1
+    check_service_status "rnsd"
+}
+
+# Safe call wrapper (adapted from meshforge _safe_call pattern)
+# Wraps menu actions so a function failure doesn't crash the whole script
+# Usage: safe_call "Label" function_name [args...]
+safe_call() {
+    local label="$1"
+    shift
+    if "$@"; then
+        return 0
+    else
+        local rc=$?
+        print_error "$label failed (exit code: $rc)"
+        log_error "safe_call: '$label' failed with exit code $rc"
+        return $rc
+    fi
 }
 
 # Cached status queries (adapted from meshforge status_bar.py)
@@ -1929,16 +1976,16 @@ stop_services() {
         print_info "rnsd is not running"
     fi
 
-    # Check for nomadnet processes (more specific match)
-    if pgrep -x "nomadnet" > /dev/null 2>&1 || pgrep -f "^nomadnet\b" > /dev/null 2>&1; then
+    # Check for nomadnet processes (centralized service check)
+    if check_service_status "nomadnet"; then
         print_warning "NomadNet is running - please close it manually"
         echo -n "Press Enter when NomadNet is closed..."
         read -r
         log_message "User closed NomadNet manually"
     fi
 
-    # Check for MeshChat processes
-    if pgrep -f "reticulum-meshchat" > /dev/null 2>&1; then
+    # Check for MeshChat processes (centralized service check)
+    if check_service_status "meshchat"; then
         print_warning "MeshChat appears to be running - please close it manually"
         echo -n "Press Enter when MeshChat is closed..."
         read -r
@@ -2078,7 +2125,7 @@ services_menu() {
 
         # Check for meshtasticd (more specific match)
         if command -v meshtasticd &>/dev/null; then
-            if pgrep -x "meshtasticd" > /dev/null 2>&1; then
+            if check_service_status "meshtasticd"; then
                 print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
             else
                 print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
@@ -2095,8 +2142,10 @@ services_menu() {
         echo "   3) Restart rnsd daemon"
         echo "   4) View detailed status"
         echo "   5) View network statistics"
-        echo "   6) Enable auto-start on boot"
-        echo "   7) Disable auto-start on boot"
+        echo "   6) View path table"
+        echo "   7) Probe destination"
+        echo "   8) Enable auto-start on boot"
+        echo "   9) Disable auto-start on boot"
         echo ""
         echo "   0) Back to Main Menu"
         echo ""
@@ -2127,15 +2176,42 @@ services_menu() {
                 if command -v rnstatus &> /dev/null; then
                     rnstatus -a 2>&1 | head -n 50
                 else
-                    print_warning "rnstatus not available"
+                    print_warning "rnstatus not available - install RNS first"
                 fi
                 pause_for_input
                 ;;
             6)
-                setup_autostart
+                print_section "Path Table"
+                if command -v rnpath &> /dev/null; then
+                    print_info "Known paths in the Reticulum network:"
+                    echo ""
+                    rnpath -t 2>&1
+                else
+                    print_warning "rnpath not available - install RNS first"
+                fi
                 pause_for_input
                 ;;
             7)
+                print_section "Probe Destination"
+                if command -v rnprobe &> /dev/null; then
+                    echo -n "Enter destination hash to probe: "
+                    read -r PROBE_DEST
+                    if [ -n "$PROBE_DEST" ]; then
+                        print_info "Probing $PROBE_DEST..."
+                        rnprobe "$PROBE_DEST" 2>&1
+                    else
+                        print_info "Cancelled"
+                    fi
+                else
+                    print_warning "rnprobe not available - install RNS first"
+                fi
+                pause_for_input
+                ;;
+            8)
+                setup_autostart
+                pause_for_input
+                ;;
+            9)
                 disable_autostart
                 pause_for_input
                 ;;
@@ -2613,6 +2689,228 @@ run_diagnostics() {
 }
 
 #########################################################
+# Configuration Templates
+#########################################################
+
+# Apply a config template with mandatory backup (MeshForge safety principle)
+# NEVER overwrites without backing up first
+apply_config_template() {
+    print_section "Configuration Templates"
+
+    local template_dir="$SCRIPT_DIR/config_templates"
+    if [ ! -d "$template_dir" ]; then
+        print_error "Template directory not found: $template_dir"
+        return 1
+    fi
+
+    echo -e "${BOLD}Available configuration templates:${NC}\n"
+    echo "   1) Minimal       - Local network only (AutoInterface)"
+    echo "   2) LoRa RNODE    - RNODE LoRa radio + local network"
+    echo "   3) TCP Client    - Connect to remote transport nodes"
+    echo "   4) Transport Node - Full routing node (advanced)"
+    echo ""
+    echo "   v) View template before applying"
+    echo "   0) Cancel"
+    echo ""
+
+    echo -e "${YELLOW}WARNING: Applying a template replaces your current config.${NC}"
+    echo -e "${GREEN}Your existing config will be backed up first.${NC}"
+    echo ""
+    echo -n "Select template: "
+    read -r TMPL_CHOICE
+
+    local template_file=""
+    local template_name=""
+    case $TMPL_CHOICE in
+        1) template_file="$template_dir/minimal.conf"; template_name="Minimal" ;;
+        2) template_file="$template_dir/lora_rnode.conf"; template_name="LoRa RNODE" ;;
+        3) template_file="$template_dir/tcp_client.conf"; template_name="TCP Client" ;;
+        4) template_file="$template_dir/transport_node.conf"; template_name="Transport Node" ;;
+        v|V)
+            # View a template without applying
+            echo ""
+            echo -n "Which template to view (1-4)? "
+            read -r VIEW_CHOICE
+            case $VIEW_CHOICE in
+                1) template_file="$template_dir/minimal.conf" ;;
+                2) template_file="$template_dir/lora_rnode.conf" ;;
+                3) template_file="$template_dir/tcp_client.conf" ;;
+                4) template_file="$template_dir/transport_node.conf" ;;
+                *) print_error "Invalid choice"; return 1 ;;
+            esac
+            if [ -f "$template_file" ]; then
+                echo ""
+                head -n 80 "$template_file"
+                local total_lines
+                total_lines=$(wc -l < "$template_file")
+                if [ "$total_lines" -gt 80 ]; then
+                    echo ""
+                    print_info "Showing first 80 of $total_lines lines"
+                fi
+            fi
+            return 0
+            ;;
+        0|"") return 0 ;;
+        *) print_error "Invalid option"; return 1 ;;
+    esac
+
+    if [ ! -f "$template_file" ]; then
+        print_error "Template file not found: $template_file"
+        return 1
+    fi
+
+    local config_dir="$REAL_HOME/.reticulum"
+    local config_file="$config_dir/config"
+
+    # MANDATORY BACKUP before any config change (MeshForge safety principle)
+    if [ -f "$config_file" ]; then
+        local backup_name
+        backup_name="config.backup.$(date +%Y%m%d_%H%M%S)"
+        local backup_path="$config_dir/$backup_name"
+
+        print_info "Backing up current config to: ~/.reticulum/$backup_name"
+        if ! cp "$config_file" "$backup_path"; then
+            print_error "Failed to create backup - aborting (your config is unchanged)"
+            return 1
+        fi
+        print_success "Backup created: $backup_path"
+        log_message "Config backup created: $backup_path"
+    fi
+
+    # Confirm before applying
+    echo ""
+    if ! confirm_action "Apply '$template_name' template to ~/.reticulum/config?"; then
+        print_info "Cancelled - no changes made"
+        return 0
+    fi
+
+    # Create .reticulum directory if it doesn't exist
+    if [ ! -d "$config_dir" ]; then
+        mkdir -p "$config_dir"
+    fi
+
+    # Apply the template
+    if cp "$template_file" "$config_file"; then
+        print_success "Template '$template_name' applied to ~/.reticulum/config"
+        log_message "Applied config template: $template_name ($template_file)"
+        echo ""
+        print_info "Review and edit the config before starting rnsd:"
+        echo -e "  ${CYAN}nano ~/.reticulum/config${NC}"
+        echo ""
+        if [ -n "${backup_name:-}" ]; then
+            print_info "To restore your previous config:"
+            echo -e "  ${CYAN}cp ~/.reticulum/$backup_name ~/.reticulum/config${NC}"
+        fi
+        # Invalidate cache since config changed
+        invalidate_status_cache
+    else
+        print_error "Failed to apply template"
+        return 1
+    fi
+}
+
+#########################################################
+# Configuration Editor
+#########################################################
+
+# Edit a config file with the user's preferred editor
+# Creates backup before editing (MeshForge safety principle)
+edit_config_file() {
+    print_section "Edit Configuration"
+
+    local editor="${EDITOR:-${VISUAL:-nano}}"
+
+    # Verify editor is available
+    if ! command -v "$editor" &>/dev/null; then
+        editor="nano"
+        if ! command -v "$editor" &>/dev/null; then
+            editor="vi"
+        fi
+    fi
+
+    echo -e "${BOLD}Select file to edit (using $editor):${NC}\n"
+
+    local options=()
+    local paths=()
+    local idx=1
+
+    if [ -f "$REAL_HOME/.reticulum/config" ]; then
+        echo "   $idx) Reticulum config (~/.reticulum/config)"
+        options+=("$idx")
+        paths+=("$REAL_HOME/.reticulum/config")
+        ((idx++))
+    fi
+
+    if [ -f "$REAL_HOME/.nomadnetwork/config" ]; then
+        echo "   $idx) NomadNet config (~/.nomadnetwork/config)"
+        options+=("$idx")
+        paths+=("$REAL_HOME/.nomadnetwork/config")
+        ((idx++))
+    fi
+
+    if [ -f "$REAL_HOME/.lxmf/config" ]; then
+        echo "   $idx) LXMF config (~/.lxmf/config)"
+        options+=("$idx")
+        paths+=("$REAL_HOME/.lxmf/config")
+        ((idx++))
+    fi
+
+    if [ ${#options[@]} -eq 0 ]; then
+        print_warning "No configuration files found"
+        print_info "Run 'rnsd --daemon' to create initial Reticulum config"
+        pause_for_input
+        return
+    fi
+
+    echo ""
+    echo "   0) Cancel"
+    echo ""
+    echo -n "Select file: "
+    read -r EDIT_CHOICE
+
+    if [ "$EDIT_CHOICE" = "0" ] || [ -z "$EDIT_CHOICE" ]; then
+        return
+    fi
+
+    # Find the matching path
+    local target_path=""
+    for i in "${!options[@]}"; do
+        if [ "${options[$i]}" = "$EDIT_CHOICE" ]; then
+            target_path="${paths[$i]}"
+            break
+        fi
+    done
+
+    if [ -z "$target_path" ]; then
+        print_error "Invalid choice"
+        pause_for_input
+        return
+    fi
+
+    # MANDATORY BACKUP before editing (MeshForge safety principle)
+    local config_dir
+    config_dir=$(dirname "$target_path")
+    local backup_name
+    backup_name="$(basename "$target_path").backup.$(date +%Y%m%d_%H%M%S)"
+    local backup_path="$config_dir/$backup_name"
+
+    if cp "$target_path" "$backup_path"; then
+        print_info "Backup: $backup_path"
+        log_message "Config backup before edit: $backup_path"
+    else
+        print_warning "Could not create backup"
+    fi
+
+    # Launch editor
+    "$editor" "$target_path"
+
+    print_success "Editor closed"
+    log_message "Edited config file: $target_path"
+    invalidate_status_cache
+    pause_for_input
+}
+
+#########################################################
 # Advanced Options
 #########################################################
 
@@ -2776,12 +3074,17 @@ advanced_menu() {
         print_breadcrumb
 
         echo -e "${BOLD}Advanced Options:${NC}\n"
-        echo "   1) Update System Packages"
-        echo "   2) Reinstall All Components"
-        echo "   3) Clean Cache and Temporary Files"
-        echo "   4) View Configuration Files"
-        echo "   5) View/Search Logs"
-        echo "   6) Reset to Factory Defaults"
+        echo -e "  ${CYAN}─── Configuration ───${NC}"
+        echo "   1) View Configuration Files"
+        echo "   2) Edit Configuration File"
+        echo "   3) Apply Configuration Template"
+        echo ""
+        echo -e "  ${CYAN}─── Maintenance ───${NC}"
+        echo "   4) Update System Packages"
+        echo "   5) Reinstall All Components"
+        echo "   6) Clean Cache and Temporary Files"
+        echo "   7) View/Search Logs"
+        echo "   8) Reset to Factory Defaults"
         echo ""
         echo "   0) Back to Main Menu"
         echo ""
@@ -2790,17 +3093,28 @@ advanced_menu() {
 
         case $ADV_CHOICE in
             1)
-                update_system_packages
+                view_config_files
                 pause_for_input
                 ;;
             2)
+                edit_config_file
+                ;;
+            3)
+                apply_config_template
+                pause_for_input
+                ;;
+            4)
+                update_system_packages
+                pause_for_input
+                ;;
+            5)
                 print_warning "This will reinstall all Reticulum components"
                 if confirm_action "Continue?"; then
                     install_reticulum_ecosystem
                 fi
                 pause_for_input
                 ;;
-            3)
+            6)
                 print_section "Cleaning Cache"
                 print_info "Cleaning pip cache..."
                 "$PIP_CMD" cache purge 2>&1 | tee -a "$UPDATE_LOG"
@@ -2813,14 +3127,10 @@ advanced_menu() {
                 print_success "Cache cleaned"
                 pause_for_input
                 ;;
-            4)
-                view_config_files
-                pause_for_input
-                ;;
-            5)
+            7)
                 view_logs_menu
                 ;;
-            6)
+            8)
                 print_section "Reset to Factory Defaults"
                 echo -e "${RED}${BOLD}╔════════════════════════════════════════════════════════╗${NC}"
                 echo -e "${RED}${BOLD}║                      WARNING!                          ║${NC}"
@@ -2947,6 +3257,155 @@ run_startup_health_check() {
     return 0
 }
 
+# First-Run Wizard (adapted from meshforge first_run_mixin.py)
+# Detects when Reticulum is not yet configured and guides the user
+# through initial setup. Non-destructive - only runs when no config exists.
+first_run_wizard() {
+    # Only trigger if no Reticulum config exists
+    if [ -f "$REAL_HOME/.reticulum/config" ]; then
+        return 0
+    fi
+
+    # Check if RNS is installed at all
+    local rns_installed=false
+    if command -v rnsd &>/dev/null || pip3 show rns &>/dev/null 2>&1; then
+        rns_installed=true
+    fi
+
+    print_header
+    print_box_top
+    print_box_line "${CYAN}${BOLD}Welcome to RNS Management Tool${NC}"
+    print_box_line "First-time setup detected"
+    print_box_bottom
+    echo ""
+
+    if [ "$rns_installed" = false ]; then
+        print_info "Reticulum (RNS) is not installed yet."
+        echo ""
+        echo "  This wizard will help you:"
+        echo "    1. Install the Reticulum network stack"
+        echo "    2. Choose a configuration template"
+        echo "    3. Start the rnsd daemon"
+        echo ""
+
+        if ! confirm_action "Run first-time setup?" "y"; then
+            print_info "Skipping setup - you can install later from the main menu"
+            return 0
+        fi
+
+        # Step 1: Prerequisites
+        print_section "Step 1: Prerequisites"
+        if ! check_python || ! check_pip; then
+            print_info "Installing prerequisites..."
+            install_prerequisites
+        else
+            print_success "Python and pip are available"
+        fi
+
+        # Step 2: Install RNS
+        print_section "Step 2: Install Reticulum"
+        install_reticulum_ecosystem
+        invalidate_status_cache
+    else
+        print_info "Reticulum is installed but no configuration file exists."
+        echo ""
+        echo "  This wizard will help you:"
+        echo "    1. Choose a configuration template"
+        echo "    2. Start the rnsd daemon"
+        echo ""
+
+        if ! confirm_action "Run first-time setup?" "y"; then
+            print_info "Skipping - rnsd will create a default config on first start"
+            return 0
+        fi
+    fi
+
+    # Step 3: Config template selection
+    print_section "Step 3: Choose Configuration"
+    echo ""
+    echo "  How will you use Reticulum?"
+    echo ""
+    echo "   1) Local network only (simplest)"
+    echo "      Discover peers on your LAN automatically"
+    echo ""
+    echo "   2) Connect to the wider network via internet"
+    echo "      Join public transport nodes over TCP"
+    echo ""
+    echo "   3) LoRa radio with RNODE device"
+    echo "      Off-grid communication via LoRa"
+    echo ""
+    echo "   4) Transport node (advanced)"
+    echo "      Route traffic for other peers"
+    echo ""
+    echo "   5) Skip - use default config"
+    echo "      rnsd will create a minimal config"
+    echo ""
+    echo -n "Select setup type (1-5): "
+    read -r SETUP_CHOICE
+
+    local template_dir="$SCRIPT_DIR/config_templates"
+    local applied_template=false
+
+    case $SETUP_CHOICE in
+        1)
+            if [ -f "$template_dir/minimal.conf" ]; then
+                mkdir -p "$REAL_HOME/.reticulum"
+                cp "$template_dir/minimal.conf" "$REAL_HOME/.reticulum/config"
+                print_success "Minimal configuration applied"
+                applied_template=true
+            fi
+            ;;
+        2)
+            if [ -f "$template_dir/tcp_client.conf" ]; then
+                mkdir -p "$REAL_HOME/.reticulum"
+                cp "$template_dir/tcp_client.conf" "$REAL_HOME/.reticulum/config"
+                print_success "TCP client configuration applied"
+                print_info "Connected to Dublin Hub by default"
+                applied_template=true
+            fi
+            ;;
+        3)
+            if [ -f "$template_dir/lora_rnode.conf" ]; then
+                mkdir -p "$REAL_HOME/.reticulum"
+                cp "$template_dir/lora_rnode.conf" "$REAL_HOME/.reticulum/config"
+                print_success "LoRa RNODE configuration applied"
+                print_warning "Edit ~/.reticulum/config to set your device port and frequency"
+                applied_template=true
+            fi
+            ;;
+        4)
+            if [ -f "$template_dir/transport_node.conf" ]; then
+                mkdir -p "$REAL_HOME/.reticulum"
+                cp "$template_dir/transport_node.conf" "$REAL_HOME/.reticulum/config"
+                print_success "Transport node configuration applied"
+                print_warning "Review ~/.reticulum/config before starting"
+                applied_template=true
+            fi
+            ;;
+        5|"")
+            print_info "Skipping template - rnsd will create default config"
+            ;;
+        *)
+            print_info "Skipping template - rnsd will create default config"
+            ;;
+    esac
+
+    # Step 4: Start rnsd
+    if [ "$applied_template" = true ] || command -v rnsd &>/dev/null; then
+        echo ""
+        if confirm_action "Start rnsd daemon now?" "y"; then
+            start_services
+        else
+            print_info "Start later with: rnsd --daemon"
+        fi
+    fi
+
+    echo ""
+    print_success "First-time setup complete"
+    log_message "First-run wizard completed (template: ${SETUP_CHOICE:-skipped})"
+    pause_for_input
+}
+
 main() {
     # Initialize
     detect_environment
@@ -2956,6 +3415,9 @@ main() {
 
     # Run startup health check
     run_startup_health_check
+
+    # First-run wizard (only triggers when no config exists)
+    first_run_wizard
 
     # Main menu loop
     while true; do
@@ -2982,42 +3444,42 @@ main() {
                 ;;
             2)
                 # RNODE Installation
-                configure_rnode_interactive
+                safe_call "RNODE Configuration" configure_rnode_interactive
                 ;;
             3)
                 # Install NomadNet
                 check_python && check_pip
-                update_pip_package "nomadnet" "NomadNet"
+                safe_call "NomadNet Install" update_pip_package "nomadnet" "NomadNet"
                 pause_for_input
                 ;;
             4)
                 # Install MeshChat
-                install_meshchat
+                safe_call "MeshChat Install" install_meshchat
                 pause_for_input
                 ;;
             5)
                 # Install Sideband
-                install_sideband
+                safe_call "Sideband Install" install_sideband
                 pause_for_input
                 ;;
             6)
                 # Status & Diagnostics
-                run_diagnostics
+                safe_call "Diagnostics" run_diagnostics
                 echo ""
-                show_service_status
+                safe_call "Service Status" show_service_status
                 pause_for_input
                 ;;
             7)
                 # Manage Services
-                services_menu
+                safe_call "Services Menu" services_menu
                 ;;
             8)
                 # Backup/Restore
-                backup_restore_menu
+                safe_call "Backup/Restore" backup_restore_menu
                 ;;
             9)
                 # Advanced Options
-                advanced_menu
+                safe_call "Advanced Options" advanced_menu
                 ;;
             h|H|\?)
                 # Help

@@ -7,13 +7,13 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 
 This is the **only MeshForge ecosystem tool with native Windows support**. Users don't need MeshForge installed to use this tool, but if they do, they can extend its functionality through MeshForge's gateway. Upstream MeshForge updates are frequent - environment patterns, security rules, and best practices flow downstream into this tool regularly.
 
-![Version](https://img.shields.io/badge/version-0.3.1--beta-orange)
+![Version](https://img.shields.io/badge/version-0.3.2--beta-orange)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![MeshForge](https://img.shields.io/badge/MeshForge-ecosystem-blueviolet)
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
 ![ShellCheck](https://img.shields.io/badge/shellcheck-passing-green)
-![Tests](https://img.shields.io/badge/tests-32%20passing-green)
+![Tests](https://img.shields.io/badge/tests-45%20passing-green)
 
 > **Beta Software - Community Testing Needed**
 >
