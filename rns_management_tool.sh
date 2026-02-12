@@ -281,27 +281,6 @@ print_progress() {
     printf "] %3d%% - %s" "$percent" "$message"
 }
 
-# Enhanced progress bar with colors and ETA
-print_progress_bar() {
-    local current=$1
-    local total=$2
-    local title="${3:-Progress}"
-    local width=40
-    local percent=$((current * 100 / total))
-    local filled=$((current * width / total))
-    local empty=$((width - filled))
-
-    # Color based on progress
-    local bar_color="$YELLOW"
-    [ $percent -ge 50 ] && bar_color="$CYAN"
-    [ $percent -ge 90 ] && bar_color="$GREEN"
-
-    printf "\r  ${title}: ${bar_color}["
-    printf "%${filled}s" | tr ' ' '█'
-    printf "%${empty}s" | tr ' ' '░'
-    printf "]${NC} %3d%% (%d/%d)" "$percent" "$current" "$total"
-}
-
 # Step-based progress display for multi-step operations
 declare -a OPERATION_STEPS=()
 CURRENT_STEP=0
@@ -559,21 +538,6 @@ invalidate_status_cache() {
 pause_for_input() {
     echo -e "\n${YELLOW}Press Enter to continue...${NC}"
     read -r
-}
-
-show_spinner() {
-    local pid=$1
-    local message=$2
-    local spinstr='|/-\'
-
-    while kill -0 "$pid" 2>/dev/null; do
-        local temp=${spinstr#?}
-        printf " [%c] %s" "$spinstr" "$message"
-        spinstr=$temp${spinstr%"$temp"}
-        sleep 0.1
-        printf "\r"
-    done
-    printf "    \r"
 }
 
 # Strip ANSI escape codes for accurate string length measurement
@@ -1270,10 +1234,7 @@ rnode_bootloader() {
     device_port=$(rnode_get_device_port) || return 1
 
     # RNS005: Confirmation for destructive actions
-    echo -n "Are you sure you want to update the bootloader? (yes/no): "
-    read -r CONFIRM
-
-    if [ "$CONFIRM" = "yes" ]; then
+    if confirm_action "Are you sure you want to update the bootloader?"; then
         print_info "Updating bootloader..."
         rnodeconf "$device_port" --rom 2>&1 | tee -a "$UPDATE_LOG"
     else
@@ -2181,7 +2142,6 @@ services_menu() {
                 ;;
             *)
                 print_error "Invalid option"
-                sleep 1
                 ;;
         esac
     done
@@ -2304,7 +2264,6 @@ backup_restore_menu() {
                 ;;
             *)
                 print_error "Invalid option"
-                sleep 1
                 ;;
         esac
     done
@@ -2775,7 +2734,7 @@ view_logs_menu() {
                 if [ -n "$SEARCH_TERM" ]; then
                     print_info "Searching for '$SEARCH_TERM' in log files..."
                     echo ""
-                    grep -r --color=always "$SEARCH_TERM" "$REAL_HOME"/rns_management_*.log 2>/dev/null || \
+                    grep -rF --color=always "$SEARCH_TERM" "$REAL_HOME"/rns_management_*.log 2>/dev/null || \
                         print_warning "No matches found"
                 fi
                 pause_for_input
@@ -2800,7 +2759,6 @@ view_logs_menu() {
                 ;;
             *)
                 print_error "Invalid option"
-                sleep 1
                 ;;
         esac
     done
@@ -2895,7 +2853,6 @@ advanced_menu() {
                 ;;
             *)
                 print_error "Invalid option"
-                sleep 1
                 ;;
         esac
     done
