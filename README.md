@@ -7,12 +7,19 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 
 This is the **only MeshForge ecosystem tool with native Windows support**. Users don't need MeshForge installed to use this tool, but if they do, they can extend its functionality through MeshForge's gateway. Upstream MeshForge updates are frequent - environment patterns, security rules, and best practices flow downstream into this tool regularly.
 
-![Version](https://img.shields.io/badge/version-0.3.0--beta-orange)
+![Version](https://img.shields.io/badge/version-0.3.1--beta-orange)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![MeshForge](https://img.shields.io/badge/MeshForge-ecosystem-blueviolet)
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
-![Tests](https://img.shields.io/badge/shellcheck-passing-green)
+![ShellCheck](https://img.shields.io/badge/shellcheck-passing-green)
+![Tests](https://img.shields.io/badge/tests-32%20passing-green)
+
+> **Beta Software - Community Testing Needed**
+>
+> This tool is functional and actively developed, but has not been comprehensively field-tested across all supported platforms and hardware. If you use this tool, **please report issues and contribute improvements**. Your real-world testing on Raspberry Pi, desktop Linux, Windows, and with RNODE hardware is invaluable.
+>
+> Report issues: [GitHub Issues](https://github.com/Nursedude/RNS-Management-Tool/issues) | Contribute: [Pull Requests](https://github.com/Nursedude/RNS-Management-Tool/pulls)
 
 ---
 
@@ -674,7 +681,17 @@ flowchart LR
 
 ## Contributing
 
-Contributions are welcome! This tool tracks upstream MeshForge patterns, so contributions that align with MeshForge conventions are preferred.
+Contributions are welcome and actively encouraged! This tool is in beta and benefits greatly from real-world testing across different hardware and platforms.
+
+### How You Can Help
+
+- **Test on your hardware** - Run it on your Raspberry Pi, desktop Linux, or Windows machine and report what works and what doesn't
+- **Report issues** - Even "it worked fine" is useful feedback. Open an issue at [GitHub Issues](https://github.com/Nursedude/RNS-Management-Tool/issues)
+- **Test with RNODE devices** - RNODE configuration across the 21+ supported boards needs real-world validation
+- **PowerShell improvements** - The Windows ps1 script has feature parity gaps compared to the Bash version
+- **Submit fixes** - Bug fixes, documentation improvements, and new features are all welcome
+
+This tool tracks upstream MeshForge patterns, so contributions that align with MeshForge conventions are preferred.
 
 ### Development Setup
 
@@ -685,9 +702,28 @@ cd RNS-Management-Tool
 
 # Run syntax checks
 bash -n rns_management_tool.sh
-shellcheck rns_management_tool.sh
+shellcheck -x rns_management_tool.sh
 
-# Run tests
+# Run tests (32 tests, all should pass)
+bats tests/rns_management_tool.bats
+```
+
+### Code Quality Gates
+
+All shell scripts must pass these checks before merging:
+
+```bash
+# Syntax validation (all scripts)
+bash -n rns_management_tool.sh
+bash -n reticulum_updater.sh
+
+# ShellCheck linting (zero warnings required)
+shellcheck -x rns_management_tool.sh
+shellcheck reticulum_updater.sh
+shellcheck FIXES_TO_APPLY.sh
+shellcheck QUICK_FIXES.sh
+
+# BATS test suite (32 tests)
 bats tests/rns_management_tool.bats
 ```
 
@@ -710,7 +746,16 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Version History
 
-### Version 0.3.0-beta (Current)
+### Version 0.3.1-beta (Current)
+- **ShellCheck Clean** - All 4 shell scripts pass `shellcheck` with zero warnings
+  - 103 issues resolved in `rns_management_tool.sh` (printf format safety, variable quoting, error handling)
+  - 6 issues resolved in `reticulum_updater.sh` (encoding fixes, read safety, cd error handling)
+  - Utility scripts (`FIXES_TO_APPLY.sh`, `QUICK_FIXES.sh`) also passing clean
+- **Test Suite** - 32 BATS tests, all passing (including strict `shellcheck -x` integration test)
+- **Code Quality** - Proper variable quoting, `popd` error handling, useless-cat elimination, parameter expansion
+- **Encoding Fixes** - Fixed double-encoded UTF-8 characters in updater script
+
+### Version 0.3.0-beta
 - **MeshForge Ecosystem** - Positioned as part of the MeshForge ecosystem
 - **Environment Hardening** - 14 env detection patterns ported from MeshForge upstream:
   - Terminal capability detection with color fallback
@@ -782,7 +827,12 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-Manageme
 
 ## What's Next?
 
-Planned features:
+### Immediate Priorities (Community Help Wanted)
+- [ ] **Real-world testing** - Test on Raspberry Pi, desktop Linux, Windows, and with RNODE hardware
+- [ ] **PowerShell parity** - Port ShellCheck-level improvements to the ps1 script
+- [ ] **Integration test coverage** - Automated tests for service management, backup/restore, retry logic
+
+### Planned Features
 - [ ] Automatic update notifications
 - [ ] Configuration templates for common setups
 - [ ] Multi-node deployment tools

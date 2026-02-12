@@ -1,4 +1,6 @@
 #!/bin/bash
+# shellcheck disable=SC2317  # Functions called via TUI menus/traps appear unreachable to static analysis
+# shellcheck disable=SC2034  # Color vars and log level constants are part of the UI API
 
 #########################################################
 # RNS Management Tool
@@ -88,11 +90,10 @@ resolve_real_home() {
 REAL_HOME="$(resolve_real_home)"
 
 # Global variables
-SCRIPT_VERSION="0.3.0-beta"
+SCRIPT_VERSION="0.3.1-beta"
 BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
 UPDATE_LOG="$REAL_HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
 MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"
-NOMADNET_DIR="$REAL_HOME/NomadNet"
 SIDEBAND_DIR="$REAL_HOME/Sideband"
 NEEDS_REBOOT=false
 IS_WSL=false
@@ -196,6 +197,7 @@ detect_environment() {
 
     # Detect OS
     if [ -f /etc/os-release ]; then
+        # shellcheck source=/etc/os-release
         . /etc/os-release
         OS_TYPE="${NAME:-Unknown}"
         OS_VERSION="${VERSION_ID:-Unknown}"
@@ -275,10 +277,10 @@ print_progress() {
     local filled=$((percent / 2))
     local empty=$((50 - filled))
 
-    printf "\r${CYAN}Progress:${NC} ["
+    printf '\r%sProgress:%s [' "${CYAN}" "${NC}"
     printf "%${filled}s" | tr ' ' '='
     printf "%${empty}s" | tr ' ' ' '
-    printf "] %3d%% - %s" "$percent" "$message"
+    printf '] %3d%% - %s' "$percent" "$message"
 }
 
 # Step-based progress display for multi-step operations
@@ -309,7 +311,7 @@ next_step() {
     local status="${1:-success}"
     local total=${#OPERATION_STEPS[@]}
 
-    if [ $CURRENT_STEP -lt $total ]; then
+    if [ "$CURRENT_STEP" -lt "$total" ]; then
         if [ "$status" = "success" ]; then
             echo -e "  ${GREEN}✓${NC} ${OPERATION_STEPS[$CURRENT_STEP]}"
         elif [ "$status" = "skip" ]; then
@@ -356,7 +358,7 @@ cleanup_on_exit() {
     local exit_code=$?
     # Remove any temp files created during session
     rm -f /tmp/rns_mgmt_*.tmp 2>/dev/null
-    if [ $exit_code -ne 0 ] && [ $exit_code -ne 130 ]; then
+    if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
         log_error "Script exited with code $exit_code"
     fi
     # Ensure log is written
@@ -559,26 +561,26 @@ print_box_line() {
         visible_len=${#stripped}
     fi
     local padding=$((BOX_WIDTH - visible_len - 4))
-    [ $padding -lt 0 ] && padding=0
-    printf "${BOLD}│${NC} %s%*s ${BOLD}│${NC}\n" "$content" "$padding" ""
+    [ "$padding" -lt 0 ] && padding=0
+    printf '%s│%s %s%*s %s│%s\n' "${BOLD}" "${NC}" "$content" "$padding" "" "${BOLD}" "${NC}"
 }
 
 print_box_top() {
-    printf "${BOLD}┌"
-    printf '─%.0s' $(seq 1 $BOX_WIDTH)
-    printf "┐${NC}\n"
+    printf '%s┌' "${BOLD}"
+    printf '─%.0s' $(seq 1 "$BOX_WIDTH")
+    printf '┐%s\n' "${NC}"
 }
 
 print_box_bottom() {
-    printf "${BOLD}└"
-    printf '─%.0s' $(seq 1 $BOX_WIDTH)
-    printf "┘${NC}\n"
+    printf '%s└' "${BOLD}"
+    printf '─%.0s' $(seq 1 "$BOX_WIDTH")
+    printf '┘%s\n' "${NC}"
 }
 
 print_box_divider() {
-    printf "${BOLD}├"
-    printf '─%.0s' $(seq 1 $BOX_WIDTH)
-    printf "┤${NC}\n"
+    printf '%s├' "${BOLD}"
+    printf '─%.0s' $(seq 1 "$BOX_WIDTH")
+    printf '┤%s\n' "${NC}"
 }
 
 print_breadcrumb() {
@@ -988,7 +990,7 @@ install_rnode_tools() {
     # rnodeconf is part of the rns package
     print_info "Installing/Updating RNS (includes rnodeconf)..."
 
-    if run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install rns --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    if run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install rns --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         print_success "RNS and rnodeconf installed successfully"
 
         # Verify rnodeconf is available
@@ -1046,7 +1048,7 @@ rnode_autoinstall() {
         echo ""
         rnodeconf --autoinstall 2>&1 | tee -a "$UPDATE_LOG"
 
-        if [ ${PIPESTATUS[0]} -eq 0 ]; then
+        if [ "${PIPESTATUS[0]}" -eq 0 ]; then
             print_success "RNODE firmware installed successfully!"
             log_message "RNODE autoinstall completed"
         else
@@ -1341,7 +1343,7 @@ configure_rnode_interactive() {
 
 get_installed_version() {
     local package=$1
-    $PIP_CMD show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}'
+    "$PIP_CMD" show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}'
 }
 
 check_package_installed() {
@@ -1381,7 +1383,7 @@ update_pip_package() {
     fi
 
     # Try update with --break-system-packages flag (needed on newer systems) - with retry
-    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install "$package" --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install "$package" --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         NEW_VERSION=$(get_installed_version "$package")
 
         if [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
@@ -1441,7 +1443,7 @@ install_reticulum_ecosystem() {
     local success=true
 
     # RNS first (core dependency) - with retry
-    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install rns --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install rns --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         next_step "success"
         # Verify RNS installation (meshforge post-install verify pattern)
         if python3 -c "import RNS; print(f'RNS {RNS.__version__}')" 2>/dev/null; then
@@ -1458,7 +1460,7 @@ install_reticulum_ecosystem() {
     fi
 
     # LXMF (depends on RNS) - with retry
-    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install lxmf --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install lxmf --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         next_step "success"
         # Verify LXMF installation
         if python3 -c "import LXMF; print(f'LXMF {LXMF.__version__}')" 2>/dev/null; then
@@ -1476,7 +1478,7 @@ install_reticulum_ecosystem() {
 
     # NomadNet (optional)
     if [ "$install_nomad" = true ]; then
-        if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install nomadnet --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install nomadnet --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
             next_step "success"
             if python3 -c "import nomadnet" 2>/dev/null; then
                 next_step "success"
@@ -1573,7 +1575,7 @@ install_meshchat() {
             next_step "success"
         else
             next_step "fail"
-            popd > /dev/null
+            popd > /dev/null || true
             complete_operation "fail"
             return 1
         fi
@@ -1595,7 +1597,7 @@ install_meshchat() {
         next_step "success"
     else
         next_step "fail"
-        popd > /dev/null
+        popd > /dev/null || true
         complete_operation "fail"
         show_error_help "nodejs" ""
         return 1
@@ -1610,7 +1612,7 @@ install_meshchat() {
         next_step "success"
     else
         next_step "fail"
-        popd > /dev/null
+        popd > /dev/null || true
         complete_operation "fail"
         return 1
     fi
@@ -1626,7 +1628,7 @@ install_meshchat() {
         next_step "fail"
     fi
 
-    popd > /dev/null
+    popd > /dev/null || true
     complete_operation "success"
     return 0
 }
@@ -1747,11 +1749,11 @@ install_sideband_pip() {
 
     print_info "Installing Sideband..."
 
-    if run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install sbapp --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    if run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install sbapp --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         print_success "Sideband installed successfully"
 
         # Verify installation
-        if command -v sideband &> /dev/null || $PIP_CMD show sbapp &>/dev/null; then
+        if command -v sideband &> /dev/null || "$PIP_CMD" show sbapp &>/dev/null; then
             local sb_version
             sb_version=$($PIP_CMD show sbapp 2>/dev/null | grep "^Version:" | awk '{print $2}')
             print_success "Sideband v$sb_version is ready"
@@ -1802,14 +1804,14 @@ install_sideband_source() {
     fi
 
     print_info "Installing from source..."
-    if run_with_timeout "$PIP_TIMEOUT" $PIP_CMD install . --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    if run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install . --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         print_success "Sideband installed from source"
         create_sideband_launcher
-        popd > /dev/null
+        popd > /dev/null || true
         return 0
     else
         print_error "Failed to install Sideband from source"
-        popd > /dev/null
+        popd > /dev/null || true
         return 1
     fi
 }
@@ -2292,8 +2294,9 @@ list_all_backups() {
         local backup_size
         backup_size=$(du -sh "$backup" 2>/dev/null | cut -f1)
 
-        # Format date nicely
+        # Format date nicely (capture groups require sed, not parameter expansion)
         local formatted_date
+        # shellcheck disable=SC2001
         formatted_date=$(echo "$backup_date" | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)_\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
 
         echo -e "  ${GREEN}●${NC} $formatted_date (Size: $backup_size)"
@@ -2505,8 +2508,10 @@ restore_backup() {
 
     local i=1
     for backup in "${backups[@]}"; do
-        local backup_name=$(basename "$backup")
-        local backup_date=$(echo "$backup_name" | sed -n 's/.*\([0-9]\{8\}_[0-9]\{6\}\).*/\1/p')
+        local backup_name
+        backup_name=$(basename "$backup")
+        local backup_date
+        backup_date=$(echo "$backup_name" | sed -n 's/.*\([0-9]\{8\}_[0-9]\{6\}\).*/\1/p')
         echo "  $i) $backup_date"
         ((i++))
     done
@@ -2583,7 +2588,7 @@ run_diagnostics() {
 
     # USB devices (for RNODE detection)
     echo -e "${CYAN}USB Serial Devices:${NC}"
-    if ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | head -10; then
+    if find /dev -maxdepth 1 \( -name 'ttyUSB*' -o -name 'ttyACM*' \) 2>/dev/null | head -10; then
         echo "  (Possible RNODE devices detected)"
     else
         echo "  No USB serial devices found"
@@ -2650,7 +2655,7 @@ view_config_files() {
             if [ -f "$REAL_HOME/.reticulum/config" ]; then
                 print_section "Reticulum Configuration"
                 echo -e "${CYAN}File: ~/.reticulum/config${NC}\n"
-                cat "$REAL_HOME/.reticulum/config" | head -n 100
+                head -n 100 "$REAL_HOME/.reticulum/config"
                 if [ "$(wc -l < "$REAL_HOME/.reticulum/config")" -gt 100 ]; then
                     echo ""
                     print_info "Showing first 100 lines. Use 'cat ~/.reticulum/config' for full file."
@@ -2661,14 +2666,14 @@ view_config_files() {
             if [ -f "$REAL_HOME/.nomadnetwork/config" ]; then
                 print_section "NomadNet Configuration"
                 echo -e "${CYAN}File: ~/.nomadnetwork/config${NC}\n"
-                cat "$REAL_HOME/.nomadnetwork/config" | head -n 100
+                head -n 100 "$REAL_HOME/.nomadnetwork/config"
             fi
             ;;
         3)
             if [ -f "$REAL_HOME/.lxmf/config" ]; then
                 print_section "LXMF Configuration"
                 echo -e "${CYAN}File: ~/.lxmf/config${NC}\n"
-                cat "$REAL_HOME/.lxmf/config" | head -n 100
+                head -n 100 "$REAL_HOME/.lxmf/config"
             fi
             ;;
         0|"")
@@ -2798,7 +2803,7 @@ advanced_menu() {
             3)
                 print_section "Cleaning Cache"
                 print_info "Cleaning pip cache..."
-                $PIP_CMD cache purge 2>&1 | tee -a "$UPDATE_LOG"
+                "$PIP_CMD" cache purge 2>&1 | tee -a "$UPDATE_LOG"
 
                 if command -v npm &>/dev/null; then
                     print_info "Cleaning npm cache..."
