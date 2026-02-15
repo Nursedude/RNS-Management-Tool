@@ -82,14 +82,14 @@ function Detect-Environment {
         $Script:HasColor = $false
     }
 
-    Write-Log "Environment: Admin=$($Script:IsAdmin), WSL=$($Script:HasWSL), Remote=$($Script:IsRemoteSession), Color=$($Script:HasColor)" "INFO"
+    Write-RnsLog "Environment: Admin=$($Script:IsAdmin), WSL=$($Script:HasWSL), Remote=$($Script:IsRemoteSession), Color=$($Script:HasColor)" "INFO"
 }
 
 #########################################################
 # Leveled Logging (adapted from meshforge logging_config.py)
 #########################################################
 
-function Write-Log {
+function Write-RnsLog {
     param(
         [string]$Message,
         [string]$Level = "INFO"
@@ -130,23 +130,23 @@ function Test-DiskSpace {
         $freeGB = [math]::Round($drive.Free / 1GB, 2)
         $freeMB = [math]::Round($drive.Free / 1MB)
 
-        Write-Log "Disk space: ${freeGB}GB free on $($drive.Name): (minimum: ${MinimumMB}MB)" "DEBUG"
+        Write-RnsLog "Disk space: ${freeGB}GB free on $($drive.Name): (minimum: ${MinimumMB}MB)" "DEBUG"
 
         if ($freeMB -lt 100) {
             Write-ColorOutput "Critical: Only ${freeMB}MB disk space available" "Error"
-            Write-Log "Critical disk space: ${freeMB}MB" "ERROR"
+            Write-RnsLog "Critical disk space: ${freeMB}MB" "ERROR"
             return $false
         }
         elseif ($freeMB -lt $MinimumMB) {
             Write-ColorOutput "Low disk space: ${freeMB}MB available (recommend ${MinimumMB}MB)" "Warning"
-            Write-Log "Low disk space: ${freeMB}MB" "WARN"
+            Write-RnsLog "Low disk space: ${freeMB}MB" "WARN"
             return $false
         }
 
         return $true
     }
     catch {
-        Write-Log "Could not check disk space: $_" "WARN"
+        Write-RnsLog "Could not check disk space: $_" "WARN"
         return $true  # Don't block on check failure
     }
 }
@@ -163,19 +163,19 @@ function Test-AvailableMemory {
         $freeMB = [math]::Round($os.FreePhysicalMemory / 1024)
         $percentFree = [math]::Round(($os.FreePhysicalMemory / $os.TotalVisibleMemorySize) * 100)
 
-        Write-Log "Memory: ${freeMB}MB free of ${totalMB}MB (${percentFree}%)" "DEBUG"
+        Write-RnsLog "Memory: ${freeMB}MB free of ${totalMB}MB (${percentFree}%)" "DEBUG"
 
         if ($percentFree -lt 10) {
             Write-ColorOutput "Low memory: ${freeMB}MB free (${percentFree}%)" "Warning"
             Write-ColorOutput "Hint: Close other applications to free memory" "Info"
-            Write-Log "Low memory: ${freeMB}MB free (${percentFree}%)" "WARN"
+            Write-RnsLog "Low memory: ${freeMB}MB free (${percentFree}%)" "WARN"
             return $false
         }
 
         return $true
     }
     catch {
-        Write-Log "Could not check memory: $_" "WARN"
+        Write-RnsLog "Could not check memory: $_" "WARN"
         return $true
     }
 }
@@ -187,7 +187,7 @@ function Invoke-StartupHealthCheck {
     #>
     $warnings = 0
 
-    Write-Log "Running startup health check..." "INFO"
+    Write-RnsLog "Running startup health check..." "INFO"
 
     # 1. Disk space
     if (-not (Test-DiskSpace -MinimumMB 500)) {
@@ -212,14 +212,14 @@ function Invoke-StartupHealthCheck {
 
     # 4. Remote session notice
     if ($Script:IsRemoteSession) {
-        Write-Log "Running via remote session (RDP/SSH/PSRemoting)" "DEBUG"
+        Write-RnsLog "Running via remote session (RDP/SSH/PSRemoting)" "DEBUG"
     }
 
     if ($warnings -gt 0) {
-        Write-Log "Startup health check completed with $warnings warning(s)" "WARN"
+        Write-RnsLog "Startup health check completed with $warnings warning(s)" "WARN"
     }
     else {
-        Write-Log "Startup health check passed" "INFO"
+        Write-RnsLog "Startup health check passed" "INFO"
     }
 }
 
@@ -775,7 +775,7 @@ function Install-MeshChat {
             Write-Host ""
             Write-Host "Start MeshChat with:" -ForegroundColor Yellow
             Write-Host "  cd $meshchatDir && npm start" -ForegroundColor Cyan
-            Write-Log "MeshChat installed: $($pkg.version)" "INFO"
+            Write-RnsLog "MeshChat installed: $($pkg.version)" "INFO"
         }
 
         Pop-Location
@@ -948,7 +948,7 @@ function Set-RnodeRadioParameters {
     Write-Host ""
     Write-ColorOutput "Executing: rnodeconf $($cmdArgs -join ' ')" "Info"
     & rnodeconf @cmdArgs 2>&1
-    Write-Log "RNODE radio config: rnodeconf $($cmdArgs -join ' ')" "INFO"
+    Write-RnsLog "RNODE radio config: rnodeconf $($cmdArgs -join ' ')" "INFO"
 
     pause
 }
@@ -971,7 +971,7 @@ function Get-RnodeEeprom {
 
     Write-ColorOutput "Reading device EEPROM..." "Info"
     & rnodeconf $port --eeprom 2>&1
-    Write-Log "RNODE EEPROM read on $port" "INFO"
+    Write-RnsLog "RNODE EEPROM read on $port" "INFO"
 
     pause
 }
@@ -1008,7 +1008,7 @@ function Update-RnodeBootloader {
 
     Write-ColorOutput "Updating bootloader..." "Info"
     & rnodeconf $port --rom 2>&1
-    Write-Log "RNODE bootloader update on $port" "INFO"
+    Write-RnsLog "RNODE bootloader update on $port" "INFO"
 
     pause
 }
@@ -1378,7 +1378,7 @@ function Invoke-DiagReportSummary {
     }
 
     Write-Host ""
-    Write-Log "Diagnostics complete: $($Script:DiagIssues) issues, $($Script:DiagWarnings) warnings" "INFO"
+    Write-RnsLog "Diagnostics complete: $($Script:DiagIssues) issues, $($Script:DiagWarnings) warnings" "INFO"
 }
 
 function Show-Diagnostics {
@@ -2236,9 +2236,9 @@ function Main {
     Detect-Environment
 
     # Initialize log
-    Write-Log "=== RNS Management Tool for Windows Started ===" "INFO"
-    Write-Log "Version: $($Script:Version)" "INFO"
-    Write-Log "RealHome=$($Script:RealHome), ScriptDir=$($Script:ScriptDir)" "INFO"
+    Write-RnsLog "=== RNS Management Tool for Windows Started ===" "INFO"
+    Write-RnsLog "Version: $($Script:Version)" "INFO"
+    Write-RnsLog "RealHome=$($Script:RealHome), ScriptDir=$($Script:ScriptDir)" "INFO"
 
     # Run startup health check (meshforge startup_health.py pattern)
     Invoke-StartupHealthCheck
@@ -2267,7 +2267,7 @@ function Main {
                 Write-Host "│  github.com/Nursedude/RNS-Management-Tool              │" -ForegroundColor Cyan
                 Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
                 Write-Host ""
-                Write-Log "=== RNS Management Tool Ended ===" "INFO"
+                Write-RnsLog "=== RNS Management Tool Ended ===" "INFO"
                 exit 0
             }
             default {
