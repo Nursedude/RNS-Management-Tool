@@ -2,6 +2,136 @@
 
 ---
 
+## Session 12: Pester Tests, Bug Fixes, CI Expansion
+**Date:** 2026-02-15
+**Branch:** `claude/session-notes-setup-mwQ5y`
+**Parent:** Session 11
+
+### Objective
+Address the three P1/P2 handoff items from Session 11: fix the `safe_call()` exit code capture bug, fix hardcoded `/tmp` paths for WSL2 compatibility, and create Pester test suites for PowerShell modules (zero behavioral coverage on 2,927 lines).
+
+### Changes Applied
+
+#### 1. Fix `safe_call()` Exit Code Capture Bug (`lib/utils.sh:428-460`)
+
+**Bug:** `local rc=$?` on line 436 captured the `if` test result (always 1), not the original command's exit code. Error categorization for codes 124/126/127/130 never triggered.
+
+**Fix:** Replaced `if "$@"; then ... fi; local rc=$?` with `local rc=0; "$@" || rc=$?; if [ $rc -eq 0 ]; then return 0; fi`. The `"$@" || rc=$?` pattern runs the command and captures its real exit code on failure.
+
+**Impact:** User-facing error messages now correctly categorize:
+- 126: Permission denied
+- 127: Command not found
+- 124: Operation timed out
+- 130: Ctrl+C interrupt
+
+#### 2. Fix Hardcoded `/tmp` Paths (`lib/advanced.sh`, `lib/utils.sh`)
+
+| File | Line | Before | After |
+|------|------|--------|-------|
+| `lib/advanced.sh` | 299 | `/tmp/rns_management_...` | `${TMPDIR:-/tmp}/rns_management_...` |
+| `lib/utils.sh` | 226 | `rm -f /tmp/rns_mgmt_*.tmp` | `rm -f "${TMPDIR:-/tmp}"/rns_mgmt_*.tmp` |
+
+Uses `$TMPDIR` (POSIX standard) with `/tmp` fallback. Handles exotic WSL2 setups where `/tmp` may not be the standard temp directory.
+
+#### 3. Pester Test Suite: `tests/rnode.tests.ps1` (70 tests)
+
+| Category | Tests | What It Validates |
+|----------|-------|-------------------|
+| COM Port Validation (RNS002) | 13 | Regex `^COM\d+$` accepts valid ports, rejects injection (`;`, `` ` ``, `$()`, `../`, Linux paths) |
+| Spreading Factor (RNS003) | 7 | Range 7-12 boundaries, non-numeric rejection |
+| Coding Rate (RNS003) | 6 | Range 5-8 boundaries |
+| TX Power (RNS003) | 8 | Range -10 to 30 dBm, negative values, non-numeric |
+| Frequency | 7 | Numeric validation for 433/868/915MHz, float/negative rejection |
+| Bandwidth | 5 | 125/250/500 kHz validation |
+| Command Safety (RNS001) | 4 | Array-based `$cmdArgs`, splatting `@cmdArgs`, no Invoke-Expression/iex |
+| Destructive Safety (RNS005) | 4 | Bootloader warning, confirmation prompt, y/Y check |
+| Function Existence | 7 | All 6 functions present, SupportsShouldProcess on Set-RnodeRadioParameter |
+| USB Detection | 3 | CIM Win32_PnPEntity, chipset patterns, SerialPort.GetPortNames |
+| Menu Structure | 6 | Installation/Configuration sections, while loop, back option, rnodeconf check |
+
+#### 4. Pester Test Suite: `tests/backup.tests.ps1` (48 tests)
+
+| Category | Tests | What It Validates |
+|----------|-------|-------------------|
+| Path Traversal (RNS004) | 14 | `..` check, absolute path `/` and `\` check, security logging, ZipFile.OpenRead, Dispose, validation-before-extraction order |
+| Archive Content | 5 | .reticulum/.nomadnetwork/.lxmf detection, hasReticulumConfig flag, warning on missing content |
+| Import Validation | 4 | .zip extension check, Test-Path, overwrite confirmation, backup-before-import order |
+| Export | 5 | Function exists, Compress-Archive, timestamped filename, temp cleanup, logging |
+| New-Backup | 4 | Function exists, SupportsShouldProcess, directory creation, .reticulum copy |
+| Restore-Backup | 3 | Function exists, overwrite confirmation, backup listing |
+| Remove-OldBackups | 4 | Function exists, keeps 3 most recent, confirmation, logging |
+| Get-AllBackups | 3 | Function exists, formatted dates, backup sizes |
+| Menu Structure | 5 | Function exists, while loop, back option, backup count, all 6 menu options wired |
+| Function Count | 1 | Exactly 7 functions in backup.ps1 |
+
+#### 5. CI Workflow Update (`.github/workflows/lint.yml`)
+
+Added `pester` job to the CI workflow:
+- Runs on `windows-latest`
+- Uses Pester v5 configuration API
+- Runs all `tests/*.tests.ps1` files
+- Outputs NUnit XML results to `tests/pester-results.xml`
+
+| Job | Runner | Status |
+|-----|--------|--------|
+| `shellcheck` | ubuntu-latest | Existing |
+| `check-mode` | ubuntu-latest | Existing |
+| `smoke-test` | ubuntu-latest | Existing |
+| `bats` | ubuntu-latest | Existing |
+| `powershell` | windows-latest | Existing |
+| `pester` | windows-latest | **NEW** |
+
+#### 6. Smoke Test Update (`tests/smoke_test.sh`)
+
+Added Pester test file existence assertions:
+- `rnode.tests.ps1` exists
+- `backup.tests.ps1` exists
+
+Results: **183 passed, 0 failed, 1 skipped** (up from 181)
+
+### Test Coverage Summary
+
+| Suite | Before | After | Delta |
+|-------|--------|-------|-------|
+| smoke_test.sh | 181 | 183 | +2 |
+| rns_management_tool.bats | 63 | 63 | +0 |
+| hardware_validation.bats | 104 | 104 | +0 |
+| integration_tests.bats | 107 | 107 | +0 |
+| rnode.tests.ps1 (Pester) | — | 70 | +70 |
+| backup.tests.ps1 (Pester) | — | 48 | +48 |
+| **Total** | **455** | **575** | **+120** |
+
+### Session 11 Handoff Items Status
+- [x] Fix `safe_call()` exit code capture bug — **RESOLVED**
+- [x] Fix hardcoded `/tmp` paths (WSL2 edge case) — **RESOLVED**
+- [x] Pester tests for `pwsh/rnode.ps1` — **RESOLVED** (70 tests)
+- [x] Pester tests for `pwsh/backup.ps1` — **RESOLVED** (48 tests)
+- [x] Add Pester CI job — **RESOLVED**
+
+### Items for Next Session (Handoff)
+
+**P1 — Pester Tests for Remaining PowerShell Modules**
+- 7 modules still lack Pester coverage: `core.ps1`, `ui.ps1`, `environment.ps1`, `install.ps1`, `services.ps1`, `diagnostics.ps1`, `advanced.ps1`
+- Priority order: `services.ps1` (autostart, rnsd control), `core.ps1` (log rotation, health checks), `advanced.ps1` (factory reset safety)
+
+**P2 — RNS Interface Management from TUI**
+- Add/remove/edit interfaces in `~/.reticulum/config` from the TUI
+- Most impactful UX feature remaining — users currently must manually edit config
+
+**P2 — Network Statistics Dashboard**
+- Persistent monitoring view using rnstatus output
+- Compact refresh loop with TTL-based polling
+
+**P3 — rnsh Integration**
+- Add rnsh (remote shell) to services menu
+- Similar to rnx but persistent shell session
+
+**P3 — Config Drift Detection**
+- Compare running config against template baseline
+- Meshforge `config_drift.py` pattern
+
+---
+
 ## Session 11: Test Coverage — RNODE Hardware Validation, Integration Tests, Code Review
 **Date:** 2026-02-15
 **Branch:** `claude/test-coverage-hardware-6bFFI`

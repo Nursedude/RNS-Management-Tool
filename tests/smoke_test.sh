@@ -356,6 +356,21 @@ else
     skip "RNS004: Could not verify path traversal checks"
 fi
 
+# ─── 7b. Pester Test Files ──────────────────────────────
+section "Pester Tests"
+
+if [ -f "$SCRIPT_DIR/tests/rnode.tests.ps1" ]; then
+    pass "Pester test file rnode.tests.ps1 exists"
+else
+    fail "Pester test file rnode.tests.ps1 not found"
+fi
+
+if [ -f "$SCRIPT_DIR/tests/backup.tests.ps1" ]; then
+    pass "Pester test file backup.tests.ps1 exists"
+else
+    fail "Pester test file backup.tests.ps1 not found"
+fi
+
 # ─── 8. Global Counter Pattern ───────────────────────────
 section "Diagnostics Pattern"
 

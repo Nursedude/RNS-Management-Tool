@@ -296,7 +296,7 @@ run_startup_health_check() {
     # 6. Log directory writable
     if ! touch "$UPDATE_LOG" 2>/dev/null; then
         print_warning "Cannot write to log file: $UPDATE_LOG"
-        UPDATE_LOG="/tmp/rns_management_$(date +%Y%m%d_%H%M%S).log"
+        UPDATE_LOG="${TMPDIR:-/tmp}/rns_management_$(date +%Y%m%d_%H%M%S).log"
         print_info "Falling back to: $UPDATE_LOG"
         ((warnings++))
     fi
