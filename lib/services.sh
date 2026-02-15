@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # MENU_BREADCRUMB used by other sourced modules
 #########################################################
 # lib/services.sh — Service management, meshtasticd, autostart
 # Sourced by rns_management_tool.sh

@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # MENU_BREADCRUMB used by other sourced modules
 #########################################################
 # lib/config.sh — Configuration templates, editor, viewer, logs
 # Sourced by rns_management_tool.sh
@@ -352,24 +354,46 @@ view_logs_menu() {
                 if [ -n "$SEARCH_TERM" ]; then
                     print_info "Searching for '$SEARCH_TERM' in log files..."
                     echo ""
-                    grep -rF --color=always "$SEARCH_TERM" "$REAL_HOME"/rns_management_*.log 2>/dev/null || \
+                    # Search current + rotated + legacy timestamped logs
+                    grep -F --color=always "$SEARCH_TERM" \
+                        "$UPDATE_LOG" "${UPDATE_LOG}".* \
+                        "$REAL_HOME"/rns_management_*.log 2>/dev/null || \
                         print_warning "No matches found"
                 fi
                 pause_for_input
                 ;;
             4)
                 print_section "All Management Logs"
-                local log_count
-                log_count=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | wc -l)
-
-                if [ "$log_count" -gt 0 ]; then
-                    echo -e "${BOLD}Found $log_count log file(s):${NC}\n"
-                    find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f -printf "  %f (%s bytes, %TY-%Tm-%Td)\n" 2>/dev/null | sort -r
+                echo -e "${BOLD}Log files:${NC}\n"
+                local found_any=false
+                # Show current + rotated logs
+                for logfile in "$UPDATE_LOG" "${UPDATE_LOG}.1" "${UPDATE_LOG}.2" "${UPDATE_LOG}.3"; do
+                    if [ -f "$logfile" ]; then
+                        found_any=true
+                        local sz
+                        sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
+                        echo "  $(basename "$logfile") (${sz} bytes)"
+                    fi
+                done
+                # Show any legacy timestamped logs
+                local legacy_logs
+                legacy_logs=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r)
+                if [ -n "$legacy_logs" ]; then
+                    found_any=true
                     echo ""
-                    print_info "Logs are in: $REAL_HOME/"
-                else
+                    echo -e "  ${YELLOW}Legacy timestamped logs:${NC}"
+                    while IFS= read -r logfile; do
+                        [ -z "$logfile" ] && continue
+                        local sz
+                        sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
+                        echo "  $(basename "$logfile") (${sz} bytes)"
+                    done <<< "$legacy_logs"
+                fi
+                if [ "$found_any" = false ]; then
                     print_warning "No log files found"
                 fi
+                echo ""
+                print_info "Logs are in: $REAL_HOME/"
                 pause_for_input
                 ;;
             0|"")

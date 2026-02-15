@@ -22,11 +22,46 @@ jobs:
       - name: Bash syntax check (reticulum_updater.sh)
         run: bash -n reticulum_updater.sh
 
+      - name: Bash syntax check (lib/ modules)
+        run: |
+          for module in lib/*.sh; do
+            echo "Checking $module..."
+            bash -n "$module"
+          done
+
       - name: ShellCheck rns_management_tool.sh
         run: shellcheck -x -S warning rns_management_tool.sh
 
       - name: ShellCheck reticulum_updater.sh
         run: shellcheck -x -S warning reticulum_updater.sh
+
+      - name: ShellCheck lib/ modules
+        run: |
+          for module in lib/*.sh; do
+            echo "Checking $module..."
+            shellcheck -x -S warning "$module"
+          done
+
+  check-mode:
+    name: Dry-Run Check Mode
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run --check mode
+        run: bash rns_management_tool.sh --check
+
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make smoke test executable
+        run: chmod +x tests/smoke_test.sh
+
+      - name: Run smoke tests
+        run: ./tests/smoke_test.sh --verbose
 
   bats:
     name: Bats Tests
@@ -48,7 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Parse PowerShell script (syntax check)
+      - name: Parse main script (syntax check)
         shell: pwsh
         run: |
           $errors = $null
@@ -61,7 +96,29 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             exit 1
           }
-          Write-Host "PowerShell syntax check passed"
+          Write-Host "PowerShell main script syntax check passed"
+
+      - name: Parse pwsh/ modules (syntax check)
+        shell: pwsh
+        run: |
+          $allErrors = @()
+          Get-ChildItem -Path pwsh/*.ps1 | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$null,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              Write-Host "FAIL: $($_.Name)" -ForegroundColor Red
+              $errors | ForEach-Object { Write-Error $_.Message }
+              $allErrors += $errors
+            } else {
+              Write-Host "OK: $($_.Name)"
+            }
+          }
+          if ($allErrors.Count -gt 0) { exit 1 }
+          Write-Host "All PowerShell modules passed syntax check"
 
       - name: PSScriptAnalyzer lint
         shell: pwsh

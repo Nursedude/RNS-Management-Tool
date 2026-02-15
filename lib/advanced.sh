@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # MENU_BREADCRUMB, NEEDS_REBOOT used by other sourced modules
 #########################################################
 # lib/advanced.sh — Advanced menu, emergency mode, startup
 # Sourced by rns_management_tool.sh

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # shellcheck disable=SC2034  # Color vars and log level constants are part of the UI API
 #########################################################
 # lib/core.sh — Terminal, colors, home resolution, globals
@@ -74,9 +75,11 @@ resolve_real_home() {
 REAL_HOME="$(resolve_real_home)"
 
 # Global variables
-SCRIPT_VERSION="0.3.4-beta"
+SCRIPT_VERSION="0.3.5-beta"
 BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
-UPDATE_LOG="$REAL_HOME/rns_management_$(date +%Y%m%d_%H%M%S).log"
+UPDATE_LOG="$REAL_HOME/rns_management.log"
+LOG_MAX_BYTES=1048576   # 1MB rotation threshold (meshforge pattern)
+LOG_MAX_ROTATIONS=3     # Keep .log.1, .log.2, .log.3
 MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"
 SIDEBAND_DIR="$REAL_HOME/Sideband"
 NEEDS_REBOOT=false
@@ -88,6 +91,41 @@ PEP668_DETECTED=false
 OS_TYPE=""
 OS_VERSION=""
 ARCHITECTURE=""
+
+# Log rotation (adapted from meshforge 1MB rotation pattern)
+# Rotates UPDATE_LOG when it exceeds LOG_MAX_BYTES, keeping LOG_MAX_ROTATIONS copies.
+# Called once at startup before any logging occurs.
+rotate_log() {
+    [ ! -f "$UPDATE_LOG" ] && return 0
+
+    local log_size
+    log_size=$(stat -c%s "$UPDATE_LOG" 2>/dev/null || stat -f%z "$UPDATE_LOG" 2>/dev/null || echo 0)
+
+    if [ "$log_size" -ge "$LOG_MAX_BYTES" ]; then
+        # Rotate: .log.3 → delete, .log.2 → .log.3, .log.1 → .log.2, .log → .log.1
+        local i=$LOG_MAX_ROTATIONS
+        while [ "$i" -gt 1 ]; do
+            local prev=$((i - 1))
+            [ -f "${UPDATE_LOG}.${prev}" ] && mv -f "${UPDATE_LOG}.${prev}" "${UPDATE_LOG}.${i}"
+            i=$((i - 1))
+        done
+        mv -f "$UPDATE_LOG" "${UPDATE_LOG}.1"
+    fi
+
+    # Clean up legacy per-session timestamped log files (pre-rotation era)
+    # Keep only the 3 most recent, remove older ones
+    local old_logs
+    old_logs=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r)
+    local count=0
+    while IFS= read -r logfile; do
+        [ -z "$logfile" ] && continue
+        count=$((count + 1))
+        if [ "$count" -gt 3 ]; then
+            rm -f "$logfile" 2>/dev/null
+        fi
+    done <<< "$old_logs"
+}
+rotate_log
 
 # Tool availability flags (set once at startup by detect_available_tools)
 HAS_RNSD=false
