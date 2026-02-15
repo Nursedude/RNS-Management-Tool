@@ -99,10 +99,31 @@ Added `hardware_validation.bats` and `integration_tests.bats` to the bats job.
 - [x] RNODE hardware testing (21+ boards) — **RESOLVED** (validation logic tested; real-device flashing requires field test)
 - [x] Cross-platform field testing (RPi, desktop Linux, Windows 11, WSL2) — **RESOLVED** (detection patterns tested; live platform testing requires field deployment)
 
-### Items for Next Session
-- [ ] `safe_call()` exit code capture bug (low priority, pre-existing)
-- [ ] Field deployment validation on actual RPi / WSL2 / Windows hardware
-- [ ] Consider Pester tests for PowerShell modules (currently only syntax + PSScriptAnalyzer)
+### Items for Next Session (Handoff)
+
+**P1 — Pester Tests for PowerShell Modules**
+- Zero behavioral test coverage on 9 PowerShell modules (2,927 lines)
+- Modules: `core.ps1`, `ui.ps1`, `environment.ps1`, `install.ps1`, `rnode.ps1`, `services.ps1`, `backup.ps1`, `diagnostics.ps1`, `advanced.ps1`
+- Mirror the BATS test patterns: port validation, radio params, backup traversal, cache TTL
+- CI already has `windows-latest` runner — add Pester job to `.github/workflows/lint.yml`
+- Start with `pwsh/rnode.ps1` (COM port regex, param ranges) and `pwsh/backup.ps1` (traversal checks)
+
+**P1 — Fix `safe_call()` Exit Code Capture Bug**
+- Location: `lib/utils.sh:428-458`
+- `local rc=$?` on line 436 captures the `if` test result (always 1), not the original command exit code
+- Error categorization for codes 124/126/127/130 never triggers
+- Fix: capture exit code before the `if`, e.g. `"$@"; local rc=$?; if [ $rc -eq 0 ]; then return 0; fi`
+- Low risk but easy win — improves user-facing error messages
+
+**P2 — Hardcoded `/tmp` Paths (WSL2 Edge Case)**
+- `lib/advanced.sh:299` — fallback log path uses `/tmp` without checking availability
+- `lib/utils.sh:226` — temp file cleanup `rm -f /tmp/rns_mgmt_*.tmp` assumes Unix
+- Both will silently fail on exotic WSL2 setups without `/tmp` mount
+
+**P3 — Field Deployment Validation**
+- Detection pattern tests pass but live validation on actual hardware needed
+- Targets: Raspberry Pi (BCM27xx), desktop Linux (x86_64), Windows 11 (native + WSL2)
+- Focus on: USB device enumeration, service polling real rnsd, backup round-trip with real config
 
 ---
 
