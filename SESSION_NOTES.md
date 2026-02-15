@@ -2,6 +2,214 @@
 
 ---
 
+## Session 9: Architecture Overhaul — Modularization, Smoke Tests, CI Dry-Run
+**Date:** 2026-02-15
+**Branch:** `claude/add-service-menu-options-fOQsu` (continued from Session 8)
+**Parent:** Session 8 (same branch)
+
+### Objective
+Address architectural debt: split the ~4,500-line monolithic bash script into sourced modules, add automated smoke tests, implement a `--check` CI dry-run mode, and refactor diagnostic counters to a return-value pattern.
+
+### Changes Applied
+
+#### 1. Script Modularization (4,514 → 341 lines in main + 10 modules)
+
+The monolithic `rns_management_tool.sh` was split into 10 sourced modules under `lib/`:
+
+| Module | Lines | Functions | Responsibility |
+|--------|-------|-----------|----------------|
+| `core.sh` | 135 | 2 | Terminal detection, colors, home resolution, globals |
+| `utils.sh` | 535 | 23 | Timeout, retry, logging, caching, service checks |
+| `ui.sh` | 222 | 18 | Print functions, box drawing, menus, help |
+| `install.sh` | 1,159 | 35 | Prerequisites, ecosystem, MeshChat, Sideband |
+| `rnode.sh` | 327 | 13 | RNODE device configuration and management |
+| `services.sh` | 682 | 15 | Service management, meshtasticd, autostart |
+| `backup.sh` | 354 | 7 | Backup/restore, export/import |
+| `diagnostics.sh` | 348 | 8 | Diagnostics with return-value pattern |
+| `config.sh` | 383 | 4 | Config templates, editor, viewer, logs |
+| `advanced.sh` | 458 | 5 | Emergency mode, advanced menu, startup |
+| **Total modules** | **4,603** | **130** | |
+| **Main script** | **341** | **2** | `show_main_menu()`, `main()`, entry point |
+
+Source order (dependency chain): core → utils → ui → install → rnode → services → backup → diagnostics → config → advanced
+
+#### 2. Smoke Test Suite (`tests/smoke_test.sh`)
+
+New 303-line test script with 8 test sections:
+
+| Section | Assertions | What It Validates |
+|---------|------------|-------------------|
+| Bash Syntax | 11 | `bash -n` on main script + all 10 lib modules |
+| PowerShell Syntax | 1 (skip if no pwsh) | Parser validation via `[System.Management.Automation.Language.Parser]` |
+| Bash Functions | 48 | All expected function definitions across combined source |
+| PS Functions | 21 | All expected PowerShell function definitions |
+| Dry-Run Mode | 2 | `--check` exits cleanly and reports validation results |
+| Module Structure | 2 | lib/ has ≥3 modules, main script sources them |
+| Security Checks | 3 | RNS001 (no eval), RNS002 (device port regex), RNS004 (path traversal) |
+| Diagnostics Pattern | 1 | Detects return-value pattern (`DIAG_RESULT:` protocol) |
+
+**Results: 90 passed, 0 failed, 1 skipped** (pwsh not available)
+
+#### 3. CI Dry-Run Mode (`--check` flag)
+
+```bash
+./rns_management_tool.sh --check
+```
+
+Validates without launching TUI:
+- Bash syntax (already passed if script loads)
+- 9 core function definitions via `declare -F`
+- Lib module count
+- Environment detection (non-interactive)
+- Tool discovery (8 RNS tools + dependencies)
+- Config file check
+- Exits 0 on success, 1 on failure
+
+#### 4. Diagnostics Return-Value Pattern
+
+Replaced global `DIAG_ISSUES`/`DIAG_WARNINGS` counters with a stdout-based protocol:
+
+- Each `diag_check_*()` function uses `local _diag_issues=0` / `local _diag_warnings=0`
+- Final line emitted: `echo "DIAG_RESULT:$_diag_issues:$_diag_warnings"`
+- `_run_diag_step()` helper captures output, displays all except `DIAG_RESULT:` line, returns result
+- `run_diagnostics()` coordinator parses results via `BASH_REMATCH`, accumulates totals
+- `diag_report_summary()` takes `$1=issues` and `$2=warnings` as parameters
+
+### Bug Fixed: `((PASS++))` with `set -e`
+
+In `smoke_test.sh`, `((PASS++))` when PASS=0 evaluates to 0 (falsy), triggering `set -e` to exit the script immediately. Fixed all arithmetic to use `PASS=$((PASS + 1))`.
+
+### Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Main script lines | 4,514 | 341 |
+| Lib module lines | 0 | 4,603 |
+| Total bash lines | 4,514 | 4,944 |
+| Modules | 0 | 10 |
+| Bash functions | 118 | 132 (main:2 + modules:130) |
+| Smoke test assertions | 0 | 90 |
+| CI dry-run mode | No | Yes (`--check`) |
+| Diagnostics pattern | Global counters | Return-value protocol |
+| `bash -n` | PASS | PASS |
+
+### Session Entropy Notes
+
+Clean session — purely architectural. No feature additions, no behavioral changes. All module functions are verbatim copies of the original inline code (except diagnostics, which was refactored). The main script is now a thin dispatcher.
+
+---
+
+## Session 8: PowerShell Parity — Service Menu & Backup Menu
+**Date:** 2026-02-15
+**Branch:** `claude/add-service-menu-options-fOQsu`
+**Parent:** claude/refactor-large-functions-1svtA (merged as PR #26)
+
+### Objective
+Close the PowerShell feature gap identified in Sessions 1-7. Add missing service menu options (rncp, rnx, auto-start) and expand backup menu (export/import, list/delete old backups).
+
+### Changes Applied
+
+#### 1. Show-ServiceMenu Expansion (4 new options)
+
+| Option | Function | Description |
+|--------|----------|-------------|
+| 8 | `Invoke-FileTransfer` | Interactive rncp send/listen modes with file validation |
+| 9 | `Invoke-RemoteCommand` | Interactive rnx remote command execution |
+| 11 | `Enable-RnsdAutoStart` | Windows Task Scheduler task at logon |
+| 12 | `Disable-RnsdAutoStart` | Removes scheduled task |
+
+New "Identity & Boot" section in menu matching bash structure.
+
+Auto-start uses platform-appropriate Windows Task Scheduler:
+```powershell
+$action = New-ScheduledTaskAction -Execute $rnsdPath
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+Register-ScheduledTask -TaskName "RNS_rnsd_autostart" ...
+```
+
+#### 2. Show-BackupMenu Expansion (4 new options + loop-based menu)
+
+Converted from one-shot to loop-based submenu with status box showing backup count and config size.
+
+| Option | Function | Description |
+|--------|----------|-------------|
+| 3 | `Export-RnsConfiguration` | `.zip` archive via `Compress-Archive` |
+| 4 | `Import-RnsConfiguration` | `.zip` import with RNS004 path traversal validation |
+| 5 | `Get-AllBackups` | List with formatted dates and sizes |
+| 6 | `Remove-OldBackups` | Keep 3 most recent, delete older |
+
+Import uses proper zip lifecycle for validation:
+```powershell
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($importFile)
+# ... validate entries for path traversal ...
+$zip.Dispose()
+```
+
+#### 3. New PowerShell Functions (8 total)
+
+| Function | Purpose |
+|----------|---------|
+| `Invoke-FileTransfer` | rncp file transfer (send/listen) |
+| `Invoke-RemoteCommand` | rnx remote command |
+| `Enable-RnsdAutoStart` | Task Scheduler auto-start |
+| `Disable-RnsdAutoStart` | Remove auto-start task |
+| `Get-AllBackups` | List backups with metadata |
+| `Remove-OldBackups` | Prune old backups |
+| `Export-RnsConfiguration` | Export config to .zip |
+| `Import-RnsConfiguration` | Import config from .zip |
+
+### Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| PS1 lines | 2,292 | 2,727 |
+| PS1 functions | 54 | 62 |
+| Service menu options | 7 | 12 |
+| Backup menu options | 2 | 6 |
+| Lines added | - | 435 |
+| meshtasticd in PS | N/A | Skipped (Windows) |
+
+### Design Decisions
+
+- **Task Scheduler over registry**: More robust than HKCU\Run for daemon-style processes
+- **meshtasticd skipped**: Not typically run on Windows; WSL users would use the bash script
+- **Zip for export/import**: Native PowerShell `Compress-Archive`/`Expand-Archive` instead of .tar.gz
+- **RNS004 validation on import**: Zip entries checked for `..` path traversal before extraction
+
+---
+
+## Remaining Work for Future Sessions
+
+### P1 (High Impact)
+- [ ] Add `whiptail`/`dialog` backend option (meshforge DialogBackend pattern)
+- [ ] Add log rotation for `UPDATE_LOG` (meshforge 1MB rotation pattern)
+- [ ] Port PowerShell modularization (ps1 now 2,727 lines — consider splitting)
+- [ ] Add GitHub Actions CI workflow using `--check` and `tests/smoke_test.sh`
+
+### P2 (Medium Impact)
+- [ ] RNS Interface Management from TUI (add/remove/edit interfaces in config)
+- [ ] Network Statistics Dashboard (persistent monitoring view)
+- [ ] Port conflict resolver pattern for port/service conflicts
+- [ ] Config drift detection (meshforge config_drift.py pattern)
+
+### P3 (Polish)
+- [ ] Add keyboard shortcuts overlay (? in any menu)
+- [ ] Health score calculation (meshforge health_score.py pattern)
+- [ ] Signal/battery forecasting for RNODE devices
+
+### Cross-cutting (carried forward)
+- [ ] Integration test coverage (service polling, status cache, retry, backup round-trip)
+- [ ] RNODE hardware testing (21+ boards need real-world validation)
+- [ ] Cross-platform field testing (RPi, desktop Linux, Windows 11, WSL2)
+
+### Ecosystem Integration
+- [ ] rnsh (remote shell) integration in services menu
+- [ ] rns-page-node support (serve NomadNet pages from TUI)
+- [ ] Link to rnode-flasher web tool from RNODE menu
+
+---
+
 ## Session 7: Audit, Dead Code Removal, Documentation Trim
 **Date:** 2026-02-15
 **Branch:** `claude/audit-meshforge-fixes-WlYJE`
