@@ -67,7 +67,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
-          $results = Invoke-ScriptAnalyzer -Path rns_management_tool.ps1 -Severity Warning,Error
+          $results = Invoke-ScriptAnalyzer -Path rns_management_tool.ps1 -Settings .PSScriptAnalyzerSettings.psd1 -Severity Warning,Error
           if ($results) {
             $results | Format-Table -AutoSize
             $errorCount = ($results | Where-Object Severity -eq 'Error').Count

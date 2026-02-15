@@ -48,7 +48,7 @@ $Script:CurrentLogLevel = $Script:LogLevelInfo
 # Environment Detection (adapted from meshforge patterns)
 #########################################################
 
-function Detect-Environment {
+function Initialize-Environment {
     <#
     .SYNOPSIS
         Detects runtime environment capabilities (meshforge launcher.py pattern)
@@ -339,7 +339,7 @@ function Test-WSL {
     return $false
 }
 
-function Get-WSLDistributions {
+function Get-WSLDistribution {
     if (-not (Test-WSL)) {
         return @()
     }
@@ -499,7 +499,7 @@ function Install-Reticulum {
 function Install-ReticulumWSL {
     Show-Section "Installing Reticulum in WSL"
 
-    $distros = Get-WSLDistributions
+    $distros = Get-WSLDistribution
     if ($distros.Count -eq 0) {
         Write-ColorOutput "No WSL distributions found" "Error"
         Write-ColorOutput "Install WSL first with: wsl --install" "Info"
@@ -567,7 +567,7 @@ function Install-RNODE {
         "2" {
             if (Test-WSL) {
                 Write-ColorOutput "Launching RNODE installer in WSL..." "Info"
-                $distros = Get-WSLDistributions
+                $distros = Get-WSLDistribution
                 if ($distros.Count -gt 0) {
                     wsl -d $distros[0] -- bash -c "curl -fsSL https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh | bash -s -- --rnode"
                 }
@@ -654,8 +654,7 @@ function Install-NomadNet {
 function Install-MeshChat {
     Show-Section "Installing MeshChat"
 
-    # Check for Node.js
-    $node = Get-Command node -ErrorAction SilentlyContinue
+    # Check for Node.js / npm
     $npm = Get-Command npm -ErrorAction SilentlyContinue
 
     if (-not $npm) {
@@ -865,7 +864,9 @@ function Get-RnodeSerialPort {
     return $port
 }
 
-function Set-RnodeRadioParameters {
+function Set-RnodeRadioParameter {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
     <#
     .SYNOPSIS
         Configure RNODE radio parameters (parity with bash rnode_configure_radio)
@@ -977,6 +978,8 @@ function Get-RnodeEeprom {
 }
 
 function Update-RnodeBootloader {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
     <#
     .SYNOPSIS
         Update bootloader ROM (parity with bash rnode_bootloader)
@@ -1085,7 +1088,7 @@ function Show-RnodeMenu {
             "2" {
                 if (Test-WSL) {
                     Write-ColorOutput "Launching RNODE installer in WSL..." "Info"
-                    $distros = Get-WSLDistributions
+                    $distros = Get-WSLDistribution
                     if ($distros.Count -gt 0) {
                         wsl -d $distros[0] -- bash -c "curl -fsSL https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh | bash -s -- --rnode"
                     }
@@ -1099,7 +1102,7 @@ function Show-RnodeMenu {
                 Start-Process "https://github.com/liamcottle/rnode-flasher"
                 pause
             }
-            "4" { Set-RnodeRadioParameters }
+            "4" { Set-RnodeRadioParameter }
             "5" { Get-RnodeEeprom }
             "6" { Update-RnodeBootloader }
             "7" { Open-RnodeConsole }
@@ -1165,7 +1168,7 @@ function Invoke-DiagCheckEnvironment {
     Write-Host ""
 }
 
-function Invoke-DiagCheckRnsTools {
+function Invoke-DiagCheckRnsTool {
     Write-Host "▶ Step 2/6: RNS Tool Availability" -ForegroundColor Blue
     Write-Host ""
 
@@ -1231,7 +1234,7 @@ function Invoke-DiagCheckConfiguration {
     Write-Host ""
 }
 
-function Invoke-DiagCheckServices {
+function Invoke-DiagCheckService {
     Write-Host "▶ Step 4/6: Service Health" -ForegroundColor Blue
     Write-Host ""
 
@@ -1381,7 +1384,7 @@ function Invoke-DiagReportSummary {
     Write-RnsLog "Diagnostics complete: $($Script:DiagIssues) issues, $($Script:DiagWarnings) warnings" "INFO"
 }
 
-function Show-Diagnostics {
+function Show-Diagnostic {
     Show-Section "System Diagnostics"
 
     $Script:DiagIssues = 0
@@ -1391,9 +1394,9 @@ function Show-Diagnostics {
     Write-Host ""
 
     Invoke-DiagCheckEnvironment
-    Invoke-DiagCheckRnsTools
+    Invoke-DiagCheckRnsTool
     Invoke-DiagCheckConfiguration
-    Invoke-DiagCheckServices
+    Invoke-DiagCheckService
     Invoke-DiagCheckNetwork
     Invoke-DiagReportSummary
 
@@ -1442,13 +1445,13 @@ function Show-AdvancedMenu {
 
         switch ($choice) {
             "1" { Update-PythonPackage }
-            "2" { Reinstall-Ecosystem }
+            "2" { Install-Ecosystem }
             "3" { Clear-Cache }
             "4" { Export-Configuration }
             "5" { Import-Configuration }
             "6" { Reset-ToFactory }
             "7" { Show-Log }
-            "8" { Check-ToolUpdate }
+            "8" { Test-ToolUpdate }
             "0" { return }
             default {
                 Write-ColorOutput "Invalid option" "Error"
@@ -1459,6 +1462,9 @@ function Show-AdvancedMenu {
 }
 
 function Update-PythonPackage {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Updating Python Packages"
 
     Write-ColorOutput "This will update pip and all Python packages" "Info"
@@ -1483,7 +1489,10 @@ function Update-PythonPackage {
     pause
 }
 
-function Reinstall-Ecosystem {
+function Install-Ecosystem {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Reinstalling All Components"
 
     Write-ColorOutput "WARNING: This will reinstall all Reticulum components" "Warning"
@@ -1682,6 +1691,9 @@ function Import-Configuration {
 }
 
 function Reset-ToFactory {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Reset to Factory Defaults"
 
     Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Red
@@ -1750,7 +1762,7 @@ function Show-Log {
     pause
 }
 
-function Check-ToolUpdate {
+function Test-ToolUpdate {
     Show-Section "Checking for Updates"
 
     Write-ColorOutput "Checking GitHub for latest version..." "Progress"
@@ -1834,6 +1846,9 @@ function Show-Status {
 }
 
 function Start-RNSDaemon {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Starting rnsd Daemon"
 
     if (Get-Process -Name "rnsd" -ErrorAction SilentlyContinue) {
@@ -1860,6 +1875,9 @@ function Start-RNSDaemon {
 }
 
 function Stop-RNSDaemon {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Stopping rnsd Daemon"
 
     $rnsdProcess = Get-Process -Name "rnsd" -ErrorAction SilentlyContinue
@@ -2238,7 +2256,7 @@ function Show-ServiceMenu {
 
 function Main {
     # Initialize environment detection (meshforge pattern)
-    Detect-Environment
+    Initialize-Environment
 
     # Initialize log
     Write-RnsLog "=== RNS Management Tool for Windows Started ===" "INFO"
@@ -2260,7 +2278,7 @@ function Main {
             "5" { Install-NomadNet }
             "m" { Install-MeshChat }
             "M" { Install-MeshChat }
-            "6" { Show-Diagnostics }
+            "6" { Show-Diagnostic }
             "7" { Show-ServiceMenu }
             "8" { Show-BackupMenu }
             "9" { Show-AdvancedMenu }
