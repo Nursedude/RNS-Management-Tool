@@ -48,7 +48,7 @@ $Script:CurrentLogLevel = $Script:LogLevelInfo
 # Environment Detection (adapted from meshforge patterns)
 #########################################################
 
-function Detect-Environment {
+function Initialize-Environment {
     <#
     .SYNOPSIS
         Detects runtime environment capabilities (meshforge launcher.py pattern)
@@ -82,14 +82,14 @@ function Detect-Environment {
         $Script:HasColor = $false
     }
 
-    Write-Log "Environment: Admin=$($Script:IsAdmin), WSL=$($Script:HasWSL), Remote=$($Script:IsRemoteSession), Color=$($Script:HasColor)" "INFO"
+    Write-RnsLog "Environment: Admin=$($Script:IsAdmin), WSL=$($Script:HasWSL), Remote=$($Script:IsRemoteSession), Color=$($Script:HasColor)" "INFO"
 }
 
 #########################################################
 # Leveled Logging (adapted from meshforge logging_config.py)
 #########################################################
 
-function Write-Log {
+function Write-RnsLog {
     param(
         [string]$Message,
         [string]$Level = "INFO"
@@ -130,23 +130,23 @@ function Test-DiskSpace {
         $freeGB = [math]::Round($drive.Free / 1GB, 2)
         $freeMB = [math]::Round($drive.Free / 1MB)
 
-        Write-Log "Disk space: ${freeGB}GB free on $($drive.Name): (minimum: ${MinimumMB}MB)" "DEBUG"
+        Write-RnsLog "Disk space: ${freeGB}GB free on $($drive.Name): (minimum: ${MinimumMB}MB)" "DEBUG"
 
         if ($freeMB -lt 100) {
             Write-ColorOutput "Critical: Only ${freeMB}MB disk space available" "Error"
-            Write-Log "Critical disk space: ${freeMB}MB" "ERROR"
+            Write-RnsLog "Critical disk space: ${freeMB}MB" "ERROR"
             return $false
         }
         elseif ($freeMB -lt $MinimumMB) {
             Write-ColorOutput "Low disk space: ${freeMB}MB available (recommend ${MinimumMB}MB)" "Warning"
-            Write-Log "Low disk space: ${freeMB}MB" "WARN"
+            Write-RnsLog "Low disk space: ${freeMB}MB" "WARN"
             return $false
         }
 
         return $true
     }
     catch {
-        Write-Log "Could not check disk space: $_" "WARN"
+        Write-RnsLog "Could not check disk space: $_" "WARN"
         return $true  # Don't block on check failure
     }
 }
@@ -163,19 +163,19 @@ function Test-AvailableMemory {
         $freeMB = [math]::Round($os.FreePhysicalMemory / 1024)
         $percentFree = [math]::Round(($os.FreePhysicalMemory / $os.TotalVisibleMemorySize) * 100)
 
-        Write-Log "Memory: ${freeMB}MB free of ${totalMB}MB (${percentFree}%)" "DEBUG"
+        Write-RnsLog "Memory: ${freeMB}MB free of ${totalMB}MB (${percentFree}%)" "DEBUG"
 
         if ($percentFree -lt 10) {
             Write-ColorOutput "Low memory: ${freeMB}MB free (${percentFree}%)" "Warning"
             Write-ColorOutput "Hint: Close other applications to free memory" "Info"
-            Write-Log "Low memory: ${freeMB}MB free (${percentFree}%)" "WARN"
+            Write-RnsLog "Low memory: ${freeMB}MB free (${percentFree}%)" "WARN"
             return $false
         }
 
         return $true
     }
     catch {
-        Write-Log "Could not check memory: $_" "WARN"
+        Write-RnsLog "Could not check memory: $_" "WARN"
         return $true
     }
 }
@@ -187,7 +187,7 @@ function Invoke-StartupHealthCheck {
     #>
     $warnings = 0
 
-    Write-Log "Running startup health check..." "INFO"
+    Write-RnsLog "Running startup health check..." "INFO"
 
     # 1. Disk space
     if (-not (Test-DiskSpace -MinimumMB 500)) {
@@ -212,14 +212,14 @@ function Invoke-StartupHealthCheck {
 
     # 4. Remote session notice
     if ($Script:IsRemoteSession) {
-        Write-Log "Running via remote session (RDP/SSH/PSRemoting)" "DEBUG"
+        Write-RnsLog "Running via remote session (RDP/SSH/PSRemoting)" "DEBUG"
     }
 
     if ($warnings -gt 0) {
-        Write-Log "Startup health check completed with $warnings warning(s)" "WARN"
+        Write-RnsLog "Startup health check completed with $warnings warning(s)" "WARN"
     }
     else {
-        Write-Log "Startup health check passed" "INFO"
+        Write-RnsLog "Startup health check passed" "INFO"
     }
 }
 
@@ -339,7 +339,7 @@ function Test-WSL {
     return $false
 }
 
-function Get-WSLDistributions {
+function Get-WSLDistribution {
     if (-not (Test-WSL)) {
         return @()
     }
@@ -499,7 +499,7 @@ function Install-Reticulum {
 function Install-ReticulumWSL {
     Show-Section "Installing Reticulum in WSL"
 
-    $distros = Get-WSLDistributions
+    $distros = Get-WSLDistribution
     if ($distros.Count -eq 0) {
         Write-ColorOutput "No WSL distributions found" "Error"
         Write-ColorOutput "Install WSL first with: wsl --install" "Info"
@@ -567,7 +567,7 @@ function Install-RNODE {
         "2" {
             if (Test-WSL) {
                 Write-ColorOutput "Launching RNODE installer in WSL..." "Info"
-                $distros = Get-WSLDistributions
+                $distros = Get-WSLDistribution
                 if ($distros.Count -gt 0) {
                     wsl -d $distros[0] -- bash -c "curl -fsSL https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh | bash -s -- --rnode"
                 }
@@ -651,6 +651,477 @@ function Install-NomadNet {
     pause
 }
 
+function Install-MeshChat {
+    Show-Section "Installing MeshChat"
+
+    # Check for Node.js / npm
+    $npm = Get-Command npm -ErrorAction SilentlyContinue
+
+    if (-not $npm) {
+        Write-ColorOutput "Node.js/npm not found" "Error"
+        Write-Host ""
+        Write-Host "MeshChat requires Node.js 18+. Install options:" -ForegroundColor Yellow
+        Write-Host "  1) Download from https://nodejs.org/" -ForegroundColor Cyan
+        Write-Host "  2) Install via winget: winget install OpenJS.NodeJS.LTS" -ForegroundColor Cyan
+        Write-Host ""
+        $installChoice = Read-Host "Install via winget now? (Y/n)"
+        if ($installChoice -ne 'n' -and $installChoice -ne 'N') {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-ColorOutput "Installing Node.js LTS via winget..." "Progress"
+                winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+                # Refresh PATH
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                $npm = Get-Command npm -ErrorAction SilentlyContinue
+                if (-not $npm) {
+                    Write-ColorOutput "npm still not found after install. Restart your terminal and try again." "Error"
+                    pause
+                    return
+                }
+            } else {
+                Write-ColorOutput "winget not available. Please install Node.js manually." "Error"
+                pause
+                return
+            }
+        } else {
+            pause
+            return
+        }
+    } else {
+        $nodeVersion = & node --version 2>&1
+        Write-ColorOutput "Node.js detected: $nodeVersion" "Success"
+        # Check minimum version (18+)
+        if ($nodeVersion -match 'v(\d+)') {
+            $majorVersion = [int]$Matches[1]
+            if ($majorVersion -lt 18) {
+                Write-ColorOutput "Node.js $nodeVersion is too old. MeshChat requires Node.js 18+." "Error"
+                Write-Host "  Fix: winget install OpenJS.NodeJS.LTS" -ForegroundColor Yellow
+                pause
+                return
+            }
+        }
+    }
+
+    # Check for git
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "git not found. Install via: winget install Git.Git" "Error"
+        pause
+        return
+    }
+
+    $meshchatDir = Join-Path $env:USERPROFILE "reticulum-meshchat"
+    $isUpdate = $false
+
+    if (Test-Path $meshchatDir) {
+        Write-ColorOutput "MeshChat directory already exists at $meshchatDir" "Warning"
+        $update = Read-Host "Update existing installation? (Y/n)"
+        if ($update -eq 'n' -or $update -eq 'N') {
+            pause
+            return
+        }
+        $isUpdate = $true
+    }
+
+    try {
+        # Step 1: Clone or update
+        if ($isUpdate) {
+            Write-ColorOutput "Step 1/4: Updating repository..." "Progress"
+            Push-Location $meshchatDir
+            & git pull origin main 2>&1 | Out-File -FilePath $Script:LogFile -Append
+        } else {
+            Write-ColorOutput "Step 1/4: Cloning repository..." "Progress"
+            & git clone https://github.com/liamcottle/reticulum-meshchat.git $meshchatDir 2>&1 | Out-File -FilePath $Script:LogFile -Append
+            Push-Location $meshchatDir
+        }
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput "Failed to clone/update MeshChat repository" "Error"
+            Pop-Location
+            pause
+            return
+        }
+
+        # Step 2: npm install
+        Write-ColorOutput "Step 2/4: Installing npm dependencies..." "Progress"
+        & npm install 2>&1 | Out-File -FilePath $Script:LogFile -Append
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput "npm install failed" "Error"
+            Pop-Location
+            pause
+            return
+        }
+
+        # Step 3: Security audit (non-fatal)
+        Write-ColorOutput "Step 3/4: Running security audit..." "Progress"
+        & npm audit fix --audit-level=moderate 2>&1 | Out-File -FilePath $Script:LogFile -Append
+
+        # Step 4: Build
+        Write-ColorOutput "Step 4/4: Building application..." "Progress"
+        & npm run build 2>&1 | Out-File -FilePath $Script:LogFile -Append
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput "Build failed" "Error"
+            Pop-Location
+            pause
+            return
+        }
+
+        # Verify
+        $packageJson = Join-Path $meshchatDir "package.json"
+        if (Test-Path $packageJson) {
+            $pkg = Get-Content $packageJson -Raw | ConvertFrom-Json
+            Write-ColorOutput "MeshChat v$($pkg.version) installed successfully" "Success"
+            Write-Host ""
+            Write-Host "Start MeshChat with:" -ForegroundColor Yellow
+            Write-Host "  cd $meshchatDir && npm start" -ForegroundColor Cyan
+            Write-RnsLog "MeshChat installed: $($pkg.version)" "INFO"
+        }
+
+        Pop-Location
+    }
+    catch {
+        Write-ColorOutput "MeshChat installation failed: $_" "Error"
+        Pop-Location -ErrorAction SilentlyContinue
+    }
+
+    pause
+}
+
+#########################################################
+# RNODE Advanced Functions (parity with bash script)
+#########################################################
+
+function Get-RnodeSerialPort {
+    <#
+    .SYNOPSIS
+        Detect or prompt for RNODE serial port (RNS002 device port validation)
+    #>
+
+    # Enumerate serial ports with device details
+    $ports = @()
+    try {
+        $serialPorts = [System.IO.Ports.SerialPort]::GetPortNames()
+        if ($serialPorts.Count -gt 0) {
+            $ports = $serialPorts
+        }
+    } catch { Write-Verbose "Serial port enumeration unavailable: $_" }
+
+    # Also try WMI for richer device info
+    $usbDevices = @()
+    try {
+        $usbDevices = Get-CimInstance -ClassName Win32_PnPEntity -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'COM\d+' -and ($_.Name -match 'USB|Serial|CH340|CP210|FTDI|Silicon Labs') } |
+            Select-Object Name, DeviceID
+    } catch { Write-Verbose "USB device enumeration unavailable: $_" }
+
+    if ($usbDevices.Count -gt 0) {
+        Write-Host "Detected USB serial devices:" -ForegroundColor Cyan
+        for ($i = 0; $i -lt $usbDevices.Count; $i++) {
+            Write-Host "  $($i + 1)) $($usbDevices[$i].Name)"
+        }
+        Write-Host "  0) Enter manually"
+        Write-Host ""
+
+        $sel = Read-Host "Select device"
+        if ($sel -eq "0" -or -not $sel) {
+            $port = Read-Host "Enter COM port (e.g., COM3)"
+        } else {
+            $idx = [int]$sel - 1
+            if ($idx -ge 0 -and $idx -lt $usbDevices.Count) {
+                if ($usbDevices[$idx].Name -match '(COM\d+)') {
+                    $port = $Matches[1]
+                }
+            }
+        }
+    } elseif ($ports.Count -gt 0) {
+        Write-Host "Available serial ports:" -ForegroundColor Cyan
+        for ($i = 0; $i -lt $ports.Count; $i++) {
+            Write-Host "  $($i + 1)) $($ports[$i])"
+        }
+        Write-Host "  0) Enter manually"
+        Write-Host ""
+
+        $sel = Read-Host "Select port"
+        if ($sel -eq "0" -or -not $sel) {
+            $port = Read-Host "Enter COM port (e.g., COM3)"
+        } else {
+            $idx = [int]$sel - 1
+            if ($idx -ge 0 -and $idx -lt $ports.Count) {
+                $port = $ports[$idx]
+            }
+        }
+    } else {
+        Write-ColorOutput "No serial ports detected" "Warning"
+        $port = Read-Host "Enter COM port manually (e.g., COM3)"
+    }
+
+    # RNS002: Validate COM port format
+    if (-not $port -or $port -notmatch '^COM\d+$') {
+        Write-ColorOutput "Invalid port format. Expected COMn (e.g., COM3)" "Error"
+        return $null
+    }
+
+    return $port
+}
+
+function Set-RnodeRadioParameter {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    <#
+    .SYNOPSIS
+        Configure RNODE radio parameters (parity with bash rnode_configure_radio)
+        Implements RNS003 numeric range validation
+    #>
+    Show-Section "Configure Radio Parameters"
+
+    if (-not (Get-Command rnodeconf -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "rnodeconf not installed. Install RNS first." "Error"
+        pause
+        return
+    }
+
+    $port = Get-RnodeSerialPort
+    if (-not $port) { pause; return }
+
+    Write-Host ""
+    Write-Host "Radio Parameter Configuration" -ForegroundColor Cyan
+    Write-Host "Leave blank to keep current value" -ForegroundColor White
+    Write-Host ""
+
+    # Build command arguments as array (RNS001: no eval)
+    $cmdArgs = @($port)
+
+    # Frequency (RNS003: numeric validation)
+    $freq = Read-Host "Frequency in Hz (e.g., 915000000 for 915MHz)"
+    if ($freq) {
+        if ($freq -match '^\d+$') {
+            $cmdArgs += "--freq"
+            $cmdArgs += $freq
+        } else {
+            Write-ColorOutput "Invalid frequency - must be numeric. Skipping." "Warning"
+        }
+    }
+
+    # Bandwidth (RNS003: numeric validation)
+    $bw = Read-Host "Bandwidth in kHz (e.g., 125, 250, 500)"
+    if ($bw) {
+        if ($bw -match '^\d+$') {
+            $cmdArgs += "--bw"
+            $cmdArgs += $bw
+        } else {
+            Write-ColorOutput "Invalid bandwidth - must be numeric. Skipping." "Warning"
+        }
+    }
+
+    # Spreading Factor (RNS003: range 7-12)
+    $sf = Read-Host "Spreading Factor (7-12)"
+    if ($sf) {
+        if ($sf -match '^\d+$' -and [int]$sf -ge 7 -and [int]$sf -le 12) {
+            $cmdArgs += "--sf"
+            $cmdArgs += $sf
+        } else {
+            Write-ColorOutput "Invalid spreading factor - must be 7-12. Skipping." "Warning"
+        }
+    }
+
+    # Coding Rate (RNS003: range 5-8)
+    $cr = Read-Host "Coding Rate (5-8)"
+    if ($cr) {
+        if ($cr -match '^\d+$' -and [int]$cr -ge 5 -and [int]$cr -le 8) {
+            $cmdArgs += "--cr"
+            $cmdArgs += $cr
+        } else {
+            Write-ColorOutput "Invalid coding rate - must be 5-8. Skipping." "Warning"
+        }
+    }
+
+    # TX Power (RNS003: range -10 to 30)
+    $txp = Read-Host "TX Power in dBm (e.g., 17)"
+    if ($txp) {
+        if ($txp -match '^-?\d+$' -and [int]$txp -ge -10 -and [int]$txp -le 30) {
+            $cmdArgs += "--txp"
+            $cmdArgs += $txp
+        } else {
+            Write-ColorOutput "Invalid TX power - must be between -10 and 30 dBm. Skipping." "Warning"
+        }
+    }
+
+    Write-Host ""
+    Write-ColorOutput "Executing: rnodeconf $($cmdArgs -join ' ')" "Info"
+    & rnodeconf @cmdArgs 2>&1
+    Write-RnsLog "RNODE radio config: rnodeconf $($cmdArgs -join ' ')" "INFO"
+
+    pause
+}
+
+function Get-RnodeEeprom {
+    <#
+    .SYNOPSIS
+        View device EEPROM (parity with bash rnode_eeprom)
+    #>
+    Show-Section "View Device EEPROM"
+
+    if (-not (Get-Command rnodeconf -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "rnodeconf not installed. Install RNS first." "Error"
+        pause
+        return
+    }
+
+    $port = Get-RnodeSerialPort
+    if (-not $port) { pause; return }
+
+    Write-ColorOutput "Reading device EEPROM..." "Info"
+    & rnodeconf $port --eeprom 2>&1
+    Write-RnsLog "RNODE EEPROM read on $port" "INFO"
+
+    pause
+}
+
+function Update-RnodeBootloader {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    <#
+    .SYNOPSIS
+        Update bootloader ROM (parity with bash rnode_bootloader)
+    #>
+    Show-Section "Update Bootloader (ROM)"
+
+    if (-not (Get-Command rnodeconf -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "rnodeconf not installed. Install RNS first." "Error"
+        pause
+        return
+    }
+
+    Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Yellow
+    Write-Host "║  WARNING: This will update the device bootloader.      ║" -ForegroundColor Yellow
+    Write-Host "║  Only proceed if you know what you're doing!           ║" -ForegroundColor Yellow
+    Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Yellow
+    Write-Host ""
+
+    $port = Get-RnodeSerialPort
+    if (-not $port) { pause; return }
+
+    # RNS005: Confirmation for destructive actions
+    $confirm = Read-Host "Are you sure you want to update the bootloader? (y/N)"
+    if ($confirm -ne 'y' -and $confirm -ne 'Y') {
+        Write-ColorOutput "Bootloader update cancelled" "Info"
+        pause
+        return
+    }
+
+    Write-ColorOutput "Updating bootloader..." "Info"
+    & rnodeconf $port --rom 2>&1
+    Write-RnsLog "RNODE bootloader update on $port" "INFO"
+
+    pause
+}
+
+function Open-RnodeConsole {
+    <#
+    .SYNOPSIS
+        Open serial console (parity with bash rnode_serial_console)
+    #>
+    Show-Section "Open Serial Console"
+
+    if (-not (Get-Command rnodeconf -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "rnodeconf not installed. Install RNS first." "Error"
+        pause
+        return
+    }
+
+    $port = Get-RnodeSerialPort
+    if (-not $port) { pause; return }
+
+    Write-ColorOutput "Opening serial console for $port..." "Info"
+    Write-ColorOutput "Press Ctrl+C to exit" "Info"
+    Write-Host ""
+    & rnodeconf $port --console 2>&1
+
+    pause
+}
+
+function Show-RnodeMenu {
+    <#
+    .SYNOPSIS
+        RNODE management submenu (extends Install-RNODE with advanced features)
+    #>
+    while ($true) {
+        Show-Section "RNODE Device Management"
+
+        $hasRnodeconf = [bool](Get-Command rnodeconf -ErrorAction SilentlyContinue)
+
+        Write-Host "  --- Installation ---" -ForegroundColor Cyan
+        Write-Host "  1) Install/Update rnodeconf (pip)"
+        Write-Host "  2) Install via WSL (for USB devices)"
+        Write-Host "  3) Use Web Flasher"
+        Write-Host ""
+        Write-Host "  --- Configuration ---" -ForegroundColor Cyan
+        $r4 = if ($hasRnodeconf) { "Configure radio parameters" } else { "Configure radio parameters [rnodeconf not installed]" }
+        $r5 = if ($hasRnodeconf) { "View device EEPROM" } else { "View device EEPROM [rnodeconf not installed]" }
+        $r6 = if ($hasRnodeconf) { "Update bootloader (ROM)" } else { "Update bootloader (ROM) [rnodeconf not installed]" }
+        $r7 = if ($hasRnodeconf) { "Open serial console" } else { "Open serial console [rnodeconf not installed]" }
+        $r8 = if ($hasRnodeconf) { "Show rnodeconf help" } else { "Show rnodeconf help [rnodeconf not installed]" }
+        Write-Host "  4) $r4"
+        Write-Host "  5) $r5"
+        Write-Host "  6) $r6"
+        Write-Host "  7) $r7"
+        Write-Host "  8) $r8"
+        Write-Host ""
+        Write-Host "  0) Back to Main Menu"
+        Write-Host ""
+
+        $choice = Read-Host "Select an option"
+
+        switch ($choice) {
+            "1" {
+                Write-ColorOutput "Installing rnodeconf..." "Progress"
+                $pip = "pip"
+                if (Get-Command pip3 -ErrorAction SilentlyContinue) { $pip = "pip3" }
+                & $pip install rns --upgrade
+                if (Get-Command rnodeconf -ErrorAction SilentlyContinue) {
+                    Write-ColorOutput "rnodeconf installed successfully" "Success"
+                } else {
+                    Write-ColorOutput "rnodeconf installation failed" "Error"
+                }
+                pause
+            }
+            "2" {
+                if (Test-WSL) {
+                    Write-ColorOutput "Launching RNODE installer in WSL..." "Info"
+                    $distros = Get-WSLDistribution
+                    if ($distros.Count -gt 0) {
+                        wsl -d $distros[0] -- bash -c "curl -fsSL https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh | bash -s -- --rnode"
+                    }
+                } else {
+                    Write-ColorOutput "WSL not available. Install with: wsl --install" "Error"
+                }
+                pause
+            }
+            "3" {
+                Write-ColorOutput "Opening RNode Web Flasher..." "Info"
+                Start-Process "https://github.com/liamcottle/rnode-flasher"
+                pause
+            }
+            "4" { Set-RnodeRadioParameter }
+            "5" { Get-RnodeEeprom }
+            "6" { Update-RnodeBootloader }
+            "7" { Open-RnodeConsole }
+            "8" {
+                if ($hasRnodeconf) {
+                    Show-Section "RNODE Configuration Help"
+                    & rnodeconf --help 2>&1
+                } else {
+                    Write-ColorOutput "rnodeconf not installed" "Warning"
+                }
+                pause
+            }
+            "0" { return }
+            "" { return }
+            default { Write-ColorOutput "Invalid option" "Error"; Start-Sleep -Seconds 1 }
+        }
+    }
+}
+
 #########################################################
 # Diagnostics - Step Functions (parity with bash script)
 #########################################################
@@ -697,7 +1168,7 @@ function Invoke-DiagCheckEnvironment {
     Write-Host ""
 }
 
-function Invoke-DiagCheckRnsTools {
+function Invoke-DiagCheckRnsTool {
     Write-Host "▶ Step 2/6: RNS Tool Availability" -ForegroundColor Blue
     Write-Host ""
 
@@ -763,7 +1234,7 @@ function Invoke-DiagCheckConfiguration {
     Write-Host ""
 }
 
-function Invoke-DiagCheckServices {
+function Invoke-DiagCheckService {
     Write-Host "▶ Step 4/6: Service Health" -ForegroundColor Blue
     Write-Host ""
 
@@ -782,7 +1253,7 @@ function Invoke-DiagCheckServices {
             } else {
                 Write-Host "  Uptime: $([math]::Floor($uptime.TotalHours))h $($uptime.Minutes)m"
             }
-        } catch {}
+        } catch { Write-Verbose "Could not determine rnsd uptime: $_" }
     } else {
         Write-ColorOutput "rnsd daemon is not running" "Warning"
         Write-Host "  Fix: Start from Services menu or run: rnsd --daemon" -ForegroundColor Yellow
@@ -827,19 +1298,44 @@ function Invoke-DiagCheckNetwork {
         Write-Host "  [i] Could not enumerate network adapters" -ForegroundColor Cyan
     }
 
-    # USB serial devices
+    # USB serial devices (enhanced: WMI for device identification)
+    Write-Host ""
+    Write-Host "  USB Serial Devices:" -ForegroundColor Cyan
     try {
-        $serialPorts = [System.IO.Ports.SerialPort]::GetPortNames()
-        if ($serialPorts.Count -gt 0) {
-            Write-ColorOutput "$($serialPorts.Count) serial port(s) detected" "Success"
-            foreach ($port in $serialPorts) {
-                Write-Host "  $port"
+        $usbSerial = Get-CimInstance -ClassName Win32_PnPEntity -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'COM\d+' -and ($_.Name -match 'USB|Serial|CH340|CP210|FTDI|Silicon Labs') }
+        if ($usbSerial -and $usbSerial.Count -gt 0) {
+            Write-ColorOutput "$($usbSerial.Count) USB serial device(s) detected" "Success"
+            foreach ($dev in $usbSerial) {
+                Write-Host "    $($dev.Name)"
             }
         } else {
-            Write-Host "  [i] No serial ports (RNODE) detected" -ForegroundColor Cyan
+            # Fallback to basic serial port enumeration
+            $serialPorts = [System.IO.Ports.SerialPort]::GetPortNames()
+            if ($serialPorts.Count -gt 0) {
+                Write-ColorOutput "$($serialPorts.Count) serial port(s) detected" "Success"
+                foreach ($port in $serialPorts) {
+                    Write-Host "    $port"
+                }
+            } else {
+                Write-Host "    [i] No serial ports (RNODE) detected" -ForegroundColor Cyan
+            }
         }
     } catch {
-        Write-Host "  [i] Could not enumerate serial ports" -ForegroundColor Cyan
+        # Final fallback
+        try {
+            $serialPorts = [System.IO.Ports.SerialPort]::GetPortNames()
+            if ($serialPorts.Count -gt 0) {
+                Write-ColorOutput "$($serialPorts.Count) serial port(s) detected" "Success"
+                foreach ($port in $serialPorts) {
+                    Write-Host "    $port"
+                }
+            } else {
+                Write-Host "    [i] No serial ports (RNODE) detected" -ForegroundColor Cyan
+            }
+        } catch {
+            Write-Host "    [i] Could not enumerate serial ports" -ForegroundColor Cyan
+        }
     }
 
     # RNS interface status
@@ -851,7 +1347,7 @@ function Invoke-DiagCheckNetwork {
             foreach ($line in $rnstatusOutput) {
                 Write-Host "  $line"
             }
-        } catch {}
+        } catch { Write-Verbose "Could not retrieve rnstatus output: $_" }
     }
     Write-Host ""
 }
@@ -885,10 +1381,10 @@ function Invoke-DiagReportSummary {
     }
 
     Write-Host ""
-    Write-Log "Diagnostics complete: $($Script:DiagIssues) issues, $($Script:DiagWarnings) warnings" "INFO"
+    Write-RnsLog "Diagnostics complete: $($Script:DiagIssues) issues, $($Script:DiagWarnings) warnings" "INFO"
 }
 
-function Show-Diagnostics {
+function Show-Diagnostic {
     Show-Section "System Diagnostics"
 
     $Script:DiagIssues = 0
@@ -898,9 +1394,9 @@ function Show-Diagnostics {
     Write-Host ""
 
     Invoke-DiagCheckEnvironment
-    Invoke-DiagCheckRnsTools
+    Invoke-DiagCheckRnsTool
     Invoke-DiagCheckConfiguration
-    Invoke-DiagCheckServices
+    Invoke-DiagCheckService
     Invoke-DiagCheckNetwork
     Invoke-DiagReportSummary
 
@@ -948,14 +1444,14 @@ function Show-AdvancedMenu {
         $choice = Read-Host "Select an option"
 
         switch ($choice) {
-            "1" { Update-PythonPackages }
-            "2" { Reinstall-AllComponents }
-            "3" { Clear-CacheFiles }
+            "1" { Update-PythonPackage }
+            "2" { Install-Ecosystem }
+            "3" { Clear-Cache }
             "4" { Export-Configuration }
             "5" { Import-Configuration }
             "6" { Reset-ToFactory }
-            "7" { Show-Logs }
-            "8" { Check-ToolUpdates }
+            "7" { Show-Log }
+            "8" { Test-ToolUpdate }
             "0" { return }
             default {
                 Write-ColorOutput "Invalid option" "Error"
@@ -965,7 +1461,10 @@ function Show-AdvancedMenu {
     }
 }
 
-function Update-PythonPackages {
+function Update-PythonPackage {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Updating Python Packages"
 
     Write-ColorOutput "This will update pip and all Python packages" "Info"
@@ -990,7 +1489,10 @@ function Update-PythonPackages {
     pause
 }
 
-function Reinstall-AllComponents {
+function Install-Ecosystem {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Reinstalling All Components"
 
     Write-ColorOutput "WARNING: This will reinstall all Reticulum components" "Warning"
@@ -1005,7 +1507,7 @@ function Reinstall-AllComponents {
     pause
 }
 
-function Clear-CacheFiles {
+function Clear-Cache {
     Show-Section "Cleaning Cache"
 
     $pip = "pip"
@@ -1189,6 +1691,9 @@ function Import-Configuration {
 }
 
 function Reset-ToFactory {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Reset to Factory Defaults"
 
     Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Red
@@ -1242,7 +1747,7 @@ function Reset-ToFactory {
     pause
 }
 
-function Show-Logs {
+function Show-Log {
     Show-Section "Recent Log Entries"
 
     if (Test-Path $Script:LogFile) {
@@ -1257,7 +1762,7 @@ function Show-Logs {
     pause
 }
 
-function Check-ToolUpdates {
+function Test-ToolUpdate {
     Show-Section "Checking for Updates"
 
     Write-ColorOutput "Checking GitHub for latest version..." "Progress"
@@ -1341,6 +1846,9 @@ function Show-Status {
 }
 
 function Start-RNSDaemon {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Starting rnsd Daemon"
 
     if (Get-Process -Name "rnsd" -ErrorAction SilentlyContinue) {
@@ -1367,6 +1875,9 @@ function Start-RNSDaemon {
 }
 
 function Stop-RNSDaemon {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Stopping rnsd Daemon"
 
     $rnsdProcess = Get-Process -Name "rnsd" -ErrorAction SilentlyContinue
@@ -1399,6 +1910,9 @@ function Stop-RNSDaemon {
 #########################################################
 
 function New-Backup {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Creating Backup"
 
     $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
@@ -1407,30 +1921,32 @@ function New-Backup {
 
     $backedUp = $false
 
-    New-Item -ItemType Directory -Path $Script:BackupDir -Force | Out-Null
+    if ($PSCmdlet.ShouldProcess($Script:BackupDir, "Create backup")) {
+        New-Item -ItemType Directory -Path $Script:BackupDir -Force | Out-Null
 
-    if (Test-Path $reticulumDir) {
-        Copy-Item -Path $reticulumDir -Destination $Script:BackupDir -Recurse -Force
-        Write-ColorOutput "Backed up Reticulum config" "Success"
-        $backedUp = $true
-    }
+        if (Test-Path $reticulumDir) {
+            Copy-Item -Path $reticulumDir -Destination $Script:BackupDir -Recurse -Force
+            Write-ColorOutput "Backed up Reticulum config" "Success"
+            $backedUp = $true
+        }
 
-    if (Test-Path $nomadDir) {
-        Copy-Item -Path $nomadDir -Destination $Script:BackupDir -Recurse -Force
-        Write-ColorOutput "Backed up NomadNet config" "Success"
-        $backedUp = $true
-    }
+        if (Test-Path $nomadDir) {
+            Copy-Item -Path $nomadDir -Destination $Script:BackupDir -Recurse -Force
+            Write-ColorOutput "Backed up NomadNet config" "Success"
+            $backedUp = $true
+        }
 
-    if (Test-Path $lxmfDir) {
-        Copy-Item -Path $lxmfDir -Destination $Script:BackupDir -Recurse -Force
-        Write-ColorOutput "Backed up LXMF config" "Success"
-        $backedUp = $true
-    }
+        if (Test-Path $lxmfDir) {
+            Copy-Item -Path $lxmfDir -Destination $Script:BackupDir -Recurse -Force
+            Write-ColorOutput "Backed up LXMF config" "Success"
+            $backedUp = $true
+        }
 
-    if ($backedUp) {
-        Write-ColorOutput "Backup saved to: $Script:BackupDir" "Success"
-    } else {
-        Write-ColorOutput "No configuration files found to backup" "Warning"
+        if ($backedUp) {
+            Write-ColorOutput "Backup saved to: $Script:BackupDir" "Success"
+        } else {
+            Write-ColorOutput "No configuration files found to backup" "Warning"
+        }
     }
 
     pause
@@ -1543,9 +2059,10 @@ function Show-MainMenu {
     Write-Host "  ─── Installation ───" -ForegroundColor Cyan
     Write-Host "  1) Install/Update Reticulum Ecosystem"
     Write-Host "  2) Install/Update via WSL"
-    Write-Host "  3) Install/Configure RNODE"
+    Write-Host "  3) RNODE Device Management"
     Write-Host "  4) Install Sideband"
     Write-Host "  5) Install NomadNet"
+    Write-Host "  m) Install MeshChat"
     Write-Host ""
     Write-Host "  ─── Management ───" -ForegroundColor Cyan
     Write-Host "  6) System Status & Diagnostics"
@@ -1560,7 +2077,7 @@ function Show-MainMenu {
     Write-Host "Run option 6 for detailed system diagnostics"
     Write-Host ""
 
-    $choice = Read-Host "Select an option [0-9]"
+    $choice = Read-Host "Select an option [0-9, m]"
     return $choice
 }
 
@@ -1739,12 +2256,12 @@ function Show-ServiceMenu {
 
 function Main {
     # Initialize environment detection (meshforge pattern)
-    Detect-Environment
+    Initialize-Environment
 
     # Initialize log
-    Write-Log "=== RNS Management Tool for Windows Started ===" "INFO"
-    Write-Log "Version: $($Script:Version)" "INFO"
-    Write-Log "RealHome=$($Script:RealHome), ScriptDir=$($Script:ScriptDir)" "INFO"
+    Write-RnsLog "=== RNS Management Tool for Windows Started ===" "INFO"
+    Write-RnsLog "Version: $($Script:Version)" "INFO"
+    Write-RnsLog "RealHome=$($Script:RealHome), ScriptDir=$($Script:ScriptDir)" "INFO"
 
     # Run startup health check (meshforge startup_health.py pattern)
     Invoke-StartupHealthCheck
@@ -1756,10 +2273,12 @@ function Main {
         switch ($choice) {
             "1" { Install-Reticulum -UseWSL $false }
             "2" { Install-Reticulum -UseWSL $true }
-            "3" { Install-RNODE }
+            "3" { Show-RnodeMenu }
             "4" { Install-Sideband }
             "5" { Install-NomadNet }
-            "6" { Show-Diagnostics }
+            "m" { Install-MeshChat }
+            "M" { Install-MeshChat }
+            "6" { Show-Diagnostic }
             "7" { Show-ServiceMenu }
             "8" { Show-BackupMenu }
             "9" { Show-AdvancedMenu }
@@ -1771,7 +2290,7 @@ function Main {
                 Write-Host "│  github.com/Nursedude/RNS-Management-Tool              │" -ForegroundColor Cyan
                 Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
                 Write-Host ""
-                Write-Log "=== RNS Management Tool Ended ===" "INFO"
+                Write-RnsLog "=== RNS Management Tool Ended ===" "INFO"
                 exit 0
             }
             default {
@@ -1783,12 +2302,11 @@ function Main {
 }
 
 # Check if running on Windows
-if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -lt 6) {
-    # PowerShell 5.1 and below are Windows-only
-    $IsWindows = $true
-}
+# PowerShell 5.1 and below are Windows-only ($IsWindows doesn't exist).
+# PowerShell 6+ defines $IsWindows as a readonly automatic variable.
+$isRunningOnWindows = if ($PSVersionTable.PSVersion.Major -lt 6) { $true } else { $IsWindows }
 
-if ($IsWindows -eq $false) {
+if (-not $isRunningOnWindows) {
     Write-Host "Error: This script is designed for Windows systems" -ForegroundColor Red
     Write-Host "For Linux/Mac, please use rns_management_tool.sh" -ForegroundColor Yellow
     exit 1

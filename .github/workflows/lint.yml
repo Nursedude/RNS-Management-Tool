@@ -1,0 +1,81 @@
+name: Lint and Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Bash syntax check (rns_management_tool.sh)
+        run: bash -n rns_management_tool.sh
+
+      - name: Bash syntax check (reticulum_updater.sh)
+        run: bash -n reticulum_updater.sh
+
+      - name: ShellCheck rns_management_tool.sh
+        run: shellcheck -x -S warning rns_management_tool.sh
+
+      - name: ShellCheck reticulum_updater.sh
+        run: shellcheck -x -S warning reticulum_updater.sh
+
+  bats:
+    name: Bats Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats-core
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats shellcheck
+
+      - name: Run bats test suite
+        run: bats tests/rns_management_tool.bats
+
+  powershell:
+    name: PowerShell Syntax
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell script (syntax check)
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/rns_management_tool.ps1",
+            [ref]$null,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host "PowerShell syntax check passed"
+
+      - name: PSScriptAnalyzer lint
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          $results = Invoke-ScriptAnalyzer -Path rns_management_tool.ps1 -Settings .PSScriptAnalyzerSettings.psd1 -Severity Warning,Error
+          if ($results) {
+            $results | Format-Table -AutoSize
+            $errorCount = ($results | Where-Object Severity -eq 'Error').Count
+            if ($errorCount -gt 0) {
+              Write-Error "$errorCount error(s) found by PSScriptAnalyzer"
+              exit 1
+            }
+            Write-Warning "$($results.Count) warning(s) found by PSScriptAnalyzer"
+          } else {
+            Write-Host "PSScriptAnalyzer: no issues found"
+          }
