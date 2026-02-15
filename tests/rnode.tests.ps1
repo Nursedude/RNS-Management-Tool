@@ -47,7 +47,8 @@ Describe "RNS002: COM Port Validation" {
         }
 
         It "Rejects lowercase com3" {
-            "com3" -match '^COM\d+$' | Should -BeFalse
+            # PowerShell -match is case-insensitive; use -cmatch for case-sensitive
+            "com3" -cmatch '^COM\d+$' | Should -BeFalse
         }
 
         It "Rejects /dev/ttyUSB0 (Linux path)" {
@@ -323,7 +324,13 @@ Describe "Function Existence" {
     }
 
     It "Set-RnodeRadioParameter uses SupportsShouldProcess" {
-        $Script:RnodeSource | Should -Match 'Set-RnodeRadioParameter.*\[CmdletBinding\(SupportsShouldProcess\)\]'
+        # Function declaration and [CmdletBinding] are on separate lines
+        $fnIdx = $Script:RnodeSource.IndexOf('function Set-RnodeRadioParameter')
+        $fnIdx | Should -BeGreaterOrEqual 0
+        $cbIdx = $Script:RnodeSource.IndexOf('[CmdletBinding(SupportsShouldProcess)]', $fnIdx)
+        $cbIdx | Should -BeGreaterThan $fnIdx
+        # Must be within 100 chars (same function block)
+        ($cbIdx - $fnIdx) | Should -BeLessThan 100
     }
 }
 

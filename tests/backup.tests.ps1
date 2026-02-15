@@ -25,7 +25,8 @@ Describe "RNS004: Path Traversal Prevention in Import" {
         }
 
         It "Source checks for absolute paths starting with \\" {
-            $Script:BackupSource | Should -Match "StartsWith\('\\\\'\)"
+            # Source has StartsWith('\') — one literal backslash in single quotes
+            $Script:BackupSource | Should -Match "StartsWith\('\\'\)"
         }
 
         It "Source logs security violations" {
@@ -168,7 +169,12 @@ Describe "Backup Management" {
         }
 
         It "New-Backup uses SupportsShouldProcess" {
-            $Script:BackupSource | Should -Match 'New-Backup.*\[CmdletBinding\(SupportsShouldProcess\)\]' -Because "destructive operation should support -WhatIf"
+            # Function declaration and [CmdletBinding] are on separate lines
+            $fnIdx = $Script:BackupSource.IndexOf('function New-Backup')
+            $fnIdx | Should -BeGreaterOrEqual 0
+            $cbIdx = $Script:BackupSource.IndexOf('[CmdletBinding(SupportsShouldProcess)]', $fnIdx)
+            $cbIdx | Should -BeGreaterThan $fnIdx
+            ($cbIdx - $fnIdx) | Should -BeLessThan 100
         }
 
         It "New-Backup creates backup directory" {
