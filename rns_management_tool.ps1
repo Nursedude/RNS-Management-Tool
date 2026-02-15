@@ -1441,14 +1441,14 @@ function Show-AdvancedMenu {
         $choice = Read-Host "Select an option"
 
         switch ($choice) {
-            "1" { Update-PythonPackages }
-            "2" { Reinstall-AllComponents }
-            "3" { Clear-CacheFiles }
+            "1" { Update-PythonPackage }
+            "2" { Reinstall-Ecosystem }
+            "3" { Clear-Cache }
             "4" { Export-Configuration }
             "5" { Import-Configuration }
             "6" { Reset-ToFactory }
-            "7" { Show-Logs }
-            "8" { Check-ToolUpdates }
+            "7" { Show-Log }
+            "8" { Check-ToolUpdate }
             "0" { return }
             default {
                 Write-ColorOutput "Invalid option" "Error"
@@ -1458,7 +1458,7 @@ function Show-AdvancedMenu {
     }
 }
 
-function Update-PythonPackages {
+function Update-PythonPackage {
     Show-Section "Updating Python Packages"
 
     Write-ColorOutput "This will update pip and all Python packages" "Info"
@@ -1483,7 +1483,7 @@ function Update-PythonPackages {
     pause
 }
 
-function Reinstall-AllComponents {
+function Reinstall-Ecosystem {
     Show-Section "Reinstalling All Components"
 
     Write-ColorOutput "WARNING: This will reinstall all Reticulum components" "Warning"
@@ -1498,7 +1498,7 @@ function Reinstall-AllComponents {
     pause
 }
 
-function Clear-CacheFiles {
+function Clear-Cache {
     Show-Section "Cleaning Cache"
 
     $pip = "pip"
@@ -1735,7 +1735,7 @@ function Reset-ToFactory {
     pause
 }
 
-function Show-Logs {
+function Show-Log {
     Show-Section "Recent Log Entries"
 
     if (Test-Path $Script:LogFile) {
@@ -1750,7 +1750,7 @@ function Show-Logs {
     pause
 }
 
-function Check-ToolUpdates {
+function Check-ToolUpdate {
     Show-Section "Checking for Updates"
 
     Write-ColorOutput "Checking GitHub for latest version..." "Progress"
