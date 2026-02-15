@@ -313,7 +313,7 @@ run_diagnostics() {
     echo -e "${BOLD}Running 6-step diagnostic...${NC}\n"
 
     # Run each step and accumulate results
-    local result_line issues warnings
+    local result_line
 
     result_line=$(_run_diag_step diag_check_environment)
     if [[ "$result_line" =~ DIAG_RESULT:([0-9]+):([0-9]+) ]]; then
