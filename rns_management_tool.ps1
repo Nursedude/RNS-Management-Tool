@@ -804,7 +804,7 @@ function Get-RnodeSerialPort {
         if ($serialPorts.Count -gt 0) {
             $ports = $serialPorts
         }
-    } catch {}
+    } catch { Write-Verbose "Serial port enumeration unavailable: $_" }
 
     # Also try WMI for richer device info
     $usbDevices = @()
@@ -812,7 +812,7 @@ function Get-RnodeSerialPort {
         $usbDevices = Get-CimInstance -ClassName Win32_PnPEntity -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -match 'COM\d+' -and ($_.Name -match 'USB|Serial|CH340|CP210|FTDI|Silicon Labs') } |
             Select-Object Name, DeviceID
-    } catch {}
+    } catch { Write-Verbose "USB device enumeration unavailable: $_" }
 
     if ($usbDevices.Count -gt 0) {
         Write-Host "Detected USB serial devices:" -ForegroundColor Cyan
@@ -1253,7 +1253,7 @@ function Invoke-DiagCheckService {
             } else {
                 Write-Host "  Uptime: $([math]::Floor($uptime.TotalHours))h $($uptime.Minutes)m"
             }
-        } catch {}
+        } catch { Write-Verbose "Could not determine rnsd uptime: $_" }
     } else {
         Write-ColorOutput "rnsd daemon is not running" "Warning"
         Write-Host "  Fix: Start from Services menu or run: rnsd --daemon" -ForegroundColor Yellow
@@ -1347,7 +1347,7 @@ function Invoke-DiagCheckNetwork {
             foreach ($line in $rnstatusOutput) {
                 Write-Host "  $line"
             }
-        } catch {}
+        } catch { Write-Verbose "Could not retrieve rnstatus output: $_" }
     }
     Write-Host ""
 }
@@ -2302,12 +2302,11 @@ function Main {
 }
 
 # Check if running on Windows
-if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -lt 6) {
-    # PowerShell 5.1 and below are Windows-only
-    $IsWindows = $true
-}
+# PowerShell 5.1 and below are Windows-only ($IsWindows doesn't exist).
+# PowerShell 6+ defines $IsWindows as a readonly automatic variable.
+$isRunningOnWindows = if ($PSVersionTable.PSVersion.Major -lt 6) { $true } else { $IsWindows }
 
-if ($IsWindows -eq $false) {
+if (-not $isRunningOnWindows) {
     Write-Host "Error: This script is designed for Windows systems" -ForegroundColor Red
     Write-Host "For Linux/Mac, please use rns_management_tool.sh" -ForegroundColor Yellow
     exit 1
