@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #########################################################
 # lib/ui.sh — UI/TUI functions, box drawing, menus
 # Sourced by rns_management_tool.sh

@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # MENU_BREADCRUMB used by other sourced modules
 #########################################################
 # lib/config.sh — Configuration templates, editor, viewer, logs
 # Sourced by rns_management_tool.sh

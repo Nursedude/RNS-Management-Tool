@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # DIALOG_BACKEND, DIALOG_WIDTH etc. used by other sourced modules
 #########################################################
 # lib/dialog.sh — whiptail/dialog backend abstraction
 # Sourced by rns_management_tool.sh (after ui.sh)

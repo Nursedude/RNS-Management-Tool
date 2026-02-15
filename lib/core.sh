@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # shellcheck disable=SC2034  # Color vars and log level constants are part of the UI API
 #########################################################
 # lib/core.sh — Terminal, colors, home resolution, globals

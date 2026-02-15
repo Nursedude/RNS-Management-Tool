@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # NEEDS_REBOOT, MENU_BREADCRUMB used by other sourced modules
 #########################################################
 # lib/install.sh — Prerequisites, ecosystem, MeshChat, Sideband
 # Sourced by rns_management_tool.sh

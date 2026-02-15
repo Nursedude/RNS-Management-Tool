@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #########################################################
 # lib/diagnostics.sh — System diagnostics with return-value pattern
 # Sourced by rns_management_tool.sh

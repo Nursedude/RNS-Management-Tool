@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # MENU_BREADCRUMB used by other sourced modules
 #########################################################
 # lib/rnode.sh — RNODE device configuration and management
 # Sourced by rns_management_tool.sh
