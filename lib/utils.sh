@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2034  # Cross-module globals (PI_MODEL, OS_VERSION, HAS_* flags, etc.) used by other sourced modules
 # shellcheck disable=SC2317  # Functions called via TUI menus/traps appear unreachable to static analysis
 #########################################################
 # lib/utils.sh — Utility functions, logging, caching
