@@ -223,7 +223,7 @@ log_error() {
 cleanup_on_exit() {
     local exit_code=$?
     # Remove any temp files created during session
-    rm -f /tmp/rns_mgmt_*.tmp 2>/dev/null
+    rm -f "${TMPDIR:-/tmp}"/rns_mgmt_*.tmp 2>/dev/null
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
         log_error "Script exited with code $exit_code"
     fi
@@ -429,11 +429,13 @@ safe_call() {
     local label="$1"
     shift
 
-    if "$@"; then
+    local rc=0
+    "$@" || rc=$?
+
+    if [ $rc -eq 0 ]; then
         return 0
     fi
 
-    local rc=$?
     log_error "safe_call: '$label' failed with exit code $rc"
 
     case $rc in
