@@ -1404,20 +1404,59 @@ function Show-Diagnostic {
 }
 
 function Show-BackupMenu {
-    Show-Section "Backup/Restore Configuration"
+    while ($true) {
+        Show-Section "Backup/Restore Configuration"
 
-    Write-Host "Options:" -ForegroundColor Cyan
-    Write-Host "  1) Create backup"
-    Write-Host "  2) Restore backup"
-    Write-Host "  0) Back"
-    Write-Host ""
+        # Show backup status
+        $backups = Get-ChildItem -Path $env:USERPROFILE -Directory -Filter ".reticulum_backup_*" -ErrorAction SilentlyContinue
+        $backupCount = if ($backups) { $backups.Count } else { 0 }
 
-    $choice = Read-Host "Select option"
+        Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor White
+        Write-Host "│  " -ForegroundColor White -NoNewline
+        Write-Host "Backup Status" -ForegroundColor Cyan -NoNewline
+        Write-Host "                                          │" -ForegroundColor White
+        Write-Host "├─────────────────────────────────────────────────────────┤" -ForegroundColor White
+        Write-Host "│  Available backups: " -ForegroundColor White -NoNewline
+        Write-Host "$backupCount" -ForegroundColor Green -NoNewline
+        Write-Host "                                    │" -ForegroundColor White
 
-    switch ($choice) {
-        "1" { New-Backup }
-        "2" { Restore-Backup }
-        "0" { return }
+        $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
+        if (Test-Path $reticulumDir) {
+            $configSize = "{0:N1} MB" -f ((Get-ChildItem $reticulumDir -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB)
+            Write-Host "│  Config size: " -ForegroundColor White -NoNewline
+            Write-Host "$configSize" -ForegroundColor Green -NoNewline
+            $pad = " " * (40 - $configSize.Length)
+            Write-Host "$pad│" -ForegroundColor White
+        }
+
+        Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor White
+        Write-Host ""
+
+        Write-Host "Backup & Restore:" -ForegroundColor White
+        Write-Host ""
+        Write-Host "  1) Create backup"
+        Write-Host "  2) Restore from backup"
+        Write-Host "  3) List all backups"
+        Write-Host "  4) Delete old backups"
+        Write-Host "  5) Export configuration (portable)"
+        Write-Host "  6) Import configuration"
+        Write-Host ""
+        Write-Host "  0) Back to Main Menu"
+        Write-Host ""
+
+        $choice = Read-Host "Select option"
+
+        switch ($choice) {
+            "1" { New-Backup }
+            "2" { Restore-Backup }
+            "3" { Get-AllBackups }
+            "4" { Remove-OldBackups }
+            "5" { Export-RnsConfiguration }
+            "6" { Import-RnsConfiguration }
+            "0" { return }
+            "" { return }
+            default { Write-ColorOutput "Invalid option" "Error"; Start-Sleep -Seconds 1 }
+        }
     }
 }
 
@@ -1996,6 +2035,218 @@ function Restore-Backup {
     pause
 }
 
+function Get-AllBackups {
+    Show-Section "All Backups"
+
+    $backups = Get-ChildItem -Path $env:USERPROFILE -Directory -Filter ".reticulum_backup_*" -ErrorAction SilentlyContinue | Sort-Object Name
+
+    if (-not $backups -or $backups.Count -eq 0) {
+        Write-ColorOutput "No backups found" "Warning"
+        pause
+        return
+    }
+
+    Write-Host "Found $($backups.Count) backup(s):" -ForegroundColor White
+    Write-Host ""
+
+    foreach ($backup in $backups) {
+        # Extract date from backup name (format: .reticulum_backup_YYYYMMDD_HHMMSS)
+        $datePart = $backup.Name -replace '\.reticulum_backup_', ''
+        if ($datePart -match '(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})') {
+            $formattedDate = "$($Matches[1])-$($Matches[2])-$($Matches[3]) $($Matches[4]):$($Matches[5]):$($Matches[6])"
+        } else {
+            $formattedDate = $backup.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+        }
+
+        $backupSize = "{0:N1} MB" -f ((Get-ChildItem $backup.FullName -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB)
+
+        Write-Host "  " -NoNewline
+        Write-Host ([char]0x25CF) -ForegroundColor Green -NoNewline
+        Write-Host " $formattedDate (Size: $backupSize)"
+    }
+
+    pause
+}
+
+function Remove-OldBackups {
+    Show-Section "Delete Old Backups"
+
+    $backups = Get-ChildItem -Path $env:USERPROFILE -Directory -Filter ".reticulum_backup_*" -ErrorAction SilentlyContinue | Sort-Object Name
+
+    if (-not $backups -or $backups.Count -eq 0) {
+        Write-ColorOutput "No backups found to delete" "Warning"
+        pause
+        return
+    }
+
+    if ($backups.Count -le 3) {
+        Write-ColorOutput "Only $($backups.Count) backup(s) exist. Keeping all." "Info"
+        pause
+        return
+    }
+
+    $toDelete = $backups.Count - 3
+    Write-Host "This will keep the 3 most recent backups and delete older ones." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Backups to delete: $toDelete"
+    Write-Host ""
+
+    $confirm = Read-Host "Delete $toDelete old backup(s)? (y/N)"
+    if ($confirm -eq 'y' -or $confirm -eq 'Y') {
+        $deleted = 0
+        for ($i = 0; $i -lt $toDelete; $i++) {
+            Remove-Item -Path $backups[$i].FullName -Recurse -Force -ErrorAction SilentlyContinue
+            $deleted++
+        }
+        Write-ColorOutput "Deleted $deleted old backup(s)" "Success"
+        Write-RnsLog "Deleted $deleted old backups" "INFO"
+    } else {
+        Write-ColorOutput "Cancelled" "Info"
+    }
+
+    pause
+}
+
+function Export-RnsConfiguration {
+    Show-Section "Export Configuration"
+
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $exportFile = Join-Path $env:USERPROFILE "reticulum_config_export_$timestamp.zip"
+
+    Write-Host "This will create a portable backup of your configuration." -ForegroundColor Yellow
+    Write-Host ""
+
+    $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
+    $nomadDir = Join-Path $env:USERPROFILE ".nomadnetwork"
+    $lxmfDir = Join-Path $env:USERPROFILE ".lxmf"
+
+    $hasConfig = (Test-Path $reticulumDir) -or (Test-Path $nomadDir) -or (Test-Path $lxmfDir)
+
+    if (-not $hasConfig) {
+        Write-ColorOutput "No configuration files found to export" "Warning"
+        pause
+        return
+    }
+
+    try {
+        Write-ColorOutput "Creating export archive..." "Progress"
+
+        # Create temporary staging directory
+        $tempExport = Join-Path $env:TEMP "rns_export_$timestamp"
+        New-Item -ItemType Directory -Path $tempExport -Force | Out-Null
+
+        if (Test-Path $reticulumDir) {
+            Copy-Item -Path $reticulumDir -Destination (Join-Path $tempExport ".reticulum") -Recurse -Force
+        }
+        if (Test-Path $nomadDir) {
+            Copy-Item -Path $nomadDir -Destination (Join-Path $tempExport ".nomadnetwork") -Recurse -Force
+        }
+        if (Test-Path $lxmfDir) {
+            Copy-Item -Path $lxmfDir -Destination (Join-Path $tempExport ".lxmf") -Recurse -Force
+        }
+
+        Compress-Archive -Path (Join-Path $tempExport "*") -DestinationPath $exportFile -Force
+        Remove-Item -Path $tempExport -Recurse -Force -ErrorAction SilentlyContinue
+
+        Write-ColorOutput "Configuration exported to:" "Success"
+        Write-Host "  $exportFile" -ForegroundColor Green
+        Write-RnsLog "Exported configuration to: $exportFile" "INFO"
+    } catch {
+        Write-ColorOutput "Failed to create export archive: $_" "Error"
+    }
+
+    pause
+}
+
+function Import-RnsConfiguration {
+    Show-Section "Import Configuration"
+
+    Write-Host "Enter the path to the export archive (.zip):"
+    $importFile = Read-Host "Archive path"
+
+    if (-not $importFile) {
+        Write-ColorOutput "Cancelled" "Info"
+        pause
+        return
+    }
+
+    if (-not (Test-Path $importFile -PathType Leaf)) {
+        Write-ColorOutput "File not found: $importFile" "Error"
+        pause
+        return
+    }
+
+    if ($importFile -notmatch '\.zip$') {
+        Write-ColorOutput "Invalid file format. Expected .zip archive" "Error"
+        pause
+        return
+    }
+
+    try {
+        # RNS004: Validate archive contents before extraction
+        Write-ColorOutput "Validating archive structure..." "Info"
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($importFile)
+
+        # Check for path traversal attempts
+        $hasTraversal = $false
+        $hasReticulumConfig = $false
+
+        foreach ($entry in $zip.Entries) {
+            if ($entry.FullName -match '\.\.' -or $entry.FullName.StartsWith('/') -or $entry.FullName.StartsWith('\')) {
+                $hasTraversal = $true
+                break
+            }
+            if ($entry.FullName -match '^\.(reticulum|nomadnetwork|lxmf)[/\\]') {
+                $hasReticulumConfig = $true
+            }
+        }
+
+        $zip.Dispose()
+
+        if ($hasTraversal) {
+            Write-ColorOutput "Security: Archive contains invalid paths (absolute or traversal)" "Error"
+            Write-RnsLog "SECURITY: Rejected archive with invalid paths: $importFile" "WARNING"
+            pause
+            return
+        }
+
+        if (-not $hasReticulumConfig) {
+            Write-ColorOutput "Archive does not appear to contain Reticulum configuration" "Warning"
+            Write-Host "Expected directories: .reticulum/, .nomadnetwork/, .lxmf/" -ForegroundColor Yellow
+            $continueAnyway = Read-Host "Continue anyway? (y/N)"
+            if ($continueAnyway -ne 'y' -and $continueAnyway -ne 'Y') {
+                Write-ColorOutput "Import cancelled" "Info"
+                pause
+                return
+            }
+        }
+
+        Write-ColorOutput "Archive validation passed" "Success"
+        Write-Host ""
+        Write-Host "WARNING: This will overwrite your current configuration!" -ForegroundColor Red
+        $confirm = Read-Host "Continue? (y/N)"
+
+        if ($confirm -eq 'y' -or $confirm -eq 'Y') {
+            Write-ColorOutput "Creating backup of current configuration..." "Info"
+            New-Backup
+
+            Write-ColorOutput "Importing configuration..." "Progress"
+            Expand-Archive -Path $importFile -DestinationPath $env:USERPROFILE -Force
+
+            Write-ColorOutput "Configuration imported successfully" "Success"
+            Write-RnsLog "Imported configuration from: $importFile" "INFO"
+        } else {
+            Write-ColorOutput "Import cancelled" "Info"
+        }
+    } catch {
+        Write-ColorOutput "Failed to import configuration: $_" "Error"
+    }
+
+    pause
+}
+
 #########################################################
 # Main Menu
 #########################################################
@@ -2180,6 +2431,154 @@ function Invoke-IdentityManagement {
     pause
 }
 
+function Invoke-FileTransfer {
+    Show-Section "File Transfer (rncp)"
+    if (-not (Get-Command rncp -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "rncp not available - install RNS first" "Warning"
+        pause
+        return
+    }
+
+    Write-Host "RNS File Transfer:" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Send a file:" -ForegroundColor Cyan
+    Write-Host "    rncp /path/to/file <destination_hash>"
+    Write-Host ""
+    Write-Host "  Receive files (listen mode):" -ForegroundColor Cyan
+    Write-Host "    rncp -l [-s /save/path]"
+    Write-Host ""
+    Write-Host "  Fetch a file from remote:" -ForegroundColor Cyan
+    Write-Host "    rncp -f <filename> <destination_hash>"
+    Write-Host ""
+    Write-Host "Actions:" -ForegroundColor White
+    Write-Host "  s) Send a file now"
+    Write-Host "  l) Start listening for incoming files"
+    Write-Host "  0) Cancel"
+    Write-Host ""
+
+    $action = Read-Host "Select action"
+    switch ($action) {
+        { $_ -in "s","S" } {
+            $filePath = Read-Host "File path to send"
+            if (-not $filePath) {
+                Write-ColorOutput "Cancelled" "Info"
+            } elseif (-not (Test-Path $filePath -PathType Leaf)) {
+                Write-ColorOutput "File not found: $filePath" "Error"
+            } else {
+                $dest = Read-Host "Destination hash"
+                if ($dest) {
+                    Write-ColorOutput "Sending $filePath to $dest..." "Info"
+                    & rncp $filePath $dest 2>&1
+                } else {
+                    Write-ColorOutput "Cancelled" "Info"
+                }
+            }
+        }
+        { $_ -in "l","L" } {
+            $savePath = Join-Path $env:USERPROFILE "Downloads"
+            Write-ColorOutput "Listening for incoming file transfers..." "Info"
+            Write-ColorOutput "Files will be saved to: $savePath" "Info"
+            Write-ColorOutput "Press Ctrl+C to stop listening" "Info"
+            & rncp -l -s $savePath 2>&1
+        }
+        default {
+            Write-ColorOutput "Cancelled" "Info"
+        }
+    }
+    pause
+}
+
+function Invoke-RemoteCommand {
+    Show-Section "Remote Command (rnx)"
+    if (-not (Get-Command rnx -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "rnx not available - install RNS first" "Warning"
+        pause
+        return
+    }
+
+    Write-Host "RNS Remote Execution:" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Run a remote command:" -ForegroundColor Cyan
+    Write-Host "    rnx <destination_hash> `"command`""
+    Write-Host ""
+    Write-Host "  Listen for commands:" -ForegroundColor Cyan
+    Write-Host "    rnx -l [-i identity_file]"
+    Write-Host ""
+    Write-Host "Note: Remote must be running rnx in listen mode" -ForegroundColor Yellow
+    Write-Host ""
+
+    $dest = Read-Host "Destination hash (or 0 to cancel)"
+    if ($dest -and $dest -ne "0") {
+        $cmd = Read-Host "Command to execute"
+        if ($cmd) {
+            Write-ColorOutput "Executing on ${dest}: $cmd" "Info"
+            & rnx $dest $cmd 2>&1
+        } else {
+            Write-ColorOutput "Cancelled" "Info"
+        }
+    } else {
+        Write-ColorOutput "Cancelled" "Info"
+    }
+    pause
+}
+
+function Enable-RnsdAutoStart {
+    Show-Section "Enable Auto-Start on Boot"
+
+    # On Windows, use Task Scheduler to start rnsd at logon
+    $taskName = "RNS_rnsd_autostart"
+    $rnsdPath = (Get-Command rnsd -ErrorAction SilentlyContinue).Source
+
+    if (-not $rnsdPath) {
+        Write-ColorOutput "rnsd not found - install RNS first" "Warning"
+        pause
+        return
+    }
+
+    try {
+        $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($existingTask) {
+            Write-ColorOutput "Auto-start is already enabled" "Info"
+            pause
+            return
+        }
+
+        $action = New-ScheduledTaskAction -Execute $rnsdPath
+        $trigger = New-ScheduledTaskTrigger -AtLogOn
+        $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Auto-start Reticulum Network Stack daemon at logon" | Out-Null
+
+        Write-ColorOutput "Auto-start enabled for rnsd" "Success"
+        Write-ColorOutput "rnsd will start automatically at logon" "Info"
+        Write-RnsLog "Enabled rnsd auto-start via Task Scheduler" "INFO"
+    } catch {
+        Write-ColorOutput "Failed to create scheduled task: $_" "Error"
+    }
+    pause
+}
+
+function Disable-RnsdAutoStart {
+    Show-Section "Disable Auto-Start on Boot"
+
+    $taskName = "RNS_rnsd_autostart"
+
+    try {
+        $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($existingTask) {
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+            Write-ColorOutput "Auto-start disabled for rnsd" "Success"
+            Write-RnsLog "Disabled rnsd auto-start" "INFO"
+        } else {
+            Write-ColorOutput "Auto-start was not enabled" "Info"
+        }
+    } catch {
+        Write-ColorOutput "Failed to remove scheduled task: $_" "Error"
+    }
+    pause
+}
+
 function Show-ServiceMenu {
     while ($true) {
         Show-Section "Service Management"
@@ -2217,19 +2616,27 @@ function Show-ServiceMenu {
         $hasRnstatus = [bool](Get-Command rnstatus -ErrorAction SilentlyContinue)
         $hasRnpath = [bool](Get-Command rnpath -ErrorAction SilentlyContinue)
         $hasRnprobe = [bool](Get-Command rnprobe -ErrorAction SilentlyContinue)
+        $hasRncp = [bool](Get-Command rncp -ErrorAction SilentlyContinue)
+        $hasRnx = [bool](Get-Command rnx -ErrorAction SilentlyContinue)
         $hasRnid = [bool](Get-Command rnid -ErrorAction SilentlyContinue)
 
         $s5 = if ($hasRnstatus) { "View network statistics (rnstatus)" } else { "View network statistics (rnstatus) [not installed]" }
         $s6 = if ($hasRnpath) { "View path table (rnpath)" } else { "View path table (rnpath) [not installed]" }
         $s7 = if ($hasRnprobe) { "Probe destination (rnprobe)" } else { "Probe destination (rnprobe) [not installed]" }
+        $s8 = if ($hasRncp) { "Transfer file (rncp)" } else { "Transfer file (rncp) [not installed]" }
+        $s9 = if ($hasRnx) { "Remote command (rnx)" } else { "Remote command (rnx) [not installed]" }
         Write-Host "  5) $s5"
         Write-Host "  6) $s6"
         Write-Host "  7) $s7"
+        Write-Host "  8) $s8"
+        Write-Host "  9) $s9"
         Write-Host ""
 
-        Write-Host "  --- Identity ---" -ForegroundColor Cyan
+        Write-Host "  --- Identity & Boot ---" -ForegroundColor Cyan
         $s10 = if ($hasRnid) { "Identity management (rnid)" } else { "Identity management (rnid) [not installed]" }
         Write-Host "  10) $s10"
+        Write-Host "  11) Enable auto-start on boot"
+        Write-Host "  12) Disable auto-start on boot"
         Write-Host ""
         Write-Host "  0) Back to Main Menu"
         Write-Host ""
@@ -2246,7 +2653,11 @@ function Show-ServiceMenu {
             }
             "4" { Show-Status }
             { $_ -in "5","6","7" } { Invoke-NetworkTool $choice }
+            "8" { Invoke-FileTransfer }
+            "9" { Invoke-RemoteCommand }
             "10" { Invoke-IdentityManagement }
+            "11" { Enable-RnsdAutoStart }
+            "12" { Disable-RnsdAutoStart }
             "0" { return }
             "" { return }
             default { Write-ColorOutput "Invalid option" "Error"; Start-Sleep -Seconds 1 }
