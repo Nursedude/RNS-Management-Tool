@@ -349,7 +349,7 @@ teardown() {
     local result_lines
     result_lines=$(grep '^\s*echo "DIAG_RESULT:' "$LIB_DIR/diagnostics.sh")
     local bad_format
-    bad_format=$(echo "$result_lines" | grep -v 'DIAG_RESULT:\$_diag_issues:\$_diag_warnings')
+    bad_format=$(echo "$result_lines" | grep -v 'DIAG_RESULT:\$_diag_issues:\$_diag_warnings' || true)
     [ -z "$bad_format" ]
 }
 
