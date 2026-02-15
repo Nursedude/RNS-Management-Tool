@@ -87,22 +87,16 @@ graph TB
 
 ```
 /home/user/RNS-Management-Tool/
-├── rns_management_tool.sh          # PRIMARY: Linux/Raspberry Pi TUI (2,588 lines)
-├── rns_management_tool.ps1         # Windows PowerShell version (1,199 lines)
+├── rns_management_tool.sh          # PRIMARY: Linux/Raspberry Pi TUI (~4,400 lines)
+├── rns_management_tool.ps1         # Windows PowerShell version (1,465 lines)
 ├── reticulum_updater.sh            # Specialized update script (949 lines)
-├── FIXES_TO_APPLY.sh               # Node.js modernization fixes
-├── QUICK_FIXES.sh                  # npm/pip upgrade utilities
 │
 ├── README.md                        # Primary project documentation
 ├── CLAUDE.md                        # THIS FILE - Development guide
 ├── QUICKSTART.md                   # 5-minute setup guide
 ├── CHANGELOG.md                    # Version history (semantic versioning)
-│
-├── CODE_REVIEW_REPORT.md           # Code quality analysis
-├── DEPRECATION_AUDIT_REPORT.md     # Dependency audit findings
-├── VERIFICATION_REPORT.md          # Security verification
-├── EXECUTIVE_SUMMARY.md            # High-level overview
-└── VISUAL_GUIDE.md                 # UI feature showcase
+├── SESSION_NOTES.md                # Active development session log
+└── SESSION_NOTES_MESHFORGE_DIFF.md # MeshForge comparison (seed document)
 ```
 
 ---

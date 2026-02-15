@@ -2,6 +2,104 @@
 
 ---
 
+## Session 7: Audit, Dead Code Removal, Documentation Trim
+**Date:** 2026-02-15
+**Branch:** `claude/audit-meshforge-fixes-WlYJE`
+**Parent:** claude/improve-tui-meshforge-obiAP (merged as PR #23)
+
+### Objective
+Systematic audit of tests, features, bloat, and dead ends. Diagnose persistent test failures and fix. Trim documentation bloat. Apply meshforge lessons on over-engineering and session entropy.
+
+### MeshForge Context (PRs 834-845, since last session)
+- **safe_import migration (PRs 834-841):** Consolidated ImportError blocks → safe_import for external deps only. Over-engineered fallback stubs for first-party modules were rolled back in PR 841 (-199 lines).
+- **Gateway test trim (PR 844):** 66 test files removed (non-gateway), focus restored to core bridging.
+- **"Diagnose, don't fix" policy (PR 844):** Auto-restart logic removed from rns_bridge.py. Services should report status, not auto-remediate.
+- **Key anti-pattern identified:** Wrapping internal modules with defensive imports creates fallback stubs that duplicate logic and mask real problems.
+
+### Test Failures Diagnosed & Fixed (3 failures → 0)
+
+| Test | Root Cause | Fix |
+|------|-----------|-----|
+| **#15** Version mismatch | Test expected 0.3.3-beta, script is 0.3.4-beta (test not updated in session 6) | Updated test to match current version |
+| **#44** pgrep leakage | Test used fragile string-matching to exclude function body; broke when line numbers shifted | Rewrote test to count total pgrep vs. approved (comment + function body) |
+| **#63** ShellCheck failures | 3 issues introduced in session 7 (meshtasticd HTTP API code): SC2181 ($? indirect check), SC2001 (sed vs parameter expansion), SC2086 (unquoted variable) | Fixed: `if cmd; then` pattern, `${var#pattern}` trim, quoted `"$config_rc"` |
+
+### Dead Code Removed (5 functions, ~70 lines)
+
+| Function | Lines | Why Dead |
+|----------|-------|----------|
+| `print_progress()` | 356-368 | Progress bar never called; step-based progress system (`init_operation`/`next_step`) is used instead |
+| `validate_numeric()` | 529-543 | Generic validator never wired up; inline validation used directly in RNODE config |
+| `validate_device_port()` | 546-562 | Never called; `rnode_get_device_port()` has its own inline validation |
+| `show_operation_summary()` | 984-1000 | Box-drawing summary never called from any flow |
+| `check_package_installed()` | 1715-1732 | Never called; `get_installed_version()` + inline checks used instead |
+
+### Bug Fixed: Recursive Menu (Stack Overflow)
+
+**`configure_rnode_interactive()`** called itself recursively after each menu selection instead of using a `while true` loop. After N menu selections, N stack frames accumulated. Converted to loop with early return on `0) Back`.
+
+### Documentation Bloat Trimmed (18 → 6 files, -3,298 lines)
+
+**Removed (14 files):**
+- 12 markdown files: `CHANGES_SUMMARY.md`, `CODE_REVIEW_MESHFORGE.md`, `CODE_REVIEW_REPORT.md`, `DEPRECATION_AUDIT_REPORT.md`, `EXECUTIVE_SUMMARY.md`, `NODE_JS_EOL_REMINDER.md`, `PULL_REQUEST.md`, `VERIFICATION_SUMMARY.md`, `UPDATE_CHANGES.md`, `UPGRADE_SUMMARY_v2.2.0.md`, `VERIFICATION_REPORT.md`, `VISUAL_GUIDE.md`
+- 2 utility scripts: `FIXES_TO_APPLY.sh`, `QUICK_FIXES.sh` (one-time fix scripts whose changes were applied in sessions 1-3)
+
+**Rationale:** All were one-time audit artifacts, stale reports, or PR templates from Dec 2025 - Jan 2026. Findings already incorporated into CHANGELOG, CLAUDE.md, and the codebase.
+
+**Kept (6 files):** README.md, QUICKSTART.md, CLAUDE.md, CHANGELOG.md, SESSION_NOTES.md, SESSION_NOTES_MESHFORGE_DIFF.md
+
+### CLAUDE.md Updated
+- Directory structure updated to reflect removed files
+- Line counts corrected (~4,400 lines for main script, 1,465 for PS1)
+
+### Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Script lines | 4,495 | 4,408 |
+| Dead functions | 5 | 0 |
+| Recursive menus | 1 | 0 |
+| Markdown files | 18 | 6 |
+| Markdown lines | 6,016 | 2,718 |
+| Utility scripts | 5 | 3 |
+| Test failures | 3/63 | 0/63 |
+| `bash -n` | PASS | PASS |
+| `shellcheck -x` | 3 warnings | 0 |
+| BATS tests | 60/63 | 63/63 |
+
+### Session Entropy Notes
+
+Session stayed clean and systematic. No feature additions — purely audit, trim, and fix. This follows the meshforge PR 844 pattern of "trim non-essential, stabilize core."
+
+One entropy risk noted: the pgrep test (#44) was fragile from the start (hardcoded line-number ranges). The rewrite uses a counting approach that's resilient to line shifts. Future function additions that use pgrep should update the `approved=10` constant.
+
+### Remaining Work for Future Sessions
+
+**P1 (High Impact):**
+- [ ] Split `services_menu()` (442 lines) into sub-functions — violates <200 line rule
+- [ ] Split `run_diagnostics()` (254 lines) into per-step functions
+- [ ] Merge duplicate launcher creation functions (`create_meshchat_launcher` / `create_sideband_launcher`)
+- [ ] Add `whiptail`/`dialog` backend option (meshforge DialogBackend pattern)
+
+**P2 (Medium Impact):**
+- [ ] PowerShell parity — ps1 hasn't received ANY session 1-7 improvements
+- [ ] Add log rotation for `UPDATE_LOG` (meshforge 1MB rotation pattern)
+- [ ] Port conflict resolver pattern for port/service conflicts
+- [ ] Add status cache TTL expiration (meshforge uses 5-30s TTL)
+
+**P3 (Polish):**
+- [ ] Add keyboard shortcuts overlay (? in any menu)
+- [ ] Config drift detection (meshforge config_drift.py pattern)
+- [ ] Health score calculation (meshforge health_score.py pattern)
+
+**Cross-cutting (carried forward):**
+- Integration test coverage (service polling, status cache, retry, backup round-trip)
+- RNODE hardware testing (21+ boards need real-world validation)
+- Cross-platform field testing (RPi, desktop Linux, Windows 11, WSL2)
+- Script modularization (split into sourced files) — script at 4.4K lines
+
+---
+
 ## Session 6: TUI Improvements from MeshForge Patterns (PR #800, status_bar.py, _safe_call)
 **Date:** 2026-02-12
 **Branch:** `claude/improve-tui-meshforge-obiAP`
