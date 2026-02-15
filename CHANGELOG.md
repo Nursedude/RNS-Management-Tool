@@ -5,6 +5,22 @@ All notable changes to the RNS Management Tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5-beta] - 2026-02-15
+
+### Added
+- **Whiptail/Dialog Backend**: Abstraction layer (`lib/dialog.sh`) implementing 7 dialog methods (msgbox, yesno, menu, inputbox, infobox, gauge, checklist) with whiptail/dialog/terminal fallback — adapted from meshforge DialogBackend pattern
+- **Log Rotation**: Automatic 1MB rotation for UPDATE_LOG with 3 rotated copies; cleanup of legacy per-session timestamped logs — both Bash and PowerShell
+- **PowerShell Modularization**: Split 2,727-line monolithic ps1 into 9 modules under `pwsh/` (core, ui, environment, install, rnode, services, backup, diagnostics, advanced)
+- **CI Smoke Test Job**: New `smoke-test` and `check-mode` jobs in GitHub Actions workflow
+- **CI Module Validation**: ShellCheck and syntax checks now cover `lib/*.sh` and `pwsh/*.ps1` modules
+
+### Changed
+- PowerShell log path now uses stable `rns_management.log` instead of per-session timestamped files
+- Bash UPDATE_LOG now uses stable path with rotation instead of accumulating session files
+- CI workflow expanded from 3 to 5 jobs (shellcheck, check-mode, smoke-test, bats, powershell)
+- Smoke test expanded to validate dialog backend, log rotation, pwsh/ module structure
+- Version bumped to 0.3.5-beta
+
 ## [0.3.0-beta] - 2026-01-26
 
 ### Changed

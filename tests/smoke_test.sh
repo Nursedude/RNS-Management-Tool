@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAIN_SCRIPT="$SCRIPT_DIR/rns_management_tool.sh"
 PS_SCRIPT="$SCRIPT_DIR/rns_management_tool.ps1"
 LIB_DIR="$SCRIPT_DIR/lib"
+PWSH_DIR="$SCRIPT_DIR/pwsh"
 
 VERBOSE=false
 [[ "${1:-}" == "--verbose" ]] && VERBOSE=true
@@ -148,6 +149,15 @@ EXPECTED_FUNCTIONS=(
     # Advanced
     advanced_menu
     emergency_quick_mode
+    # Dialog backend
+    detect_dialog_backend
+    has_dialog_backend
+    dlg_msgbox
+    dlg_yesno
+    dlg_menu
+    dlg_inputbox
+    # Log rotation
+    rotate_log
     # Entry
     main
 )
@@ -196,11 +206,21 @@ PS_EXPECTED_FUNCTIONS=(
     Remove-OldBackups
     Export-RnsConfiguration
     Import-RnsConfiguration
+    # Log rotation
+    Invoke-LogRotation
 )
+
+# Build combined PS source: main script + all pwsh modules
+PS_COMBINED_SOURCE="$PS_SCRIPT"
+if [ -d "$PWSH_DIR" ]; then
+    for module in "$PWSH_DIR"/*.ps1; do
+        [ -f "$module" ] && PS_COMBINED_SOURCE="$PS_COMBINED_SOURCE $module"
+    done
+fi
 
 if [ -f "$PS_SCRIPT" ]; then
     for func in "${PS_EXPECTED_FUNCTIONS[@]}"; do
-        if grep -qE "^function ${func}" "$PS_SCRIPT" 2>/dev/null; then
+        if grep -qE "^function ${func}" $PS_COMBINED_SOURCE 2>/dev/null; then
             $VERBOSE && pass "PS function defined: $func"
             PASS=$((PASS + 1))
         else
@@ -255,6 +275,61 @@ if [ -d "$LIB_DIR" ]; then
     fi
 else
     skip "lib/ directory not found"
+fi
+
+# ─── 6b. PowerShell Module Structure ─────────────────────
+section "PowerShell Module Structure"
+
+if [ -d "$PWSH_DIR" ]; then
+    ps_module_count=$(find "$PWSH_DIR" -name "*.ps1" -type f | wc -l)
+    if [ "$ps_module_count" -ge 3 ]; then
+        pass "pwsh/ contains $ps_module_count modules"
+    else
+        fail "pwsh/ has only $ps_module_count modules (expected >= 3)"
+    fi
+
+    # Verify main PS script dot-sources pwsh modules
+    if grep -qE '\\pwsh\\' "$PS_SCRIPT" 2>/dev/null; then
+        pass "Main PS script dot-sources pwsh/ modules"
+    else
+        fail "Main PS script does not dot-source pwsh/ modules"
+    fi
+else
+    skip "pwsh/ directory not found"
+fi
+
+# ─── 6c. Dialog Backend ─────────────────────────────────
+section "Dialog Backend"
+
+if [ -f "$LIB_DIR/dialog.sh" ]; then
+    pass "lib/dialog.sh exists"
+    if grep -qE 'detect_dialog_backend|DIALOG_BACKEND' "$LIB_DIR/dialog.sh" 2>/dev/null; then
+        pass "Dialog backend detection implemented"
+    else
+        fail "Dialog backend detection not found in dialog.sh"
+    fi
+    if grep -qE 'dlg_msgbox|dlg_yesno|dlg_menu' "$LIB_DIR/dialog.sh" 2>/dev/null; then
+        pass "Dialog widget functions implemented (msgbox, yesno, menu)"
+    else
+        fail "Dialog widget functions not found"
+    fi
+else
+    skip "lib/dialog.sh not found"
+fi
+
+# ─── 6d. Log Rotation ───────────────────────────────────
+section "Log Rotation"
+
+if grep -qE 'rotate_log|LOG_MAX_BYTES' $COMBINED_SOURCE 2>/dev/null; then
+    pass "Log rotation implemented in bash"
+else
+    fail "Log rotation not found in bash scripts"
+fi
+
+if grep -qE 'Invoke-LogRotation|maxBytes' $PS_COMBINED_SOURCE 2>/dev/null; then
+    pass "Log rotation implemented in PowerShell"
+else
+    fail "Log rotation not found in PowerShell scripts"
 fi
 
 # ─── 7. Security Assertions ──────────────────────────────

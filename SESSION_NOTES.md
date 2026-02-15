@@ -2,6 +2,114 @@
 
 ---
 
+## Session 10: Dialog Backend, Log Rotation, PowerShell Modularization, CI Expansion
+**Date:** 2026-02-15
+**Branch:** `claude/whiptail-backend-log-rotation-dQcF6`
+**Parent:** Session 9
+
+### Objective
+Implement four P1 enhancements from the backlog: whiptail/dialog backend abstraction, log rotation for UPDATE_LOG, PowerShell modularization (split 2,727-line monolith), and expanded GitHub Actions CI workflow.
+
+### Changes Applied
+
+#### 1. Whiptail/Dialog Backend (`lib/dialog.sh`)
+
+New 250-line module implementing the meshforge DialogBackend pattern:
+
+| Method | Purpose | Backend Support |
+|--------|---------|-----------------|
+| `dlg_msgbox` | Display message box | whiptail, dialog, terminal |
+| `dlg_yesno` | Yes/no question | whiptail, dialog, terminal |
+| `dlg_menu` | Selection menu | whiptail, dialog, terminal |
+| `dlg_inputbox` | Text input prompt | whiptail, dialog, terminal |
+| `dlg_infobox` | Brief auto-dismiss message | whiptail, dialog, terminal |
+| `dlg_gauge` | Progress gauge (stdin %) | whiptail, dialog, terminal |
+| `dlg_checklist` | Multiple selection | whiptail, dialog, terminal |
+
+- Auto-detection: whiptail (preferred, standard on Debian) > dialog > terminal fallback
+- Default dimensions: 78x22, 14-line list height
+- `detect_dialog_backend()` called at startup
+- `has_dialog_backend()` predicate for feature gating
+
+#### 2. Log Rotation (Bash + PowerShell)
+
+Replaced per-session timestamped log files with stable log path + rotation:
+
+**Bash (`lib/core.sh`):**
+- `UPDATE_LOG` now points to `$REAL_HOME/rns_management.log` (stable)
+- `rotate_log()` rotates at 1MB, keeps `.log.1`, `.log.2`, `.log.3`
+- Cleans up legacy `rns_management_*.log` files (keeps 3 most recent)
+- Called at module load time (before any logging)
+
+**PowerShell (`pwsh/core.ps1`):**
+- `$Script:LogFile` now points to `rns_management.log` (stable)
+- `Invoke-LogRotation` mirrors bash rotation logic
+- Legacy timestamped log cleanup included
+
+**Config viewer (`lib/config.sh`):**
+- Log search updated to cover rotated + legacy files
+- Log listing shows current + rotated + legacy files
+
+#### 3. PowerShell Modularization (2,727 → 145 + 9 modules)
+
+Split monolithic `rns_management_tool.ps1` into 9 dot-sourced modules under `pwsh/`:
+
+| Module | Functions | Responsibility |
+|--------|-----------|----------------|
+| `core.ps1` | 7 | Environment, logging, health checks, log rotation |
+| `ui.ps1` | 6 | Color output, headers, menus, quick status |
+| `environment.ps1` | 4 | WSL, Python, pip detection |
+| `install.ps1` | 8 | Python, Reticulum, MeshChat, Sideband, ecosystem |
+| `rnode.ps1` | 7 | Serial port, radio config, EEPROM, bootloader, console |
+| `services.ps1` | 10 | Daemon control, network tools, identity, autostart |
+| `backup.ps1` | 7 | Backup/restore, export/import, list/delete |
+| `diagnostics.ps1` | 8 | 6-step diagnostic checks |
+| `advanced.ps1` | 9 | Cache, factory reset, updates, config management |
+| **Main script** | 1 | Globals, module sourcing, `Main` dispatcher |
+
+Source order: core → ui → environment → install → rnode → services → backup → diagnostics → advanced
+
+#### 4. GitHub Actions CI Expansion
+
+| Job | Status | What It Tests |
+|-----|--------|---------------|
+| `shellcheck` | Updated | Now includes `lib/*.sh` module syntax + ShellCheck |
+| `check-mode` | **NEW** | `bash rns_management_tool.sh --check` |
+| `smoke-test` | **NEW** | `./tests/smoke_test.sh --verbose` |
+| `bats` | Unchanged | BATS test suite |
+| `powershell` | Updated | Now validates `pwsh/*.ps1` modules + main script |
+
+#### 5. Smoke Test Updates
+
+New test sections added:
+- **PowerShell Module Structure**: Validates `pwsh/` has ≥3 modules, main script dot-sources them
+- **Dialog Backend**: Validates `lib/dialog.sh` exists with detect + widget functions
+- **Log Rotation**: Validates rotation code exists in both Bash and PowerShell
+- **New function assertions**: `detect_dialog_backend`, `has_dialog_backend`, `dlg_msgbox`, `dlg_yesno`, `dlg_menu`, `dlg_inputbox`, `rotate_log`, `Invoke-LogRotation`
+
+**Results: 181 passed, 0 failed, 1 skipped** (pwsh not available)
+
+### Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Bash lib modules | 10 | 11 (added dialog.sh) |
+| PowerShell main script | 2,727 lines | 145 lines |
+| PowerShell modules | 0 | 9 (under pwsh/) |
+| CI workflow jobs | 3 | 5 |
+| Smoke test assertions | 90 | 181 |
+| Log strategy | Per-session timestamped | Stable path + 1MB rotation |
+| Dialog backend | None | whiptail/dialog/terminal |
+| Version | 0.3.0-beta | 0.3.5-beta |
+
+### P1 Backlog Items Completed
+- [x] whiptail/dialog backend option (meshforge DialogBackend pattern)
+- [x] Log rotation for UPDATE_LOG
+- [x] PowerShell modularization (ps1 is now 2,727 → 145 lines)
+- [x] GitHub Actions CI workflow using --check and tests/smoke_test.sh
+
+---
+
 ## Session 9: Architecture Overhaul — Modularization, Smoke Tests, CI Dry-Run
 **Date:** 2026-02-15
 **Branch:** `claude/add-service-menu-options-fOQsu` (continued from Session 8)
