@@ -1912,29 +1912,44 @@ install_meshchat() {
     return 0
 }
 
-create_meshchat_launcher() {
-    if [ -n "$DISPLAY" ] || [ -n "$XDG_CURRENT_DESKTOP" ]; then
-        print_info "Creating desktop launcher..."
+# Unified desktop launcher creator (merges meshchat + sideband patterns)
+# Usage: create_desktop_launcher <filename> <name> <comment> <exec> <icon> [extra_keys]
+create_desktop_launcher() {
+    local filename="$1" name="$2" comment="$3" exec_cmd="$4" icon="$5" extra_keys="$6"
 
-        DESKTOP_FILE="$REAL_HOME/.local/share/applications/meshchat.desktop"
-        mkdir -p "$REAL_HOME/.local/share/applications"
+    if [ -z "$DISPLAY" ] && [ -z "$XDG_CURRENT_DESKTOP" ]; then
+        return 0
+    fi
 
-        cat > "$DESKTOP_FILE" << EOF
+    print_info "Creating desktop launcher for $name..."
+
+    local desktop_file="$REAL_HOME/.local/share/applications/${filename}.desktop"
+    mkdir -p "$REAL_HOME/.local/share/applications"
+
+    cat > "$desktop_file" << EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Reticulum MeshChat
-Comment=LXMF messaging client for Reticulum
-Exec=bash -c 'cd $MESHCHAT_DIR && npm run dev'
-Icon=$MESHCHAT_DIR/icon.png
+Name=$name
+Comment=$comment
+Exec=$exec_cmd
+Icon=$icon
 Terminal=false
 Categories=Network;Communication;
+${extra_keys}
 EOF
 
-        chmod +x "$DESKTOP_FILE"
-        print_success "Desktop launcher created"
-        log_message "Created desktop launcher"
-    fi
+    chmod +x "$desktop_file"
+    print_success "Desktop launcher created"
+    log_message "Created $name desktop launcher"
+}
+
+create_meshchat_launcher() {
+    create_desktop_launcher "meshchat" \
+        "Reticulum MeshChat" \
+        "LXMF messaging client for Reticulum" \
+        "bash -c 'cd $MESHCHAT_DIR && npm run dev'" \
+        "$MESHCHAT_DIR/icon.png"
 }
 
 #########################################################
@@ -2152,29 +2167,12 @@ show_sideband_platform_instructions() {
 }
 
 create_sideband_launcher() {
-    if [ -n "$DISPLAY" ] || [ -n "$XDG_CURRENT_DESKTOP" ]; then
-        print_info "Creating desktop launcher..."
-
-        DESKTOP_FILE="$REAL_HOME/.local/share/applications/sideband.desktop"
-        mkdir -p "$REAL_HOME/.local/share/applications"
-
-        cat > "$DESKTOP_FILE" << EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Sideband
-Comment=LXMF Messaging Client for Reticulum
-Exec=sideband
-Icon=sideband
-Terminal=false
-Categories=Network;Communication;
-Keywords=lxmf;reticulum;mesh;messaging;
-EOF
-
-        chmod +x "$DESKTOP_FILE"
-        print_success "Desktop launcher created"
-        log_message "Created Sideband desktop launcher"
-    fi
+    create_desktop_launcher "sideband" \
+        "Sideband" \
+        "LXMF Messaging Client for Reticulum" \
+        "sideband" \
+        "sideband" \
+        "Keywords=lxmf;reticulum;mesh;messaging;"
 }
 
 #########################################################
@@ -2350,6 +2348,395 @@ show_service_status() {
 }
 
 #########################################################
+# Service Management Menu - Helper Functions
+#########################################################
+
+# Display the service status box at the top of the services menu
+show_services_status_box() {
+    print_box_top
+    print_box_line "${CYAN}${BOLD}Service Status${NC}"
+    print_box_divider
+
+    local svc_rnsd_state svc_uptime
+    svc_rnsd_state=$(get_cached_rnsd_status)
+    if [ "$svc_rnsd_state" = "running" ]; then
+        svc_uptime=$(get_rnsd_uptime)
+        if [ -n "$svc_uptime" ]; then
+            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${svc_uptime})"
+        else
+            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+        fi
+        # Boot persistence warning (meshforge pattern)
+        if command -v systemctl &>/dev/null; then
+            if ! systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
+                print_box_line "  ${YELLOW}! not enabled at boot${NC}"
+            fi
+        fi
+    else
+        print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
+    fi
+
+    # Check for meshtasticd with HTTP API status (ported from meshforge)
+    if command -v meshtasticd &>/dev/null; then
+        if check_service_status "meshtasticd"; then
+            print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
+            if check_meshtasticd_http_api; then
+                print_box_line "  ${GREEN}●${NC} HTTP API: ${GREEN}${MESHTASTICD_HTTP_URL}${NC}"
+            else
+                print_box_line "  ${YELLOW}!${NC} HTTP API: ${YELLOW}Not reachable${NC}"
+            fi
+        else
+            print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
+        fi
+    fi
+
+    print_box_bottom
+    echo ""
+}
+
+# Handle network tools submenu (rnstatus, rnpath, rnprobe, rncp, rnx)
+handle_network_tools() {
+    local tool_choice="$1"
+
+    case $tool_choice in
+        5)
+            print_section "Network Statistics"
+            if [ "$HAS_RNSTATUS" = true ]; then
+                rnstatus -a 2>&1 | head -n 50
+            else
+                print_warning "rnstatus not available - install RNS first"
+            fi
+            ;;
+        6)
+            print_section "Path Table"
+            if [ "$HAS_RNPATH" = true ]; then
+                print_info "Known paths in the Reticulum network:"
+                echo ""
+                rnpath -t 2>&1
+            else
+                print_warning "rnpath not available - install RNS first"
+            fi
+            ;;
+        7)
+            print_section "Probe Destination"
+            if [ "$HAS_RNPROBE" = true ]; then
+                echo -n "Enter destination hash to probe: "
+                read -r PROBE_DEST
+                if [ -n "$PROBE_DEST" ]; then
+                    print_info "Probing $PROBE_DEST..."
+                    rnprobe "$PROBE_DEST" 2>&1
+                else
+                    print_info "Cancelled"
+                fi
+            else
+                print_warning "rnprobe not available - install RNS first"
+            fi
+            ;;
+        8)
+            handle_file_transfer
+            ;;
+        9)
+            handle_remote_command
+            ;;
+    esac
+}
+
+# Handle rncp file transfer interactive submenu
+handle_file_transfer() {
+    print_section "File Transfer (rncp)"
+    if [ "$HAS_RNCP" != true ]; then
+        print_warning "rncp not available - install RNS first"
+        return
+    fi
+
+    echo -e "${BOLD}RNS File Transfer:${NC}"
+    echo ""
+    echo "  ${CYAN}Send a file:${NC}"
+    echo "    rncp /path/to/file <destination_hash>"
+    echo ""
+    echo "  ${CYAN}Receive files (listen mode):${NC}"
+    echo "    rncp -l [-s /save/path]"
+    echo ""
+    echo "  ${CYAN}Fetch a file from remote:${NC}"
+    echo "    rncp -f <filename> <destination_hash>"
+    echo ""
+    echo -e "${BOLD}Actions:${NC}"
+    echo "   s) Send a file now"
+    echo "   l) Start listening for incoming files"
+    echo "   0) Cancel"
+    echo ""
+    echo -n "Select action: "
+    read -r RNCP_ACTION
+    case $RNCP_ACTION in
+        s|S)
+            echo -n "File path to send: "
+            read -r RNCP_FILE
+            if [ -z "$RNCP_FILE" ]; then
+                print_info "Cancelled"
+            elif [ ! -f "$RNCP_FILE" ]; then
+                print_error "File not found: $RNCP_FILE"
+            else
+                echo -n "Destination hash: "
+                read -r RNCP_DEST
+                if [ -n "$RNCP_DEST" ]; then
+                    print_info "Sending $RNCP_FILE to $RNCP_DEST..."
+                    rncp "$RNCP_FILE" "$RNCP_DEST" 2>&1
+                else
+                    print_info "Cancelled"
+                fi
+            fi
+            ;;
+        l|L)
+            print_info "Listening for incoming file transfers..."
+            print_info "Press Ctrl+C to stop listening"
+            rncp -l -s "$REAL_HOME/Downloads" 2>&1 || true
+            ;;
+        *)
+            print_info "Cancelled"
+            ;;
+    esac
+}
+
+# Handle rnx remote command interactive submenu
+handle_remote_command() {
+    print_section "Remote Command (rnx)"
+    if [ "$HAS_RNX" != true ]; then
+        print_warning "rnx not available - install RNS first"
+        return
+    fi
+
+    echo -e "${BOLD}RNS Remote Execution:${NC}"
+    echo ""
+    echo "  ${CYAN}Run a remote command:${NC}"
+    echo "    rnx <destination_hash> \"command\""
+    echo ""
+    echo "  ${CYAN}Listen for commands:${NC}"
+    echo "    rnx -l [-i identity_file]"
+    echo ""
+    echo -e "${YELLOW}Note: Remote must be running rnx in listen mode${NC}"
+    echo ""
+    echo -n "Destination hash (or 0 to cancel): "
+    read -r RNX_DEST
+    if [ -n "$RNX_DEST" ] && [ "$RNX_DEST" != "0" ]; then
+        echo -n "Command to execute: "
+        read -r RNX_CMD
+        if [ -n "$RNX_CMD" ]; then
+            print_info "Executing on $RNX_DEST: $RNX_CMD"
+            rnx "$RNX_DEST" "$RNX_CMD" 2>&1
+        else
+            print_info "Cancelled"
+        fi
+    else
+        print_info "Cancelled"
+    fi
+}
+
+# Handle rnid identity management interactive submenu
+handle_identity_management() {
+    print_section "Identity Management (rnid)"
+    if [ "$HAS_RNID" != true ]; then
+        print_warning "rnid not available - install RNS first"
+        return
+    fi
+
+    echo -e "${BOLD}RNS Identity Management:${NC}"
+    echo ""
+    echo "   1) Show my identity hash"
+    echo "   2) Generate new identity"
+    echo "   3) View identity file info"
+    echo "   0) Cancel"
+    echo ""
+    echo -n "Select action: "
+    read -r RNID_ACTION
+    case $RNID_ACTION in
+        1)
+            print_info "Default identity hash:"
+            rnid 2>&1
+            ;;
+        2)
+            echo -n "Output path (default: ~/.reticulum/identities/new): "
+            read -r RNID_PATH
+            if [ -z "$RNID_PATH" ]; then
+                if ! mkdir -p "$REAL_HOME/.reticulum/identities" 2>/dev/null; then
+                    print_error "Cannot create identities directory"
+                    return 1
+                fi
+                RNID_PATH="$REAL_HOME/.reticulum/identities/new_$(date +%Y%m%d_%H%M%S)"
+            fi
+            print_info "Generating new identity..."
+            rnid -g "$RNID_PATH" 2>&1
+            if [ -f "$RNID_PATH" ]; then
+                print_success "Identity generated: $RNID_PATH"
+            fi
+            ;;
+        3)
+            echo -n "Identity file path: "
+            read -r RNID_FILE
+            if [ -n "$RNID_FILE" ] && [ -f "$RNID_FILE" ]; then
+                rnid -i "$RNID_FILE" 2>&1
+            elif [ -n "$RNID_FILE" ]; then
+                print_error "File not found: $RNID_FILE"
+            else
+                print_info "Cancelled"
+            fi
+            ;;
+        *)
+            print_info "Cancelled"
+            ;;
+    esac
+}
+
+# Start meshtasticd service (ported from meshforge/reticulum_updater.sh)
+meshtasticd_start() {
+    print_section "Starting meshtasticd"
+    if ! command -v meshtasticd &>/dev/null; then
+        print_error "meshtasticd is not installed"
+    elif check_service_status "meshtasticd"; then
+        print_info "meshtasticd is already running"
+    else
+        print_info "Starting meshtasticd service..."
+        if sudo systemctl start meshtasticd 2>&1; then
+            sleep 3
+            if check_service_status "meshtasticd"; then
+                print_success "meshtasticd service started"
+                log_message "Started meshtasticd service"
+                if check_meshtasticd_http_api; then
+                    print_success "HTTP API available at $MESHTASTICD_HTTP_URL"
+                else
+                    print_info "HTTP API not yet available (may need a few seconds)"
+                fi
+            else
+                print_error "meshtasticd failed to start"
+                echo -e "  ${CYAN}Check logs:${NC} sudo journalctl -u meshtasticd --no-pager -n 20"
+            fi
+        else
+            print_error "Failed to start meshtasticd"
+            echo -e "  ${CYAN}Check status:${NC} sudo systemctl status meshtasticd"
+        fi
+    fi
+    invalidate_status_cache
+}
+
+# Stop meshtasticd service
+meshtasticd_stop() {
+    print_section "Stopping meshtasticd"
+    if ! command -v meshtasticd &>/dev/null; then
+        print_error "meshtasticd is not installed"
+    elif ! check_service_status "meshtasticd"; then
+        print_info "meshtasticd is not running"
+    else
+        print_info "Stopping meshtasticd service..."
+        if sudo systemctl stop meshtasticd 2>&1; then
+            sleep 2
+            if ! check_service_status "meshtasticd"; then
+                print_success "meshtasticd stopped"
+                log_message "Stopped meshtasticd service"
+            else
+                print_warning "meshtasticd may still be stopping..."
+            fi
+        else
+            print_error "Failed to stop meshtasticd"
+        fi
+    fi
+    invalidate_status_cache
+}
+
+# Restart meshtasticd service
+meshtasticd_restart() {
+    print_section "Restarting meshtasticd"
+    if ! command -v meshtasticd &>/dev/null; then
+        print_error "meshtasticd is not installed"
+    else
+        print_info "Restarting meshtasticd service..."
+        if sudo systemctl restart meshtasticd 2>&1; then
+            sleep 3
+            if check_service_status "meshtasticd"; then
+                print_success "meshtasticd restarted"
+                log_message "Restarted meshtasticd service"
+                if check_meshtasticd_http_api; then
+                    print_success "HTTP API available at $MESHTASTICD_HTTP_URL"
+                else
+                    print_info "HTTP API not yet available (may need a few seconds)"
+                fi
+            else
+                print_error "meshtasticd failed to restart"
+                echo -e "  ${CYAN}Check logs:${NC} sudo journalctl -u meshtasticd --no-pager -n 20"
+            fi
+        else
+            print_error "Failed to restart meshtasticd"
+        fi
+    fi
+    invalidate_status_cache
+}
+
+# Check meshtasticd HTTP API and configuration (ported from meshforge diagnostics)
+meshtasticd_check_api() {
+    print_section "meshtasticd HTTP API & Configuration"
+    if ! command -v meshtasticd &>/dev/null; then
+        print_error "meshtasticd is not installed"
+        return
+    fi
+
+    # Version info
+    local mtd_ver
+    mtd_ver=$(meshtasticd --version 2>&1 | head -1 || echo "unknown")
+    echo -e "  Version: ${BOLD}${mtd_ver}${NC}"
+    echo ""
+
+    # Service status
+    echo -e "${BOLD}Service Status:${NC}"
+    if check_service_status "meshtasticd"; then
+        print_success "meshtasticd service is running"
+    else
+        print_warning "meshtasticd service is not running"
+        echo -e "  ${YELLOW}Start with: sudo systemctl start meshtasticd${NC}"
+    fi
+    echo ""
+
+    # Config validation
+    echo -e "${BOLD}Configuration:${NC}"
+    local config_hint
+    config_hint=$(check_meshtasticd_webserver_config)
+    local config_rc=$?
+    if [ "$config_rc" -eq 0 ]; then
+        print_success "$config_hint"
+    else
+        print_warning "$config_hint"
+    fi
+    echo ""
+
+    # HTTP API probe
+    echo -e "${BOLD}HTTP API Probe:${NC}"
+    echo "  Testing ports 443, 9443, 80, 4403..."
+    if check_meshtasticd_http_api; then
+        print_success "HTTP API reachable at $MESHTASTICD_HTTP_URL"
+
+        # Try to fetch node count from /json/nodes
+        local nodes_response
+        nodes_response=$(curl -sk --connect-timeout 3 --max-time 5 \
+            "${MESHTASTICD_HTTP_URL}/json/nodes" 2>/dev/null)
+        if [ -n "$nodes_response" ]; then
+            local node_count
+            node_count=$(echo "$nodes_response" | grep -o '"num"' | wc -l)
+            if [ "$node_count" -gt 0 ]; then
+                print_success "$node_count node(s) visible via HTTP API"
+            fi
+        fi
+    else
+        print_error "HTTP API not reachable on any port"
+        echo ""
+        echo -e "  ${BOLD}Troubleshooting:${NC}"
+        echo "  1. Verify meshtasticd is running: sudo systemctl status meshtasticd"
+        echo "  2. Check config has Webserver section: /etc/meshtasticd/config.yaml"
+        echo "  3. Example config entry:"
+        echo -e "     ${CYAN}Webserver:${NC}"
+        echo -e "     ${CYAN}  Port: 443${NC}"
+        echo -e "     ${CYAN}  RootPath: /usr/share/meshtasticd/web${NC}"
+        echo "  4. Check logs: sudo journalctl -u meshtasticd --no-pager -n 30"
+    fi
+}
+
+#########################################################
 # Service Management Menu
 #########################################################
 
@@ -2359,47 +2746,7 @@ services_menu() {
         MENU_BREADCRUMB="Main Menu > Services"
         print_breadcrumb
 
-        # Show current status at top (using cached + improved detection)
-        print_box_top
-        print_box_line "${CYAN}${BOLD}Service Status${NC}"
-        print_box_divider
-
-        local svc_rnsd_state svc_uptime
-        svc_rnsd_state=$(get_cached_rnsd_status)
-        if [ "$svc_rnsd_state" = "running" ]; then
-            svc_uptime=$(get_rnsd_uptime)
-            if [ -n "$svc_uptime" ]; then
-                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${svc_uptime})"
-            else
-                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
-            fi
-            # Boot persistence warning (meshforge pattern)
-            if command -v systemctl &>/dev/null; then
-                if ! systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
-                    print_box_line "  ${YELLOW}! not enabled at boot${NC}"
-                fi
-            fi
-        else
-            print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
-        fi
-
-        # Check for meshtasticd with HTTP API status (ported from meshforge)
-        if command -v meshtasticd &>/dev/null; then
-            if check_service_status "meshtasticd"; then
-                print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
-                # Probe HTTP API inline (fast curl check)
-                if check_meshtasticd_http_api; then
-                    print_box_line "  ${GREEN}●${NC} HTTP API: ${GREEN}${MESHTASTICD_HTTP_URL}${NC}"
-                else
-                    print_box_line "  ${YELLOW}!${NC} HTTP API: ${YELLOW}Not reachable${NC}"
-                fi
-            else
-                print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
-            fi
-        fi
-
-        print_box_bottom
-        echo ""
+        show_services_status_box
 
         echo -e "${BOLD}Service Management:${NC}"
         echo ""
@@ -2435,364 +2782,28 @@ services_menu() {
         read -r SVC_CHOICE
 
         case $SVC_CHOICE in
-            1)
-                start_services
-                pause_for_input
-                ;;
-            2)
-                stop_services
-                pause_for_input
-                ;;
+            1)  start_services; pause_for_input ;;
+            2)  stop_services; pause_for_input ;;
             3)
                 print_info "Restarting rnsd daemon..."
                 stop_services
                 start_services
                 pause_for_input
                 ;;
-            4)
-                show_service_status
+            4)  show_service_status; pause_for_input ;;
+            5|6|7|8|9)
+                handle_network_tools "$SVC_CHOICE"
                 pause_for_input
                 ;;
-            5)
-                print_section "Network Statistics"
-                if [ "$HAS_RNSTATUS" = true ]; then
-                    rnstatus -a 2>&1 | head -n 50
-                else
-                    print_warning "rnstatus not available - install RNS first"
-                fi
-                pause_for_input
-                ;;
-            6)
-                print_section "Path Table"
-                if [ "$HAS_RNPATH" = true ]; then
-                    print_info "Known paths in the Reticulum network:"
-                    echo ""
-                    rnpath -t 2>&1
-                else
-                    print_warning "rnpath not available - install RNS first"
-                fi
-                pause_for_input
-                ;;
-            7)
-                print_section "Probe Destination"
-                if [ "$HAS_RNPROBE" = true ]; then
-                    echo -n "Enter destination hash to probe: "
-                    read -r PROBE_DEST
-                    if [ -n "$PROBE_DEST" ]; then
-                        print_info "Probing $PROBE_DEST..."
-                        rnprobe "$PROBE_DEST" 2>&1
-                    else
-                        print_info "Cancelled"
-                    fi
-                else
-                    print_warning "rnprobe not available - install RNS first"
-                fi
-                pause_for_input
-                ;;
-            8)
-                print_section "File Transfer (rncp)"
-                if [ "$HAS_RNCP" = true ]; then
-                    echo -e "${BOLD}RNS File Transfer:${NC}"
-                    echo ""
-                    echo "  ${CYAN}Send a file:${NC}"
-                    echo "    rncp /path/to/file <destination_hash>"
-                    echo ""
-                    echo "  ${CYAN}Receive files (listen mode):${NC}"
-                    echo "    rncp -l [-s /save/path]"
-                    echo ""
-                    echo "  ${CYAN}Fetch a file from remote:${NC}"
-                    echo "    rncp -f <filename> <destination_hash>"
-                    echo ""
-                    echo -e "${BOLD}Actions:${NC}"
-                    echo "   s) Send a file now"
-                    echo "   l) Start listening for incoming files"
-                    echo "   0) Cancel"
-                    echo ""
-                    echo -n "Select action: "
-                    read -r RNCP_ACTION
-                    case $RNCP_ACTION in
-                        s|S)
-                            echo -n "File path to send: "
-                            read -r RNCP_FILE
-                            if [ -z "$RNCP_FILE" ]; then
-                                print_info "Cancelled"
-                            elif [ ! -f "$RNCP_FILE" ]; then
-                                print_error "File not found: $RNCP_FILE"
-                            else
-                                echo -n "Destination hash: "
-                                read -r RNCP_DEST
-                                if [ -n "$RNCP_DEST" ]; then
-                                    print_info "Sending $RNCP_FILE to $RNCP_DEST..."
-                                    rncp "$RNCP_FILE" "$RNCP_DEST" 2>&1
-                                else
-                                    print_info "Cancelled"
-                                fi
-                            fi
-                            ;;
-                        l|L)
-                            print_info "Listening for incoming file transfers..."
-                            print_info "Press Ctrl+C to stop listening"
-                            rncp -l -s "$REAL_HOME/Downloads" 2>&1 || true
-                            ;;
-                        *)
-                            print_info "Cancelled"
-                            ;;
-                    esac
-                else
-                    print_warning "rncp not available - install RNS first"
-                fi
-                pause_for_input
-                ;;
-            9)
-                print_section "Remote Command (rnx)"
-                if [ "$HAS_RNX" = true ]; then
-                    echo -e "${BOLD}RNS Remote Execution:${NC}"
-                    echo ""
-                    echo "  ${CYAN}Run a remote command:${NC}"
-                    echo "    rnx <destination_hash> \"command\""
-                    echo ""
-                    echo "  ${CYAN}Listen for commands:${NC}"
-                    echo "    rnx -l [-i identity_file]"
-                    echo ""
-                    echo -e "${YELLOW}Note: Remote must be running rnx in listen mode${NC}"
-                    echo ""
-                    echo -n "Destination hash (or 0 to cancel): "
-                    read -r RNX_DEST
-                    if [ -n "$RNX_DEST" ] && [ "$RNX_DEST" != "0" ]; then
-                        echo -n "Command to execute: "
-                        read -r RNX_CMD
-                        if [ -n "$RNX_CMD" ]; then
-                            print_info "Executing on $RNX_DEST: $RNX_CMD"
-                            rnx "$RNX_DEST" "$RNX_CMD" 2>&1
-                        else
-                            print_info "Cancelled"
-                        fi
-                    else
-                        print_info "Cancelled"
-                    fi
-                else
-                    print_warning "rnx not available - install RNS first"
-                fi
-                pause_for_input
-                ;;
-            10)
-                print_section "Identity Management (rnid)"
-                if [ "$HAS_RNID" = true ]; then
-                    echo -e "${BOLD}RNS Identity Management:${NC}"
-                    echo ""
-                    echo "   1) Show my identity hash"
-                    echo "   2) Generate new identity"
-                    echo "   3) View identity file info"
-                    echo "   0) Cancel"
-                    echo ""
-                    echo -n "Select action: "
-                    read -r RNID_ACTION
-                    case $RNID_ACTION in
-                        1)
-                            print_info "Default identity hash:"
-                            rnid 2>&1
-                            ;;
-                        2)
-                            echo -n "Output path (default: ~/.reticulum/identities/new): "
-                            read -r RNID_PATH
-                            if [ -z "$RNID_PATH" ]; then
-                                if ! mkdir -p "$REAL_HOME/.reticulum/identities" 2>/dev/null; then
-                                    print_error "Cannot create identities directory"
-                                    break
-                                fi
-                                RNID_PATH="$REAL_HOME/.reticulum/identities/new_$(date +%Y%m%d_%H%M%S)"
-                            fi
-                            print_info "Generating new identity..."
-                            rnid -g "$RNID_PATH" 2>&1
-                            if [ -f "$RNID_PATH" ]; then
-                                print_success "Identity generated: $RNID_PATH"
-                            fi
-                            ;;
-                        3)
-                            echo -n "Identity file path: "
-                            read -r RNID_FILE
-                            if [ -n "$RNID_FILE" ] && [ -f "$RNID_FILE" ]; then
-                                rnid -i "$RNID_FILE" 2>&1
-                            elif [ -n "$RNID_FILE" ]; then
-                                print_error "File not found: $RNID_FILE"
-                            else
-                                print_info "Cancelled"
-                            fi
-                            ;;
-                        *)
-                            print_info "Cancelled"
-                            ;;
-                    esac
-                else
-                    print_warning "rnid not available - install RNS first"
-                fi
-                pause_for_input
-                ;;
-            11)
-                setup_autostart
-                pause_for_input
-                ;;
-            12)
-                disable_autostart
-                pause_for_input
-                ;;
-            m1|M1)
-                # meshtasticd start (ported from meshforge/reticulum_updater.sh)
-                print_section "Starting meshtasticd"
-                if ! command -v meshtasticd &>/dev/null; then
-                    print_error "meshtasticd is not installed"
-                elif check_service_status "meshtasticd"; then
-                    print_info "meshtasticd is already running"
-                else
-                    print_info "Starting meshtasticd service..."
-                    if sudo systemctl start meshtasticd 2>&1; then
-                        sleep 3
-                        if check_service_status "meshtasticd"; then
-                            print_success "meshtasticd service started"
-                            log_message "Started meshtasticd service"
-                            # Check HTTP API availability after start
-                            if check_meshtasticd_http_api; then
-                                print_success "HTTP API available at $MESHTASTICD_HTTP_URL"
-                            else
-                                print_info "HTTP API not yet available (may need a few seconds)"
-                            fi
-                        else
-                            print_error "meshtasticd failed to start"
-                            echo -e "  ${CYAN}Check logs:${NC} sudo journalctl -u meshtasticd --no-pager -n 20"
-                        fi
-                    else
-                        print_error "Failed to start meshtasticd"
-                        echo -e "  ${CYAN}Check status:${NC} sudo systemctl status meshtasticd"
-                    fi
-                fi
-                invalidate_status_cache
-                pause_for_input
-                ;;
-            m2|M2)
-                # meshtasticd stop
-                print_section "Stopping meshtasticd"
-                if ! command -v meshtasticd &>/dev/null; then
-                    print_error "meshtasticd is not installed"
-                elif ! check_service_status "meshtasticd"; then
-                    print_info "meshtasticd is not running"
-                else
-                    print_info "Stopping meshtasticd service..."
-                    if sudo systemctl stop meshtasticd 2>&1; then
-                        sleep 2
-                        if ! check_service_status "meshtasticd"; then
-                            print_success "meshtasticd stopped"
-                            log_message "Stopped meshtasticd service"
-                        else
-                            print_warning "meshtasticd may still be stopping..."
-                        fi
-                    else
-                        print_error "Failed to stop meshtasticd"
-                    fi
-                fi
-                invalidate_status_cache
-                pause_for_input
-                ;;
-            m3|M3)
-                # meshtasticd restart
-                print_section "Restarting meshtasticd"
-                if ! command -v meshtasticd &>/dev/null; then
-                    print_error "meshtasticd is not installed"
-                else
-                    print_info "Restarting meshtasticd service..."
-                    if sudo systemctl restart meshtasticd 2>&1; then
-                        sleep 3
-                        if check_service_status "meshtasticd"; then
-                            print_success "meshtasticd restarted"
-                            log_message "Restarted meshtasticd service"
-                            if check_meshtasticd_http_api; then
-                                print_success "HTTP API available at $MESHTASTICD_HTTP_URL"
-                            else
-                                print_info "HTTP API not yet available (may need a few seconds)"
-                            fi
-                        else
-                            print_error "meshtasticd failed to restart"
-                            echo -e "  ${CYAN}Check logs:${NC} sudo journalctl -u meshtasticd --no-pager -n 20"
-                        fi
-                    else
-                        print_error "Failed to restart meshtasticd"
-                    fi
-                fi
-                invalidate_status_cache
-                pause_for_input
-                ;;
-            m4|M4)
-                # meshtasticd HTTP API & config check (ported from meshforge diagnostics)
-                print_section "meshtasticd HTTP API & Configuration"
-                if ! command -v meshtasticd &>/dev/null; then
-                    print_error "meshtasticd is not installed"
-                else
-                    # Version info
-                    local mtd_ver
-                    mtd_ver=$(meshtasticd --version 2>&1 | head -1 || echo "unknown")
-                    echo -e "  Version: ${BOLD}${mtd_ver}${NC}"
-                    echo ""
-
-                    # Service status
-                    echo -e "${BOLD}Service Status:${NC}"
-                    if check_service_status "meshtasticd"; then
-                        print_success "meshtasticd service is running"
-                    else
-                        print_warning "meshtasticd service is not running"
-                        echo -e "  ${YELLOW}Start with: sudo systemctl start meshtasticd${NC}"
-                    fi
-                    echo ""
-
-                    # Config validation
-                    echo -e "${BOLD}Configuration:${NC}"
-                    local config_hint
-                    config_hint=$(check_meshtasticd_webserver_config)
-                    local config_rc=$?
-                    if [ "$config_rc" -eq 0 ]; then
-                        print_success "$config_hint"
-                    else
-                        print_warning "$config_hint"
-                    fi
-                    echo ""
-
-                    # HTTP API probe
-                    echo -e "${BOLD}HTTP API Probe:${NC}"
-                    echo "  Testing ports 443, 9443, 80, 4403..."
-                    if check_meshtasticd_http_api; then
-                        print_success "HTTP API reachable at $MESHTASTICD_HTTP_URL"
-
-                        # Try to fetch node count from /json/nodes
-                        local nodes_response
-                        nodes_response=$(curl -sk --connect-timeout 3 --max-time 5 \
-                            "${MESHTASTICD_HTTP_URL}/json/nodes" 2>/dev/null)
-                        if [ -n "$nodes_response" ]; then
-                            # Count node entries (rough heuristic: count "num" keys)
-                            local node_count
-                            node_count=$(echo "$nodes_response" | grep -o '"num"' | wc -l)
-                            if [ "$node_count" -gt 0 ]; then
-                                print_success "$node_count node(s) visible via HTTP API"
-                            fi
-                        fi
-                    else
-                        print_error "HTTP API not reachable on any port"
-                        echo ""
-                        echo -e "  ${BOLD}Troubleshooting:${NC}"
-                        echo "  1. Verify meshtasticd is running: sudo systemctl status meshtasticd"
-                        echo "  2. Check config has Webserver section: /etc/meshtasticd/config.yaml"
-                        echo "  3. Example config entry:"
-                        echo -e "     ${CYAN}Webserver:${NC}"
-                        echo -e "     ${CYAN}  Port: 443${NC}"
-                        echo -e "     ${CYAN}  RootPath: /usr/share/meshtasticd/web${NC}"
-                        echo "  4. Check logs: sudo journalctl -u meshtasticd --no-pager -n 30"
-                    fi
-                fi
-                pause_for_input
-                ;;
-            0|"")
-                return
-                ;;
-            *)
-                print_error "Invalid option"
-                ;;
+            10) handle_identity_management; pause_for_input ;;
+            11) setup_autostart; pause_for_input ;;
+            12) disable_autostart; pause_for_input ;;
+            m1|M1) meshtasticd_start; pause_for_input ;;
+            m2|M2) meshtasticd_stop; pause_for_input ;;
+            m3|M3) meshtasticd_restart; pause_for_input ;;
+            m4|M4) meshtasticd_check_api; pause_for_input ;;
+            0|"") return ;;
+            *)  print_error "Invalid option" ;;
         esac
     done
 }
@@ -3196,15 +3207,16 @@ restore_backup() {
 # Diagnostics
 #########################################################
 
-run_diagnostics() {
-    print_section "System Diagnostics"
+#########################################################
+# Diagnostics - Step Functions
+#########################################################
 
-    local issues=0
-    local warnings=0
+# Shared counters (set by run_diagnostics, incremented by step functions)
+DIAG_ISSUES=0
+DIAG_WARNINGS=0
 
-    echo -e "${BOLD}Running 6-step diagnostic...${NC}\n"
-
-    # ── Step 1: Environment & Prerequisites ──
+# Step 1: Check environment and prerequisites
+diag_check_environment() {
     echo -e "${BLUE}▶ Step 1/6: Environment & Prerequisites${NC}"
 
     echo "  Platform: $OS_TYPE ($ARCHITECTURE)"
@@ -3219,7 +3231,7 @@ run_diagnostics() {
     else
         print_error "Python 3 not found"
         echo -e "  ${YELLOW}Fix: sudo apt install python3 python3-pip${NC}"
-        ((issues++))
+        ((DIAG_ISSUES++))
     fi
 
     if [ "$HAS_PIP" = true ]; then
@@ -3227,15 +3239,17 @@ run_diagnostics() {
     else
         print_error "pip not found"
         echo -e "  ${YELLOW}Fix: sudo apt install python3-pip${NC}"
-        ((issues++))
+        ((DIAG_ISSUES++))
     fi
 
     if [ "$PEP668_DETECTED" = true ]; then
         echo -e "  ${CYAN}[i] PEP 668: Python externally managed (Debian 12+)${NC}"
     fi
     echo ""
+}
 
-    # ── Step 2: RNS Tool Availability ──
+# Step 2: Check RNS tool availability
+diag_check_rns_tools() {
     echo -e "${BLUE}▶ Step 2/6: RNS Tool Availability${NC}"
 
     local tool_list=(
@@ -3249,7 +3263,6 @@ run_diagnostics() {
         "rnodeconf:$HAS_RNODECONF:RNODE configuration"
     )
 
-    local tool_present=0
     local tool_missing=0
     for entry in "${tool_list[@]}"; do
         local tname tstate tdesc
@@ -3259,7 +3272,6 @@ run_diagnostics() {
         tdesc="${rest#*:}"
         if [ "$tstate" = "true" ]; then
             print_success "$tname ($tdesc)"
-            ((tool_present++))
         else
             echo -e "  ${YELLOW}○${NC} $tname ($tdesc) - not installed"
             ((tool_missing++))
@@ -3269,33 +3281,32 @@ run_diagnostics() {
     if [ "$tool_missing" -gt 0 ]; then
         echo ""
         echo -e "  ${CYAN}[i] Install missing tools: pip3 install rns${NC}"
-        ((warnings++))
+        ((DIAG_WARNINGS++))
     fi
     echo ""
+}
 
-    # ── Step 3: Configuration Validation ──
+# Step 3: Validate Reticulum configuration
+diag_check_configuration() {
     echo -e "${BLUE}▶ Step 3/6: Configuration Validation${NC}"
 
     local config_file="$REAL_HOME/.reticulum/config"
     if [ -f "$config_file" ]; then
         print_success "Config file exists: ~/.reticulum/config"
 
-        # Check config file size (empty = problem)
         local config_size
         config_size=$(wc -c < "$config_file" 2>/dev/null || echo 0)
         if [ "$config_size" -lt 10 ]; then
             print_error "Config file appears empty ($config_size bytes)"
             echo -e "  ${YELLOW}Fix: Apply a config template from Advanced > Apply Configuration Template${NC}"
-            ((issues++))
+            ((DIAG_ISSUES++))
         fi
 
-        # Check for common config issues
         if grep -q "interface_enabled = false" "$config_file" 2>/dev/null; then
             print_warning "Some interfaces are disabled in config"
-            ((warnings++))
+            ((DIAG_WARNINGS++))
         fi
 
-        # Check identity directory
         if [ -d "$REAL_HOME/.reticulum/storage/identities" ]; then
             local id_count
             id_count=$(find "$REAL_HOME/.reticulum/storage/identities" -type f 2>/dev/null | wc -l)
@@ -3304,17 +3315,18 @@ run_diagnostics() {
     else
         print_warning "No configuration found"
         echo -e "  ${YELLOW}Fix: Run first-time setup or start rnsd to create default config${NC}"
-        ((warnings++))
+        ((DIAG_WARNINGS++))
     fi
     echo ""
+}
 
-    # ── Step 4: Service Health ──
+# Step 4: Check service health (rnsd + meshtasticd)
+diag_check_services() {
     echo -e "${BLUE}▶ Step 4/6: Service Health${NC}"
 
     if check_service_status "rnsd"; then
         print_success "rnsd daemon is running"
 
-        # Check uptime via /proc if possible
         local rnsd_pid
         rnsd_pid=$(pgrep -x "rnsd" 2>/dev/null | head -1)
         if [ -n "$rnsd_pid" ] && [ -d "/proc/$rnsd_pid" ]; then
@@ -3336,10 +3348,9 @@ run_diagnostics() {
     else
         print_warning "rnsd daemon is not running"
         echo -e "  ${YELLOW}Fix: Start from Services menu or run: rnsd --daemon${NC}"
-        ((warnings++))
+        ((DIAG_WARNINGS++))
     fi
 
-    # Check autostart
     if command -v systemctl &>/dev/null; then
         if systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
             print_success "Auto-start enabled at boot"
@@ -3356,7 +3367,6 @@ run_diagnostics() {
         if check_service_status "meshtasticd"; then
             print_success "meshtasticd service is running"
 
-            # Probe HTTP API (meshforge meshtastic_http.py pattern)
             if check_meshtasticd_http_api; then
                 print_success "meshtasticd HTTP API reachable at $MESHTASTICD_HTTP_URL"
             else
@@ -3364,17 +3374,19 @@ run_diagnostics() {
                 local config_hint
                 config_hint=$(check_meshtasticd_webserver_config)
                 echo -e "  ${YELLOW}${config_hint}${NC}"
-                ((warnings++))
+                ((DIAG_WARNINGS++))
             fi
         else
             print_warning "meshtasticd installed but not running"
             echo -e "  ${YELLOW}Fix: sudo systemctl start meshtasticd${NC}"
-            ((warnings++))
+            ((DIAG_WARNINGS++))
         fi
     fi
     echo ""
+}
 
-    # ── Step 5: Network & Interfaces ──
+# Step 5: Check network interfaces and USB devices
+diag_check_network() {
     echo -e "${BLUE}▶ Step 5/6: Network & Interfaces${NC}"
 
     if command -v ip &> /dev/null; then
@@ -3387,7 +3399,7 @@ run_diagnostics() {
             done
         else
             print_warning "No active network interfaces found"
-            ((warnings++))
+            ((DIAG_WARNINGS++))
         fi
     fi
 
@@ -3400,11 +3412,10 @@ run_diagnostics() {
             echo "  $dev"
         done
 
-        # Check dialout group membership
         if ! groups 2>/dev/null | grep -q "dialout"; then
             print_warning "User not in dialout group"
             echo -e "  ${YELLOW}Fix: sudo usermod -aG dialout \$USER && logout${NC}"
-            ((warnings++))
+            ((DIAG_WARNINGS++))
         fi
     else
         echo -e "  ${CYAN}[i] No USB serial devices (RNODE) detected${NC}"
@@ -3419,18 +3430,22 @@ run_diagnostics() {
         done
     fi
     echo ""
+}
 
-    # ── Step 6: Summary & Recommendations ──
+# Step 6: Print summary and recommendations
+diag_report_summary() {
     echo -e "${BLUE}▶ Step 6/6: Summary & Recommendations${NC}"
     echo ""
 
-    if [ "$issues" -eq 0 ] && [ "$warnings" -eq 0 ]; then
+    if [ "$DIAG_ISSUES" -eq 0 ] && [ "$DIAG_WARNINGS" -eq 0 ]; then
         print_success "All checks passed - system looks healthy"
     else
-        [ "$issues" -gt 0 ] && print_error "$issues issue(s) found requiring attention"
-        [ "$warnings" -gt 0 ] && print_warning "$warnings warning(s) found"
+        [ "$DIAG_ISSUES" -gt 0 ] && print_error "$DIAG_ISSUES issue(s) found requiring attention"
+        [ "$DIAG_WARNINGS" -gt 0 ] && print_warning "$DIAG_WARNINGS warning(s) found"
         echo ""
         echo -e "${BOLD}Recommended actions:${NC}"
+
+        local config_file="$REAL_HOME/.reticulum/config"
 
         if [ "$HAS_RNSD" = false ]; then
             echo "  1. Install Reticulum: select option 1 from main menu"
@@ -3442,13 +3457,35 @@ run_diagnostics() {
             echo "  2. Create configuration: use first-run wizard or Advanced > Templates"
         fi
 
+        local usb_devices
+        usb_devices=$(find /dev -maxdepth 1 \( -name 'ttyUSB*' -o -name 'ttyACM*' \) 2>/dev/null | wc -l)
         if [ "$usb_devices" -gt 0 ] && ! groups 2>/dev/null | grep -q "dialout"; then
             echo "  3. Add user to dialout group for RNODE access"
         fi
     fi
 
     echo ""
-    log_message "Diagnostics complete: $issues issues, $warnings warnings"
+    log_message "Diagnostics complete: $DIAG_ISSUES issues, $DIAG_WARNINGS warnings"
+}
+
+#########################################################
+# Diagnostics - Main Coordinator
+#########################################################
+
+run_diagnostics() {
+    print_section "System Diagnostics"
+
+    DIAG_ISSUES=0
+    DIAG_WARNINGS=0
+
+    echo -e "${BOLD}Running 6-step diagnostic...${NC}\n"
+
+    diag_check_environment
+    diag_check_rns_tools
+    diag_check_configuration
+    diag_check_services
+    diag_check_network
+    diag_report_summary
 }
 
 #########################################################
