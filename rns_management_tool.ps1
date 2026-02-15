@@ -1892,6 +1892,9 @@ function Stop-RNSDaemon {
 #########################################################
 
 function New-Backup {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Show-Section "Creating Backup"
 
     $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
@@ -1900,30 +1903,32 @@ function New-Backup {
 
     $backedUp = $false
 
-    New-Item -ItemType Directory -Path $Script:BackupDir -Force | Out-Null
+    if ($PSCmdlet.ShouldProcess($Script:BackupDir, "Create backup")) {
+        New-Item -ItemType Directory -Path $Script:BackupDir -Force | Out-Null
 
-    if (Test-Path $reticulumDir) {
-        Copy-Item -Path $reticulumDir -Destination $Script:BackupDir -Recurse -Force
-        Write-ColorOutput "Backed up Reticulum config" "Success"
-        $backedUp = $true
-    }
+        if (Test-Path $reticulumDir) {
+            Copy-Item -Path $reticulumDir -Destination $Script:BackupDir -Recurse -Force
+            Write-ColorOutput "Backed up Reticulum config" "Success"
+            $backedUp = $true
+        }
 
-    if (Test-Path $nomadDir) {
-        Copy-Item -Path $nomadDir -Destination $Script:BackupDir -Recurse -Force
-        Write-ColorOutput "Backed up NomadNet config" "Success"
-        $backedUp = $true
-    }
+        if (Test-Path $nomadDir) {
+            Copy-Item -Path $nomadDir -Destination $Script:BackupDir -Recurse -Force
+            Write-ColorOutput "Backed up NomadNet config" "Success"
+            $backedUp = $true
+        }
 
-    if (Test-Path $lxmfDir) {
-        Copy-Item -Path $lxmfDir -Destination $Script:BackupDir -Recurse -Force
-        Write-ColorOutput "Backed up LXMF config" "Success"
-        $backedUp = $true
-    }
+        if (Test-Path $lxmfDir) {
+            Copy-Item -Path $lxmfDir -Destination $Script:BackupDir -Recurse -Force
+            Write-ColorOutput "Backed up LXMF config" "Success"
+            $backedUp = $true
+        }
 
-    if ($backedUp) {
-        Write-ColorOutput "Backup saved to: $Script:BackupDir" "Success"
-    } else {
-        Write-ColorOutput "No configuration files found to backup" "Warning"
+        if ($backedUp) {
+            Write-ColorOutput "Backup saved to: $Script:BackupDir" "Success"
+        } else {
+            Write-ColorOutput "No configuration files found to backup" "Warning"
+        }
     }
 
     pause
