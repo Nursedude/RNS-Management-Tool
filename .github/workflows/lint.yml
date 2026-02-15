@@ -77,6 +77,12 @@ jobs:
       - name: Run bats test suite
         run: bats tests/rns_management_tool.bats
 
+      - name: Run hardware validation tests
+        run: bats tests/hardware_validation.bats
+
+      - name: Run integration tests
+        run: bats tests/integration_tests.bats
+
   powershell:
     name: PowerShell Syntax
     runs-on: windows-latest
