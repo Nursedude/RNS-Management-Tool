@@ -95,8 +95,8 @@ teardown() {
 # Version Tests
 #########################################################
 
-@test "Version is set to 0.3.3-beta" {
-    grep -q 'SCRIPT_VERSION="0.3.3-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
+@test "Version is set to 0.3.4-beta" {
+    grep -q 'SCRIPT_VERSION="0.3.4-beta"' "$SCRIPT_DIR/rns_management_tool.sh"
 }
 
 #########################################################
@@ -227,14 +227,18 @@ teardown() {
     grep -q 'rnprobe' "$SCRIPT_DIR/rns_management_tool.sh"
 }
 
-@test "No raw pgrep calls outside check_service_status" {
-    # All pgrep calls should be inside check_service_status or comments
-    # Count pgrep in function body vs outside - outside should be 0
-    local outside_pgrep
-    outside_pgrep=$(grep -n 'pgrep' "$SCRIPT_DIR/rns_management_tool.sh" | grep -v '^\s*#' | grep -v 'check_service_status\|# Avoids.*pgrep\|# Check rnsd status.*pgrep' | grep -v -A1 'check_service_status()' | wc -l)
-    # pgrep should only appear inside check_service_status function block
-    # +1 for the rnsd_pid line in diagnostics
-    [ "$outside_pgrep" -le 8 ]
+@test "No raw pgrep calls outside approved functions" {
+    # pgrep should only appear inside: check_service_status(), get_cached_rnsd_status(), run_diagnostics(), and comments
+    # Count non-comment pgrep lines
+    local total_pgrep
+    total_pgrep=$(grep -c 'pgrep' "$SCRIPT_DIR/rns_management_tool.sh")
+    # Count comment lines mentioning pgrep
+    local comment_pgrep
+    comment_pgrep=$(grep 'pgrep' "$SCRIPT_DIR/rns_management_tool.sh" | grep -c '^\s*#\|# .*pgrep')
+    # Approved pgrep sites: check_service_status body (8), get_cached_rnsd_status (1), run_diagnostics (1) = 10
+    local approved=10
+    local expected=$((comment_pgrep + approved))
+    [ "$total_pgrep" -le "$expected" ]
 }
 
 #########################################################

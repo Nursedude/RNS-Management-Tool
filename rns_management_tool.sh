@@ -353,20 +353,6 @@ print_info() {
     echo -e "${CYAN}[i]${NC} $1"
 }
 
-print_progress() {
-    local current=$1
-    local total=$2
-    local message=$3
-    local percent=$((current * 100 / total))
-    local filled=$((percent / 2))
-    local empty=$((50 - filled))
-
-    printf '\r%sProgress:%s [' "${CYAN}" "${NC}"
-    printf "%${filled}s" | tr ' ' '='
-    printf "%${empty}s" | tr ' ' ' '
-    printf '] %3d%% - %s' "$percent" "$message"
-}
-
 # Step-based progress display for multi-step operations
 declare -a OPERATION_STEPS=()
 CURRENT_STEP=0
@@ -525,42 +511,6 @@ show_error_help() {
     echo ""
 }
 
-# Validate input is numeric
-validate_numeric() {
-    local input="$1"
-    local min="${2:-0}"
-    local max="${3:-999999}"
-
-    if [[ ! "$input" =~ ^[0-9]+$ ]]; then
-        return 1
-    fi
-
-    if [ "$input" -lt "$min" ] || [ "$input" -gt "$max" ]; then
-        return 1
-    fi
-
-    return 0
-}
-
-# Validate device port format
-validate_device_port() {
-    local port="$1"
-
-    if [[ ! "$port" =~ ^/dev/tty[A-Za-z0-9]+$ ]]; then
-        print_error "Invalid device port format"
-        echo "Expected format: /dev/ttyUSB0 or /dev/ttyACM0"
-        return 1
-    fi
-
-    if [ ! -e "$port" ]; then
-        print_error "Device not found: $port"
-        show_error_help "device" "$port"
-        return 1
-    fi
-
-    return 0
-}
-
 # Centralized service status check (adapted from meshforge service_check.py)
 # Single source of truth for all service detection - avoids scattered pgrep calls
 # Usage: check_service_status <service_name>
@@ -632,13 +582,12 @@ check_meshtasticd_http_api() {
 
             # Primary probe: /json/report — accept any valid JSON object
             local response
-            response=$(curl -sk --connect-timeout 3 --max-time 5 \
+            if response=$(curl -sk --connect-timeout 3 --max-time 5 \
                 -H "Accept: application/json" \
-                "${base_url}/json/report" 2>/dev/null)
-            if [ $? -eq 0 ] && [ -n "$response" ]; then
+                "${base_url}/json/report" 2>/dev/null) && [ -n "$response" ]; then
                 # Verify it's a JSON object (starts with {)
                 local trimmed
-                trimmed=$(echo "$response" | sed 's/^[[:space:]]*//')
+                trimmed="${response#"${response%%[![:space:]]*}"}"
                 if [[ "$trimmed" == "{"* ]]; then
                     MESHTASTICD_HTTP_URL="$base_url"
                     return 0
@@ -979,24 +928,6 @@ confirm_action() {
         read -r response
         [[ "$response" =~ ^[Yy]$ ]]
     fi
-}
-
-show_operation_summary() {
-    local title="$1"
-    shift
-    local items=("$@")
-
-    echo ""
-    print_box_top
-    print_box_line "${CYAN}${BOLD}$title${NC}"
-    print_box_divider
-
-    for item in "${items[@]}"; do
-        print_box_line "  $item"
-    done
-
-    print_box_bottom
-    echo ""
 }
 
 #########################################################
@@ -1634,10 +1565,6 @@ rnode_show_help() {
 #########################################################
 
 configure_rnode_interactive() {
-    print_header
-    MENU_BREADCRUMB="Main Menu > RNODE Configuration"
-    print_breadcrumb
-
     # Check if rnodeconf is available
     if ! command -v rnodeconf &> /dev/null; then
         print_error "rnodeconf not found"
@@ -1649,58 +1576,63 @@ configure_rnode_interactive() {
         fi
     fi
 
-    echo -e "${BOLD}RNODE Configuration Wizard${NC}\n"
+    while true; do
+        print_header
+        MENU_BREADCRUMB="Main Menu > RNODE Configuration"
+        print_breadcrumb
 
-    # Show detected devices
-    local devices
-    devices=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)
-    if [ -n "$devices" ]; then
-        echo -e "${GREEN}Detected USB devices:${NC}"
-        echo "$devices" | while read -r dev; do
-            echo "  • $dev"
-        done
+        echo -e "${BOLD}RNODE Configuration Wizard${NC}\n"
+
+        # Show detected devices
+        local devices
+        devices=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)
+        if [ -n "$devices" ]; then
+            echo -e "${GREEN}Detected USB devices:${NC}"
+            echo "$devices" | while read -r dev; do
+                echo "  • $dev"
+            done
+            echo ""
+        fi
+
+        echo -e "  ${CYAN}─── Basic Operations ───${NC}"
+        echo "    1) Auto-install firmware (recommended)"
+        echo "    2) List supported devices"
+        echo "    3) Flash specific device"
+        echo "    4) Update existing RNODE"
+        echo "    5) Get device information"
         echo ""
-    fi
+        echo -e "  ${CYAN}─── Hardware Configuration ───${NC}"
+        echo "    6) Configure radio parameters"
+        echo "    7) Set device model and platform"
+        echo "    8) View/edit device EEPROM"
+        echo "    9) Update bootloader (ROM)"
+        echo ""
+        echo "  ${BOLD}Advanced Tools:${NC}"
+        echo "   10) Open serial console"
+        echo "   11) Show all rnodeconf options"
+        echo "    0) Back to main menu"
+        echo ""
+        echo -n "Select an option: "
+        read -r RNODE_CHOICE
 
-    echo -e "  ${CYAN}─── Basic Operations ───${NC}"
-    echo "    1) Auto-install firmware (recommended)"
-    echo "    2) List supported devices"
-    echo "    3) Flash specific device"
-    echo "    4) Update existing RNODE"
-    echo "    5) Get device information"
-    echo ""
-    echo -e "  ${CYAN}─── Hardware Configuration ───${NC}"
-    echo "    6) Configure radio parameters"
-    echo "    7) Set device model and platform"
-    echo "    8) View/edit device EEPROM"
-    echo "    9) Update bootloader (ROM)"
-    echo ""
-    echo "  ${BOLD}Advanced Tools:${NC}"
-    echo "   10) Open serial console"
-    echo "   11) Show all rnodeconf options"
-    echo "    0) Back to main menu"
-    echo ""
-    echo -n "Select an option: "
-    read -r RNODE_CHOICE
+        case $RNODE_CHOICE in
+            1)  rnode_autoinstall ;;
+            2)  rnode_list_devices ;;
+            3)  rnode_flash_device ;;
+            4)  rnode_update_device ;;
+            5)  rnode_get_info ;;
+            6)  rnode_configure_radio ;;
+            7)  rnode_set_model ;;
+            8)  rnode_eeprom ;;
+            9)  rnode_bootloader ;;
+            10) rnode_serial_console ;;
+            11) rnode_show_help ;;
+            0)  return 0 ;;
+            *)  print_error "Invalid option" ;;
+        esac
 
-    case $RNODE_CHOICE in
-        1)  rnode_autoinstall ;;
-        2)  rnode_list_devices ;;
-        3)  rnode_flash_device ;;
-        4)  rnode_update_device ;;
-        5)  rnode_get_info ;;
-        6)  rnode_configure_radio ;;
-        7)  rnode_set_model ;;
-        8)  rnode_eeprom ;;
-        9)  rnode_bootloader ;;
-        10) rnode_serial_console ;;
-        11) rnode_show_help ;;
-        0)  return 0 ;;
-        *)  print_error "Invalid option" ;;
-    esac
-
-    pause_for_input
-    configure_rnode_interactive
+        pause_for_input
+    done
 }
 
 #########################################################
@@ -1710,25 +1642,6 @@ configure_rnode_interactive() {
 get_installed_version() {
     local package=$1
     "$PIP_CMD" show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}'
-}
-
-check_package_installed() {
-    local package=$1
-    local display_name=$2
-
-    VERSION=$(get_installed_version "$package")
-
-    if [ -n "$VERSION" ]; then
-        print_info "$display_name: v$VERSION (installed)"
-        log_message "$display_name installed: $VERSION"
-        echo "$VERSION"
-        return 0
-    else
-        print_warning "$display_name: not installed"
-        log_message "$display_name not installed"
-        echo ""
-        return 1
-    fi
 }
 
 update_pip_package() {
@@ -2834,7 +2747,7 @@ services_menu() {
                     local config_hint
                     config_hint=$(check_meshtasticd_webserver_config)
                     local config_rc=$?
-                    if [ $config_rc -eq 0 ]; then
+                    if [ "$config_rc" -eq 0 ]; then
                         print_success "$config_hint"
                     else
                         print_warning "$config_hint"
