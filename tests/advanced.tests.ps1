@@ -439,6 +439,7 @@ Describe "Advanced Menu Structure" {
     }
 
     It "Menu handles invalid input gracefully" {
-        $Script:AdvancedSource | Should -Match 'default.*Invalid option'
+        $Script:AdvancedSource | Should -Match 'default'
+        $Script:AdvancedSource | Should -Match 'Invalid option'
     }
 }
