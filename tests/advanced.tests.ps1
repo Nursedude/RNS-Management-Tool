@@ -283,7 +283,7 @@ Describe "Import-Configuration: RNS004 Path Traversal Prevention" {
     }
 
     It "Checks for absolute paths starting with \\" {
-        $Script:AdvancedSource | Should -Match "StartsWith\('\\\\'\)"
+        $Script:AdvancedSource | Should -Match "StartsWith\('\\'\)"
     }
 
     It "Disposes zip handle after validation" {

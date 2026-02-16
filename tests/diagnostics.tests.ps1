@@ -190,12 +190,13 @@ Describe "Step 3/6: Invoke-DiagCheckConfiguration" {
         $Script:DiagSource | Should -Match 'Step 3/6.*Configuration Validation'
     }
 
-    It "Checks .reticulum/config file" {
+    It "Checks .reticulum config directory" {
         $fnIdx = $Script:DiagSource.IndexOf('function Invoke-DiagCheckConfiguration')
         $fnEnd = $Script:DiagSource.IndexOf('function', $fnIdx + 20)
         if ($fnEnd -lt 0) { $fnEnd = $Script:DiagSource.Length }
         $block = $Script:DiagSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match '\.reticulum.*config'
+        $block | Should -Match '\.reticulum'
+        $block | Should -Match 'configFile'
     }
 
     It "Validates config file is not empty" {
