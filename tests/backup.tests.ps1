@@ -19,7 +19,7 @@ Describe "RNS004: Path Traversal Prevention in Import" {
     Context "Archive validation in Import-RnsConfiguration" {
 
         It "Source checks for '..' path traversal" {
-            $Script:BackupSource.Contains("'\..'") | Should -BeTrue
+            $Script:BackupSource.Contains("'\.\.'") | Should -BeTrue
         }
 
         It "Source checks for absolute paths starting with /" {
