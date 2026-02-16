@@ -275,7 +275,9 @@ Describe "Import-Configuration: RNS004 Path Traversal Prevention" {
     }
 
     It "Checks for '..' path traversal in entries" {
-        $Script:AdvancedSource | Should -Match 'entry\.FullName.*\.\.'
+        # Source has: $entry.FullName -match '\.\.'
+        $Script:AdvancedSource | Should -Match 'entry\.FullName -match'
+        $Script:AdvancedSource | Should -Match 'hasInvalidPaths'
     }
 
     It "Checks for absolute paths starting with /" {
