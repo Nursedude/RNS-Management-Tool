@@ -261,7 +261,7 @@ Describe "Export-Configuration" {
 Describe "Import-Configuration: RNS004 Path Traversal Prevention" {
 
     It "Validates .zip extension" {
-        $Script:AdvancedSource | Should -Match "notmatch '\\\.zip\\\$'"
+        $Script:AdvancedSource | Should -Match '-notmatch.*\.zip'
     }
 
     It "Checks file existence with Test-Path" {

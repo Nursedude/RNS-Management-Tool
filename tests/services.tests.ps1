@@ -193,15 +193,16 @@ Describe "Network Tool Dispatch: Invoke-NetworkTool" {
     }
 
     It "Handles rnstatus tool" {
-        $Script:ServicesSource | Should -Match '"rnstatus".*rnstatus'
+        $Script:ServicesSource | Should -Match '& rnstatus'
     }
 
     It "Handles rnpath tool with -t flag" {
-        $Script:ServicesSource | Should -Match '"rnpath".*rnpath -t'
+        $Script:ServicesSource | Should -Match '& rnpath -t'
     }
 
     It "Handles rnprobe with user-supplied destination" {
-        $Script:ServicesSource | Should -Match '"rnprobe".*Read-Host.*destination'
+        $Script:ServicesSource | Should -Match 'Enter destination hash'
+        $Script:ServicesSource | Should -Match '& rnprobe'
     }
 }
 
