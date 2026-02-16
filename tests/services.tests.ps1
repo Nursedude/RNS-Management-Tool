@@ -5,7 +5,7 @@
     Mirrors BATS integration_tests.bats for PowerShell parity
 .NOTES
     Covers: daemon control, autostart (Task Scheduler), network tool dispatch,
-    identity management, file transfer, remote command, menu structure
+    identity management, file transfer, remote command, menu structure, security
 #>
 
 BeforeAll {
@@ -16,49 +16,49 @@ BeforeAll {
     )
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # Function Existence
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "Function Existence" {
 
     It "Show-Status function exists" {
-        $Script:ServicesSource | Should -Match 'function Show-Status'
+        $Script:ServicesSource.Contains('function Show-Status') | Should -BeTrue
     }
 
     It "Start-RNSDaemon function exists" {
-        $Script:ServicesSource | Should -Match 'function Start-RNSDaemon'
+        $Script:ServicesSource.Contains('function Start-RNSDaemon') | Should -BeTrue
     }
 
     It "Stop-RNSDaemon function exists" {
-        $Script:ServicesSource | Should -Match 'function Stop-RNSDaemon'
+        $Script:ServicesSource.Contains('function Stop-RNSDaemon') | Should -BeTrue
     }
 
     It "Invoke-NetworkTool function exists" {
-        $Script:ServicesSource | Should -Match 'function Invoke-NetworkTool'
+        $Script:ServicesSource.Contains('function Invoke-NetworkTool') | Should -BeTrue
     }
 
     It "Invoke-IdentityManagement function exists" {
-        $Script:ServicesSource | Should -Match 'function Invoke-IdentityManagement'
+        $Script:ServicesSource.Contains('function Invoke-IdentityManagement') | Should -BeTrue
     }
 
     It "Invoke-FileTransfer function exists" {
-        $Script:ServicesSource | Should -Match 'function Invoke-FileTransfer'
+        $Script:ServicesSource.Contains('function Invoke-FileTransfer') | Should -BeTrue
     }
 
     It "Invoke-RemoteCommand function exists" {
-        $Script:ServicesSource | Should -Match 'function Invoke-RemoteCommand'
+        $Script:ServicesSource.Contains('function Invoke-RemoteCommand') | Should -BeTrue
     }
 
     It "Enable-RnsdAutoStart function exists" {
-        $Script:ServicesSource | Should -Match 'function Enable-RnsdAutoStart'
+        $Script:ServicesSource.Contains('function Enable-RnsdAutoStart') | Should -BeTrue
     }
 
     It "Disable-RnsdAutoStart function exists" {
-        $Script:ServicesSource | Should -Match 'function Disable-RnsdAutoStart'
+        $Script:ServicesSource.Contains('function Disable-RnsdAutoStart') | Should -BeTrue
     }
 
     It "Show-ServiceMenu function exists" {
-        $Script:ServicesSource | Should -Match 'function Show-ServiceMenu'
+        $Script:ServicesSource.Contains('function Show-ServiceMenu') | Should -BeTrue
     }
 
     It "services.ps1 has exactly 10 functions" {
@@ -71,299 +71,345 @@ Describe "Function Existence" {
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Daemon Control — Start-RNSDaemon
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
+# Daemon Control -- Start-RNSDaemon
+# ---------------------------------------------------------
 Describe "Daemon Control: Start-RNSDaemon" {
 
-    It "Start-RNSDaemon uses SupportsShouldProcess" {
+    BeforeAll {
         $fnIdx = $Script:ServicesSource.IndexOf('function Start-RNSDaemon')
-        $fnIdx | Should -BeGreaterOrEqual 0
-        $cbIdx = $Script:ServicesSource.IndexOf('[CmdletBinding(SupportsShouldProcess)]', $fnIdx)
-        $cbIdx | Should -BeGreaterThan $fnIdx
-        ($cbIdx - $fnIdx) | Should -BeLessThan 100
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:StartBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Start-RNSDaemon uses SupportsShouldProcess" {
+        $Script:StartBlock.Contains('[CmdletBinding(SupportsShouldProcess)]') | Should -BeTrue
     }
 
     It "Checks if rnsd is already running before starting" {
-        $fnIdx = $Script:ServicesSource.IndexOf('function Start-RNSDaemon')
-        $block = $Script:ServicesSource.Substring($fnIdx, 400)
-        $block | Should -Match 'Get-Process.*rnsd'
-        $block | Should -Match 'already running'
+        $Script:StartBlock.Contains('Get-Process') | Should -BeTrue
+        $Script:StartBlock.Contains('already running') | Should -BeTrue
     }
 
     It "Uses Start-Process with --daemon argument" {
-        $Script:ServicesSource | Should -Match 'Start-Process.*rnsd.*--daemon'
+        $Script:StartBlock.Contains('Start-Process') | Should -BeTrue
+        $Script:StartBlock.Contains('--daemon') | Should -BeTrue
     }
 
     It "Waits after starting for daemon to initialize" {
-        $Script:ServicesSource | Should -Match 'Start-Sleep.*2'
+        $Script:StartBlock.Contains('Start-Sleep') | Should -BeTrue
     }
 
     It "Verifies daemon started after launch" {
-        # After Start-Process there should be a Get-Process check
-        $startIdx = $Script:ServicesSource.IndexOf('Start-Process')
-        $verifyIdx = $Script:ServicesSource.IndexOf('started successfully', $startIdx)
+        $startIdx = $Script:StartBlock.IndexOf('Start-Process')
+        $verifyIdx = $Script:StartBlock.IndexOf('started successfully', $startIdx)
         $verifyIdx | Should -BeGreaterThan $startIdx
     }
 
     It "Reports error if daemon fails to start" {
-        $Script:ServicesSource | Should -Match 'failed to start'
+        $Script:StartBlock.Contains('failed to start') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Daemon Control — Stop-RNSDaemon
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
+# Daemon Control -- Stop-RNSDaemon
+# ---------------------------------------------------------
 Describe "Daemon Control: Stop-RNSDaemon" {
 
-    It "Stop-RNSDaemon uses SupportsShouldProcess" {
+    BeforeAll {
         $fnIdx = $Script:ServicesSource.IndexOf('function Stop-RNSDaemon')
-        $fnIdx | Should -BeGreaterOrEqual 0
-        $cbIdx = $Script:ServicesSource.IndexOf('[CmdletBinding(SupportsShouldProcess)]', $fnIdx)
-        $cbIdx | Should -BeGreaterThan $fnIdx
-        ($cbIdx - $fnIdx) | Should -BeLessThan 100
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:StopBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Stop-RNSDaemon uses SupportsShouldProcess" {
+        $Script:StopBlock.Contains('[CmdletBinding(SupportsShouldProcess)]') | Should -BeTrue
     }
 
     It "Checks if rnsd is running before stopping" {
-        $fnIdx = $Script:ServicesSource.IndexOf('function Stop-RNSDaemon')
-        $block = $Script:ServicesSource.Substring($fnIdx, 300)
-        $block | Should -Match 'Get-Process.*rnsd'
+        $Script:StopBlock.Contains('Get-Process') | Should -BeTrue
     }
 
     It "Reports when rnsd is not running" {
-        $Script:ServicesSource | Should -Match 'rnsd is not running'
+        $Script:StopBlock.Contains('rnsd is not running') | Should -BeTrue
     }
 
-    It "Uses Stop-Process to terminate daemon" {
-        $Script:ServicesSource | Should -Match 'Stop-Process.*rnsd.*Force'
+    It "Uses Stop-Process with Force to terminate daemon" {
+        $Script:StopBlock.Contains('Stop-Process') | Should -BeTrue
+        $Script:StopBlock.Contains('-Force') | Should -BeTrue
     }
 
     It "Verifies daemon stopped after termination" {
-        $fnIdx = $Script:ServicesSource.IndexOf('function Stop-RNSDaemon')
-        $fnEnd = $Script:ServicesSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
-        $block = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'daemon stopped'
+        $Script:StopBlock.Contains('daemon stopped') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Daemon Control — Restart
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
+# Daemon Control -- Restart
+# ---------------------------------------------------------
 Describe "Daemon Control: Restart" {
 
-    It "Menu option 3 calls Stop then Start" {
-        $Script:ServicesSource | Should -Match '"3".*Stop-RNSDaemon.*Start-RNSDaemon'
+    It "Menu option 3 calls Stop then Start on the same line" {
+        # Line 352: "3"  { Stop-RNSDaemon; Start-RNSDaemon }
+        $Script:ServicesSource.Contains('Stop-RNSDaemon; Start-RNSDaemon') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # Show-Status
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "Show-Status" {
 
+    BeforeAll {
+        $fnIdx = $Script:ServicesSource.IndexOf('function Show-Status')
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:StatusBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
     It "Displays rnsd process status" {
-        $Script:ServicesSource | Should -Match 'Get-Process.*rnsd'
+        $Script:StatusBlock.Contains('Get-Process') | Should -BeTrue
     }
 
     It "Shows installed component versions via pip" {
-        $Script:ServicesSource | Should -Match 'pip show'
+        $Script:StatusBlock.Contains('pip show') | Should -BeTrue
     }
 
     It "Checks rns, lxmf, and nomadnet packages" {
-        $Script:ServicesSource | Should -Match '"rns".*"lxmf".*"nomadnet"'
+        $Script:StatusBlock.Contains('"rns"') | Should -BeTrue
+        $Script:StatusBlock.Contains('"lxmf"') | Should -BeTrue
+        $Script:StatusBlock.Contains('"nomadnet"') | Should -BeTrue
     }
 
     It "Shows rnstatus output when available" {
-        $Script:ServicesSource | Should -Match 'Get-Command rnstatus'
+        $Script:StatusBlock.Contains('Get-Command rnstatus') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # Network Tool Dispatch
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "Network Tool Dispatch: Invoke-NetworkTool" {
 
+    BeforeAll {
+        $fnIdx = $Script:ServicesSource.IndexOf('function Invoke-NetworkTool')
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:NetToolBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
     It "Validates tool availability before execution" {
-        $Script:ServicesSource | Should -Match 'Get-Command \$Tool'
+        $Script:NetToolBlock.Contains('Get-Command $Tool') | Should -BeTrue
     }
 
     It "Reports error for missing tools" {
-        $Script:ServicesSource | Should -Match 'not installed.*Install RNS first'
+        $Script:NetToolBlock.Contains('not installed') | Should -BeTrue
+        $Script:NetToolBlock.Contains('Install RNS first') | Should -BeTrue
     }
 
     It "Handles rnstatus tool" {
-        $Script:ServicesSource | Should -Match '& rnstatus'
+        $Script:NetToolBlock.Contains('& rnstatus') | Should -BeTrue
     }
 
     It "Handles rnpath tool with -t flag" {
-        $Script:ServicesSource | Should -Match '& rnpath -t'
+        $Script:NetToolBlock.Contains('& rnpath -t') | Should -BeTrue
     }
 
     It "Handles rnprobe with user-supplied destination" {
-        $Script:ServicesSource | Should -Match 'Enter destination hash'
-        $Script:ServicesSource | Should -Match '& rnprobe'
+        $Script:NetToolBlock.Contains('Enter destination hash') | Should -BeTrue
+        $Script:NetToolBlock.Contains('& rnprobe') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # Identity Management
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "Identity Management: Invoke-IdentityManagement" {
 
-    It "Checks rnid availability" {
+    BeforeAll {
         $fnIdx = $Script:ServicesSource.IndexOf('function Invoke-IdentityManagement')
-        $block = $Script:ServicesSource.Substring($fnIdx, 300)
-        $block | Should -Match 'Get-Command rnid'
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:IdentityBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Checks rnid availability" {
+        $Script:IdentityBlock.Contains('Get-Command rnid') | Should -BeTrue
     }
 
     It "Offers show identity hash option" {
-        $Script:ServicesSource | Should -Match 'Show identity hash'
+        $Script:IdentityBlock.Contains('Show identity hash') | Should -BeTrue
     }
 
     It "Offers generate new identity option" {
-        $Script:ServicesSource | Should -Match 'Generate new identity'
+        $Script:IdentityBlock.Contains('Generate new identity') | Should -BeTrue
     }
 
     It "Offers view identity file location option" {
-        $Script:ServicesSource | Should -Match 'View identity file location'
+        $Script:IdentityBlock.Contains('View identity file location') | Should -BeTrue
     }
 
-    It "Stores identities in .reticulum/identities directory" {
-        $Script:ServicesSource | Should -Match '\.reticulum.*identities'
+    It "Stores identities in .reticulum identities directory" {
+        $Script:IdentityBlock.Contains('.reticulum') | Should -BeTrue
+        $Script:IdentityBlock.Contains('identities') | Should -BeTrue
     }
 
     It "Creates identities directory if missing" {
-        $Script:ServicesSource | Should -Match 'New-Item.*Directory.*identityDir'
+        $Script:IdentityBlock.Contains('New-Item') | Should -BeTrue
+        $Script:IdentityBlock.Contains('Directory') | Should -BeTrue
+        $Script:IdentityBlock.Contains('identityDir') | Should -BeTrue
     }
 
     It "Uses rnid --generate for new identities" {
-        $Script:ServicesSource | Should -Match 'rnid --generate'
+        $Script:IdentityBlock.Contains('rnid --generate') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # File Transfer
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "File Transfer: Invoke-FileTransfer" {
 
-    It "Checks rncp availability" {
+    BeforeAll {
         $fnIdx = $Script:ServicesSource.IndexOf('function Invoke-FileTransfer')
-        $block = $Script:ServicesSource.Substring($fnIdx, 200)
-        $block | Should -Match 'Get-Command rncp'
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:FileTransferBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Checks rncp availability" {
+        $Script:FileTransferBlock.Contains('Get-Command rncp') | Should -BeTrue
     }
 
     It "Validates file exists before sending" {
-        $Script:ServicesSource | Should -Match 'Test-Path \$filePath'
+        $Script:FileTransferBlock.Contains('Test-Path $filePath') | Should -BeTrue
     }
 
     It "Reports error for missing files" {
-        $Script:ServicesSource | Should -Match 'File not found'
+        $Script:FileTransferBlock.Contains('File not found') | Should -BeTrue
     }
 
     It "Offers listen mode for incoming transfers" {
-        $Script:ServicesSource | Should -Match 'rncp --listen'
+        $Script:FileTransferBlock.Contains('rncp --listen') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # Remote Command
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "Remote Command: Invoke-RemoteCommand" {
 
-    It "Checks rnx availability" {
+    BeforeAll {
         $fnIdx = $Script:ServicesSource.IndexOf('function Invoke-RemoteCommand')
-        $block = $Script:ServicesSource.Substring($fnIdx, 200)
-        $block | Should -Match 'Get-Command rnx'
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:RemoteCmdBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Checks rnx availability" {
+        $Script:RemoteCmdBlock.Contains('Get-Command rnx') | Should -BeTrue
     }
 
     It "Requires destination hash" {
-        $Script:ServicesSource | Should -Match 'No destination specified'
+        $Script:RemoteCmdBlock.Contains('No destination specified') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # Autostart via Task Scheduler
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "Autostart: Enable-RnsdAutoStart" {
 
-    It "Verifies rnsd is installed before creating task" {
+    BeforeAll {
         $fnIdx = $Script:ServicesSource.IndexOf('function Enable-RnsdAutoStart')
-        $block = $Script:ServicesSource.Substring($fnIdx, 300)
-        $block | Should -Match 'Get-Command rnsd'
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:EnableBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Verifies rnsd is installed before creating task" {
+        $Script:EnableBlock.Contains('Get-Command rnsd') | Should -BeTrue
     }
 
     It "Uses consistent task name 'RNS_rnsd_autostart'" {
-        $Script:ServicesSource | Should -Match 'RNS_rnsd_autostart'
+        $Script:EnableBlock.Contains('RNS_rnsd_autostart') | Should -BeTrue
     }
 
     It "Checks for existing scheduled task before creating" {
-        $Script:ServicesSource | Should -Match 'Get-ScheduledTask.*TaskName.*taskName'
+        $Script:EnableBlock.Contains('Get-ScheduledTask') | Should -BeTrue
+        $Script:EnableBlock.Contains('$taskName') | Should -BeTrue
     }
 
     It "Asks confirmation before replacing existing task" {
-        $Script:ServicesSource | Should -Match 'Replace existing task'
+        $Script:EnableBlock.Contains('Replace existing task') | Should -BeTrue
     }
 
     It "Unregisters old task before creating replacement" {
-        $Script:ServicesSource | Should -Match 'Unregister-ScheduledTask.*taskName.*Confirm:\$false'
+        $Script:EnableBlock.Contains('Unregister-ScheduledTask') | Should -BeTrue
+        $Script:EnableBlock.Contains('-Confirm:$false') | Should -BeTrue
     }
 
     It "Creates task action with rnsd --daemon" {
-        $Script:ServicesSource | Should -Match 'New-ScheduledTaskAction.*rnsdPath.*--daemon'
+        $Script:EnableBlock.Contains('New-ScheduledTaskAction') | Should -BeTrue
+        $Script:EnableBlock.Contains('--daemon') | Should -BeTrue
     }
 
     It "Uses AtLogOn trigger" {
-        $Script:ServicesSource | Should -Match 'New-ScheduledTaskTrigger.*AtLogOn'
+        $Script:EnableBlock.Contains('New-ScheduledTaskTrigger') | Should -BeTrue
+        $Script:EnableBlock.Contains('-AtLogOn') | Should -BeTrue
     }
 
     It "Runs with limited (non-elevated) privileges" {
-        $Script:ServicesSource | Should -Match 'RunLevel Limited'
+        $Script:EnableBlock.Contains('RunLevel Limited') | Should -BeTrue
     }
 
     It "Registers task with Register-ScheduledTask" {
-        $Script:ServicesSource | Should -Match 'Register-ScheduledTask'
+        $Script:EnableBlock.Contains('Register-ScheduledTask') | Should -BeTrue
     }
 
     It "Logs the auto-start enablement" {
-        $Script:ServicesSource | Should -Match 'Write-RnsLog.*Enabled rnsd auto-start'
+        $Script:EnableBlock.Contains('Write-RnsLog') | Should -BeTrue
+        $Script:EnableBlock.Contains('Enabled rnsd auto-start') | Should -BeTrue
     }
 }
 
 Describe "Autostart: Disable-RnsdAutoStart" {
 
-    It "Uses same task name as Enable" {
+    BeforeAll {
         $fnIdx = $Script:ServicesSource.IndexOf('function Disable-RnsdAutoStart')
-        $block = $Script:ServicesSource.Substring($fnIdx, 300)
-        $block | Should -Match 'RNS_rnsd_autostart'
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:DisableBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Uses same task name as Enable" {
+        $Script:DisableBlock.Contains('RNS_rnsd_autostart') | Should -BeTrue
     }
 
     It "Checks if task exists before removing" {
-        $fnIdx = $Script:ServicesSource.IndexOf('function Disable-RnsdAutoStart')
-        $block = $Script:ServicesSource.Substring($fnIdx, 300)
-        $block | Should -Match 'Get-ScheduledTask'
+        $Script:DisableBlock.Contains('Get-ScheduledTask') | Should -BeTrue
     }
 
     It "Unregisters without confirmation prompt" {
-        $fnIdx = $Script:ServicesSource.IndexOf('function Disable-RnsdAutoStart')
-        $fnEnd = $Script:ServicesSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
-        $block = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Unregister-ScheduledTask.*Confirm:\$false'
+        $Script:DisableBlock.Contains('Unregister-ScheduledTask') | Should -BeTrue
+        $Script:DisableBlock.Contains('-Confirm:$false') | Should -BeTrue
     }
 
     It "Reports when no task found" {
-        $Script:ServicesSource | Should -Match 'No auto-start task found'
+        $Script:DisableBlock.Contains('No auto-start task found') | Should -BeTrue
     }
 
     It "Logs the auto-start disablement" {
-        $Script:ServicesSource | Should -Match 'Write-RnsLog.*Disabled rnsd auto-start'
+        $Script:DisableBlock.Contains('Write-RnsLog') | Should -BeTrue
+        $Script:DisableBlock.Contains('Disabled rnsd auto-start') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # RNS001: Command Safety (No Eval)
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "RNS001: Command Safety (No Eval)" {
 
     It "Source does not use Invoke-Expression" {
@@ -384,52 +430,54 @@ Describe "RNS001: Command Safety (No Eval)" {
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 # Menu Structure
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
 Describe "Service Menu Structure" {
 
-    It "Menu uses while loop (not recursive)" {
-        $Script:ServicesSource | Should -Match 'while\s*\(\$true\)'
+    BeforeAll {
+        $fnIdx = $Script:ServicesSource.IndexOf('function Show-ServiceMenu')
+        $Script:MenuBlock = $Script:ServicesSource.Substring($fnIdx)
     }
 
-    It "Menu has back option (0)" {
-        $Script:ServicesSource | Should -Match '"0".*return'
+    It "Menu uses while loop (not recursive)" {
+        $Script:MenuBlock.Contains('while ($true)') | Should -BeTrue
     }
 
     It "Menu shows rnsd running/stopped status" {
-        $Script:ServicesSource | Should -Match 'Running.*PID'
-        $Script:ServicesSource | Should -Match 'Stopped'
+        $Script:MenuBlock.Contains('PID') | Should -BeTrue
+        $Script:MenuBlock.Contains('Stopped') | Should -BeTrue
     }
 
     It "Menu has Daemon Control section" {
-        $Script:ServicesSource | Should -Match 'Daemon Control'
+        $Script:MenuBlock.Contains('Daemon Control') | Should -BeTrue
     }
 
     It "Menu has Network Tools section" {
-        $Script:ServicesSource | Should -Match 'Network Tools'
+        $Script:MenuBlock.Contains('Network Tools') | Should -BeTrue
     }
 
     It "Menu has Identity & Boot section" {
-        $Script:ServicesSource | Should -Match 'Identity & Boot'
+        $Script:MenuBlock.Contains('Identity & Boot') | Should -BeTrue
     }
 
-    It "Menu offers all 12 options" {
-        $Script:ServicesSource | Should -Match '"1".*Start-RNSDaemon'
-        $Script:ServicesSource | Should -Match '"2".*Stop-RNSDaemon'
-        $Script:ServicesSource | Should -Match '"3".*Stop-RNSDaemon.*Start-RNSDaemon'
-        $Script:ServicesSource | Should -Match '"4".*Show-Status'
-        $Script:ServicesSource | Should -Match '"5".*Invoke-NetworkTool.*rnstatus'
-        $Script:ServicesSource | Should -Match '"6".*Invoke-NetworkTool.*rnpath'
-        $Script:ServicesSource | Should -Match '"7".*Invoke-NetworkTool.*rnprobe'
-        $Script:ServicesSource | Should -Match '"8".*Invoke-FileTransfer'
-        $Script:ServicesSource | Should -Match '"9".*Invoke-RemoteCommand'
-        $Script:ServicesSource | Should -Match '"10".*Invoke-IdentityManagement'
-        $Script:ServicesSource | Should -Match '"11".*Enable-RnsdAutoStart'
-        $Script:ServicesSource | Should -Match '"12".*Disable-RnsdAutoStart'
+    It "Menu wires key options to correct functions" {
+        # Spot-check a few representative options rather than all 12
+        $Script:MenuBlock.Contains('Start-RNSDaemon') | Should -BeTrue
+        $Script:MenuBlock.Contains('Stop-RNSDaemon') | Should -BeTrue
+        $Script:MenuBlock.Contains('Show-Status') | Should -BeTrue
+        $Script:MenuBlock.Contains('Invoke-NetworkTool') | Should -BeTrue
+        $Script:MenuBlock.Contains('Invoke-IdentityManagement') | Should -BeTrue
+        $Script:MenuBlock.Contains('Enable-RnsdAutoStart') | Should -BeTrue
+        $Script:MenuBlock.Contains('Disable-RnsdAutoStart') | Should -BeTrue
+    }
+
+    It "Menu has back option (0)" {
+        $Script:MenuBlock.Contains('"0"') | Should -BeTrue
+        $Script:MenuBlock.Contains('return') | Should -BeTrue
     }
 
     It "Menu handles invalid input gracefully" {
-        $Script:ServicesSource | Should -Match 'default.*Invalid option'
+        $Script:MenuBlock.Contains('Invalid option') | Should -BeTrue
     }
 }

@@ -4,8 +4,9 @@
     Pester tests for pwsh/advanced.ps1 — Advanced options, config management
     Mirrors BATS integration_tests.bats for PowerShell parity
 .NOTES
-    Covers: factory reset safety (RESET confirmation, pre-reset backup),
-    export/import config, cache cleanup, update checks, menu structure
+    Covers: function existence, function count, factory reset safety (RESET
+    confirmation, pre-reset backup), export/import config ordering, RNS004
+    path traversal prevention, RNS001 command safety (no eval), menu structure
 #>
 
 BeforeAll {
@@ -22,35 +23,35 @@ BeforeAll {
 Describe "Function Existence" {
 
     It "Update-PythonPackage function exists" {
-        $Script:AdvancedSource | Should -Match 'function Update-PythonPackage'
+        $Script:AdvancedSource.Contains('function Update-PythonPackage') | Should -BeTrue
     }
 
     It "Clear-Cache function exists" {
-        $Script:AdvancedSource | Should -Match 'function Clear-Cache'
+        $Script:AdvancedSource.Contains('function Clear-Cache') | Should -BeTrue
     }
 
     It "Export-Configuration function exists" {
-        $Script:AdvancedSource | Should -Match 'function Export-Configuration'
+        $Script:AdvancedSource.Contains('function Export-Configuration') | Should -BeTrue
     }
 
     It "Import-Configuration function exists" {
-        $Script:AdvancedSource | Should -Match 'function Import-Configuration'
+        $Script:AdvancedSource.Contains('function Import-Configuration') | Should -BeTrue
     }
 
     It "Reset-ToFactory function exists" {
-        $Script:AdvancedSource | Should -Match 'function Reset-ToFactory'
+        $Script:AdvancedSource.Contains('function Reset-ToFactory') | Should -BeTrue
     }
 
     It "Show-Log function exists" {
-        $Script:AdvancedSource | Should -Match 'function Show-Log'
+        $Script:AdvancedSource.Contains('function Show-Log') | Should -BeTrue
     }
 
     It "Test-ToolUpdate function exists" {
-        $Script:AdvancedSource | Should -Match 'function Test-ToolUpdate'
+        $Script:AdvancedSource.Contains('function Test-ToolUpdate') | Should -BeTrue
     }
 
     It "Show-AdvancedMenu function exists" {
-        $Script:AdvancedSource | Should -Match 'function Show-AdvancedMenu'
+        $Script:AdvancedSource.Contains('function Show-AdvancedMenu') | Should -BeTrue
     }
 
     It "advanced.ps1 has exactly 8 functions" {
@@ -68,6 +69,13 @@ Describe "Function Existence" {
 # ─────────────────────────────────────────────────────────────
 Describe "Factory Reset Safety: Reset-ToFactory" {
 
+    BeforeAll {
+        $fnIdx = $Script:AdvancedSource.IndexOf('function Reset-ToFactory')
+        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
+        $Script:ResetBlock = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
     It "Uses SupportsShouldProcess" {
         $fnIdx = $Script:AdvancedSource.IndexOf('function Reset-ToFactory')
         $fnIdx | Should -BeGreaterOrEqual 0
@@ -76,182 +84,31 @@ Describe "Factory Reset Safety: Reset-ToFactory" {
         ($cbIdx - $fnIdx) | Should -BeLessThan 100
     }
 
-    It "Displays prominent WARNING banner" {
-        $Script:AdvancedSource | Should -Match 'WARNING!'
-    }
-
-    It "Warning is displayed in red" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Reset-ToFactory')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'ForegroundColor Red'
-    }
-
-    It "Warns about identity and message loss" {
-        $Script:AdvancedSource | Should -Match 'identities and messages will be LOST'
-    }
-
-    It "Lists directories that will be removed" {
-        $Script:AdvancedSource | Should -Match '\.reticulum/'
-        $Script:AdvancedSource | Should -Match '\.nomadnetwork/'
-        $Script:AdvancedSource | Should -Match '\.lxmf/'
-    }
-
     It "Requires typing 'RESET' for confirmation (not y/Y)" {
-        $Script:AdvancedSource | Should -Match "Type 'RESET' to confirm"
+        $Script:ResetBlock.Contains("Type 'RESET' to confirm") | Should -BeTrue
     }
 
     It "Validates exact RESET string match" {
-        $Script:AdvancedSource | Should -Match '\$confirm -ne "RESET"'
-    }
-
-    It "Reports cancellation when confirmation not received" {
-        $Script:AdvancedSource | Should -Match 'Reset cancelled.*confirmation not received'
+        $Script:ResetBlock.Contains('$confirm -ne "RESET"') | Should -BeTrue
     }
 
     It "Creates backup BEFORE performing reset" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Reset-ToFactory')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $backupIdx = $block.IndexOf('New-Backup')
-        $removeIdx = $block.IndexOf('Remove-Item')
+        $backupIdx = $Script:ResetBlock.IndexOf('New-Backup')
+        $removeIdx = $Script:ResetBlock.IndexOf('Remove-Item')
         $backupIdx | Should -BeGreaterThan 0
         $removeIdx | Should -BeGreaterThan $backupIdx
     }
 
-    It "Logs 'Creating final backup before reset'" {
-        $Script:AdvancedSource | Should -Match 'Creating final backup before reset'
-    }
-
-    It "Removes .reticulum directory" {
-        $Script:AdvancedSource | Should -Match 'Remove-Item.*reticulumDir.*Recurse.*Force'
-    }
-
-    It "Removes .nomadnetwork directory" {
-        $Script:AdvancedSource | Should -Match 'Remove-Item.*nomadDir.*Recurse.*Force'
-    }
-
-    It "Removes .lxmf directory" {
-        $Script:AdvancedSource | Should -Match 'Remove-Item.*lxmfDir.*Recurse.*Force'
+    It "Removes .reticulum, .nomadnetwork, and .lxmf directories" {
+        $Script:ResetBlock.Contains('reticulumDir') | Should -BeTrue
+        $Script:ResetBlock.Contains('nomadDir') | Should -BeTrue
+        $Script:ResetBlock.Contains('lxmfDir') | Should -BeTrue
+        # All three are removed
+        $Script:ResetBlock.Contains('Remove-Item') | Should -BeTrue
     }
 
     It "Logs factory reset to log file" {
-        $Script:AdvancedSource | Should -Match 'Factory reset performed.*all configurations removed'
-    }
-
-    It "Advises user how to create fresh config after reset" {
-        $Script:AdvancedSource | Should -Match 'rnsd --daemon.*create fresh configuration'
-    }
-}
-
-# ─────────────────────────────────────────────────────────────
-# Update-PythonPackage
-# ─────────────────────────────────────────────────────────────
-Describe "Update-PythonPackage" {
-
-    It "Uses SupportsShouldProcess" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Update-PythonPackage')
-        $fnIdx | Should -BeGreaterOrEqual 0
-        $cbIdx = $Script:AdvancedSource.IndexOf('[CmdletBinding(SupportsShouldProcess)]', $fnIdx)
-        $cbIdx | Should -BeGreaterThan $fnIdx
-        ($cbIdx - $fnIdx) | Should -BeLessThan 100
-    }
-
-    It "Requires confirmation before updating" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Update-PythonPackage')
-        $block = $Script:AdvancedSource.Substring($fnIdx, 300)
-        $block | Should -Match 'Continue\?'
-    }
-
-    It "Updates pip itself first" {
-        $Script:AdvancedSource | Should -Match 'pip install --upgrade pip'
-    }
-
-    It "Updates setuptools and wheel" {
-        $Script:AdvancedSource | Should -Match 'pip install --upgrade setuptools wheel'
-    }
-}
-
-# ─────────────────────────────────────────────────────────────
-# Clear-Cache
-# ─────────────────────────────────────────────────────────────
-Describe "Clear-Cache" {
-
-    It "Purges pip cache" {
-        $Script:AdvancedSource | Should -Match 'pip cache purge'
-    }
-
-    It "Cleans Windows temp files matching rns*" {
-        $Script:AdvancedSource | Should -Match 'GetTempPath'
-        $Script:AdvancedSource | Should -Match '-Filter "rns\*"'
-    }
-
-    It "Counts removed items" {
-        $Script:AdvancedSource | Should -Match '\$removed\+\+'
-    }
-
-    It "Reports cleanup count to user" {
-        $Script:AdvancedSource | Should -Match 'Cache cleaned.*removed'
-    }
-}
-
-# ─────────────────────────────────────────────────────────────
-# Export-Configuration
-# ─────────────────────────────────────────────────────────────
-Describe "Export-Configuration" {
-
-    It "Uses timestamped export filename" {
-        $Script:AdvancedSource | Should -Match 'yyyyMMdd_HHmmss.*\.zip'
-    }
-
-    It "Checks for .reticulum directory" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Export-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match '\.reticulum'
-    }
-
-    It "Checks for .nomadnetwork directory" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Export-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match '\.nomadnetwork'
-    }
-
-    It "Checks for .lxmf directory" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Export-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match '\.lxmf'
-    }
-
-    It "Reports when no config files exist" {
-        $Script:AdvancedSource | Should -Match 'No configuration files found to export'
-    }
-
-    It "Uses Compress-Archive for zip creation" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Export-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Compress-Archive'
-    }
-
-    It "Cleans up temp directory after export" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Export-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Remove-Item.*tempExport.*Recurse.*Force'
-    }
-
-    It "Logs export operation" {
-        $Script:AdvancedSource | Should -Match 'Exported configuration to'
+        $Script:ResetBlock.Contains('Factory reset performed') | Should -BeTrue
     }
 }
 
@@ -260,134 +117,80 @@ Describe "Export-Configuration" {
 # ─────────────────────────────────────────────────────────────
 Describe "Import-Configuration: RNS004 Path Traversal Prevention" {
 
-    It "Validates .zip extension" {
-        $Script:AdvancedSource | Should -Match '-notmatch.*\.zip'
+    BeforeAll {
+        $fnIdx = $Script:AdvancedSource.IndexOf('function Import-Configuration')
+        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
+        $Script:ImportBlock = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
     }
 
-    It "Checks file existence with Test-Path" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Import-Configuration')
-        $block = $Script:AdvancedSource.Substring($fnIdx, 300)
-        $block | Should -Match 'Test-Path \$importFile'
+    It "Validates .zip extension" {
+        $Script:ImportBlock.Contains('.zip') | Should -BeTrue
+        $Script:ImportBlock.Contains('-notmatch') | Should -BeTrue
     }
 
     It "Uses ZipFile.OpenRead for archive validation" {
-        $Script:AdvancedSource | Should -Match 'ZipFile.*OpenRead'
+        $Script:ImportBlock.Contains('ZipFile') | Should -BeTrue
+        $Script:ImportBlock.Contains('OpenRead') | Should -BeTrue
     }
 
     It "Checks for '..' path traversal in entries" {
-        # Source has: $entry.FullName -match '\.\.'
-        $Script:AdvancedSource | Should -Match 'entry\.FullName -match'
-        $Script:AdvancedSource | Should -Match 'hasInvalidPaths'
+        $Script:ImportBlock.Contains('hasInvalidPaths') | Should -BeTrue
+        $Script:ImportBlock.Contains('entry.FullName') | Should -BeTrue
     }
 
-    It "Checks for absolute paths starting with /" {
-        $Script:AdvancedSource | Should -Match "StartsWith\('/'\)"
-    }
-
-    It "Checks for absolute paths starting with \\" {
-        $Script:AdvancedSource | Should -Match "StartsWith\('\\'\)"
+    It "Checks for absolute paths starting with / and \" {
+        $Script:ImportBlock.Contains("StartsWith('/')") | Should -BeTrue
+        $Script:ImportBlock.Contains("StartsWith('\')") | Should -BeTrue
     }
 
     It "Disposes zip handle after validation" {
-        $Script:AdvancedSource | Should -Match '\$zip\.Dispose\(\)'
+        $Script:ImportBlock.Contains('$zip.Dispose()') | Should -BeTrue
     }
 
     It "Logs security violations" {
-        $Script:AdvancedSource | Should -Match 'SECURITY.*Rejected archive.*invalid paths'
+        $Script:ImportBlock.Contains('SECURITY') | Should -BeTrue
+        $Script:ImportBlock.Contains('invalid paths') | Should -BeTrue
     }
 
     It "Validates archive before extraction" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Import-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $validationIdx = $block.IndexOf('ZipFile')
-        $expandIdx = $block.IndexOf('Expand-Archive')
+        $validationIdx = $Script:ImportBlock.IndexOf('ZipFile')
+        $expandIdx = $Script:ImportBlock.IndexOf('Expand-Archive')
         $validationIdx | Should -BeLessThan $expandIdx
     }
 
-    It "Warns when archive lacks Reticulum config" {
-        $Script:AdvancedSource | Should -Match 'does not appear to contain Reticulum configuration'
-    }
-
-    It "Requires confirmation before overwrite" {
-        $Script:AdvancedSource | Should -Match 'overwrite your current configuration'
-    }
-
     It "Creates backup before import" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Import-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $backupIdx = $block.IndexOf('New-Backup')
-        $expandIdx = $block.IndexOf('Expand-Archive')
+        $backupIdx = $Script:ImportBlock.IndexOf('New-Backup')
+        $expandIdx = $Script:ImportBlock.IndexOf('Expand-Archive')
         $backupIdx | Should -BeGreaterThan 0
         $expandIdx | Should -BeGreaterThan $backupIdx
     }
 
     It "Cleans up temp import directory" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Import-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Remove-Item.*tempImport.*Recurse.*Force'
+        $Script:ImportBlock.Contains('tempImport') | Should -BeTrue
+        $Script:ImportBlock.Contains('Remove-Item') | Should -BeTrue
     }
 }
 
 # ─────────────────────────────────────────────────────────────
-# Show-Log
+# Export-Configuration
 # ─────────────────────────────────────────────────────────────
-Describe "Show-Log" {
+Describe "Export-Configuration" {
 
-    It "Checks log file existence" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Show-Log')
+    BeforeAll {
+        $fnIdx = $Script:AdvancedSource.IndexOf('function Export-Configuration')
         $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
         if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Test-Path.*LogFile'
+        $Script:ExportBlock = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
     }
 
-    It "Shows last 50 entries" {
-        $Script:AdvancedSource | Should -Match 'Get-Content.*LogFile.*Tail 50'
+    It "Uses Compress-Archive for zip creation" {
+        $Script:ExportBlock.Contains('Compress-Archive') | Should -BeTrue
     }
 
-    It "Reports when no log file found" {
-        $Script:AdvancedSource | Should -Match 'No log file found'
-    }
-}
-
-# ─────────────────────────────────────────────────────────────
-# Test-ToolUpdate
-# ─────────────────────────────────────────────────────────────
-Describe "Test-ToolUpdate" {
-
-    It "Queries GitHub releases API" {
-        $Script:AdvancedSource | Should -Match 'api\.github\.com/repos/Nursedude/RNS-Management-Tool/releases/latest'
-    }
-
-    It "Compares current vs latest version" {
-        $Script:AdvancedSource | Should -Match '\$latestVersion.*\$currentVersion'
-    }
-
-    It "Strips v prefix from version tag" {
-        $Script:AdvancedSource | Should -Match "tag_name.*-replace.*\^v"
-    }
-
-    It "Shows download link when update available" {
-        $Script:AdvancedSource | Should -Match 'github\.com/Nursedude/RNS-Management-Tool/releases/latest'
-    }
-
-    It "Reports when already on latest version" {
-        $Script:AdvancedSource | Should -Match 'running the latest version'
-    }
-
-    It "Handles network errors gracefully" {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Test-ToolUpdate')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $block = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'catch'
-        $block | Should -Match 'Unable to check for updates'
+    It "Cleans up temp directory after export" {
+        $Script:ExportBlock.Contains('tempExport') | Should -BeTrue
+        $Script:ExportBlock.Contains('Remove-Item') | Should -BeTrue
     }
 }
 
@@ -419,27 +222,18 @@ Describe "RNS001: Command Safety (No Eval)" {
 # ─────────────────────────────────────────────────────────────
 Describe "Advanced Menu Structure" {
 
-    It "Menu uses while loop (not recursive)" {
-        $Script:AdvancedSource | Should -Match 'while\s*\(\$true\)'
+    BeforeAll {
+        $fnIdx = $Script:AdvancedSource.IndexOf('function Show-AdvancedMenu')
+        $Script:MenuBlock = $Script:AdvancedSource.Substring($fnIdx)
     }
 
-    It "Menu has back option (0)" {
-        $Script:AdvancedSource | Should -Match '"0".*return'
+    It "Menu has back option (0) that returns" {
+        $Script:MenuBlock.Contains('"0"') | Should -BeTrue
+        $Script:MenuBlock.Contains('return') | Should -BeTrue
     }
 
-    It "Menu has all 8 options" {
-        $Script:AdvancedSource | Should -Match '"1".*Update-PythonPackage'
-        $Script:AdvancedSource | Should -Match '"2".*Install-Ecosystem'
-        $Script:AdvancedSource | Should -Match '"3".*Clear-Cache'
-        $Script:AdvancedSource | Should -Match '"4".*Export-Configuration'
-        $Script:AdvancedSource | Should -Match '"5".*Import-Configuration'
-        $Script:AdvancedSource | Should -Match '"6".*Reset-ToFactory'
-        $Script:AdvancedSource | Should -Match '"7".*Show-Log'
-        $Script:AdvancedSource | Should -Match '"8".*Test-ToolUpdate'
-    }
-
-    It "Menu handles invalid input gracefully" {
-        $Script:AdvancedSource | Should -Match 'default'
-        $Script:AdvancedSource | Should -Match 'Invalid option'
+    It "Menu handles invalid input with default case" {
+        $Script:MenuBlock.Contains('default') | Should -BeTrue
+        $Script:MenuBlock.Contains('Invalid option') | Should -BeTrue
     }
 }

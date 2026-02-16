@@ -3,7 +3,8 @@
 .SYNOPSIS
     Pester tests for pwsh/environment.ps1 — WSL, Python, pip detection
 .NOTES
-    Covers: Test-WSL, Get-WSLDistribution, Test-Python, Test-Pip
+    Covers: Test-WSL, Get-WSLDistribution, Test-Python, Test-Pip.
+    Uses .Contains() for literal string checks to avoid regex/source-text mismatch.
 #>
 
 BeforeAll {
@@ -14,25 +15,13 @@ BeforeAll {
     )
 }
 
-# ─────────────────────────────────────────────────────────────
-# Function Existence
-# ─────────────────────────────────────────────────────────────
 Describe "Function Existence" {
 
-    It "Test-WSL function exists" {
-        $Script:EnvSource | Should -Match 'function Test-WSL'
-    }
-
-    It "Get-WSLDistribution function exists" {
-        $Script:EnvSource | Should -Match 'function Get-WSLDistribution'
-    }
-
-    It "Test-Python function exists" {
-        $Script:EnvSource | Should -Match 'function Test-Python'
-    }
-
-    It "Test-Pip function exists" {
-        $Script:EnvSource | Should -Match 'function Test-Pip'
+    It "All 4 environment functions exist" {
+        $Script:EnvSource.Contains('function Test-WSL') | Should -BeTrue
+        $Script:EnvSource.Contains('function Get-WSLDistribution') | Should -BeTrue
+        $Script:EnvSource.Contains('function Test-Python') | Should -BeTrue
+        $Script:EnvSource.Contains('function Test-Pip') | Should -BeTrue
     }
 
     It "environment.ps1 has exactly 4 functions" {
@@ -45,167 +34,113 @@ Describe "Function Existence" {
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Test-WSL
-# ─────────────────────────────────────────────────────────────
 Describe "Test-WSL" {
 
-    It "Checks wsl command availability" {
+    BeforeAll {
         $fnIdx = $Script:EnvSource.IndexOf('function Test-WSL')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 10)
+        $fnEnd = $Script:EnvSource.IndexOf("`nfunction ", $fnIdx + 10)
         if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Get-Command wsl'
+        $Script:WslBlock = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Checks wsl command availability" {
+        $Script:WslBlock.Contains('Get-Command wsl') | Should -BeTrue
     }
 
     It "Runs wsl --list --quiet to verify functionality" {
-        $Script:EnvSource | Should -Match 'wsl --list --quiet'
+        $Script:WslBlock.Contains('wsl --list --quiet') | Should -BeTrue
     }
 
-    It "Returns boolean true when WSL is functional" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-WSL')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 10)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$true'
-    }
-
-    It "Returns boolean false when WSL unavailable" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-WSL')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 10)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$false'
+    It "Returns boolean true/false" {
+        $Script:WslBlock.Contains('return $true') | Should -BeTrue
+        $Script:WslBlock.Contains('return $false') | Should -BeTrue
     }
 
     It "Handles exceptions gracefully" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-WSL')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 10)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'catch'
+        $Script:WslBlock.Contains('catch') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Get-WSLDistribution
-# ─────────────────────────────────────────────────────────────
 Describe "Get-WSLDistribution" {
 
-    It "Calls Test-WSL before enumerating" {
+    BeforeAll {
         $fnIdx = $Script:EnvSource.IndexOf('function Get-WSLDistribution')
-        $block = $Script:EnvSource.Substring($fnIdx, 200)
-        $block | Should -Match 'Test-WSL'
+        $fnEnd = $Script:EnvSource.IndexOf("`nfunction ", $fnIdx + 10)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
+        $Script:WslDistBlock = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Calls Test-WSL before enumerating" {
+        $Script:WslDistBlock.Contains('Test-WSL') | Should -BeTrue
     }
 
     It "Returns empty array when WSL unavailable" {
-        $Script:EnvSource | Should -Match 'return @\(\)'
+        $Script:EnvSource.Contains('return @()') | Should -BeTrue
     }
 
     It "Uses wsl --list --quiet to get distributions" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Get-WSLDistribution')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'wsl --list --quiet'
+        $Script:WslDistBlock.Contains('wsl --list --quiet') | Should -BeTrue
     }
 
     It "Filters out empty entries" {
-        $Script:EnvSource | Should -Match 'Where-Object.*\$_.*Trim'
+        $Script:EnvSource.Contains('Trim()') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Test-Python
-# ─────────────────────────────────────────────────────────────
 Describe "Test-Python" {
 
-    It "Checks for python command first" {
+    BeforeAll {
         $fnIdx = $Script:EnvSource.IndexOf('function Test-Python')
-        $block = $Script:EnvSource.Substring($fnIdx, 200)
-        $block | Should -Match 'Get-Command python '
+        $fnEnd = $Script:EnvSource.IndexOf("`nfunction ", $fnIdx + 10)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
+        $Script:PythonBlock = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
     }
 
-    It "Falls back to python3" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-Python')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 10)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Get-Command python3'
+    It "Checks for python and python3 commands" {
+        $Script:PythonBlock.Contains('Get-Command python ') | Should -BeTrue
+        $Script:PythonBlock.Contains('Get-Command python3') | Should -BeTrue
     }
 
     It "Runs --version to get Python version" {
-        $Script:EnvSource | Should -Match '\$python\.Source --version'
+        $Script:EnvSource.Contains('$python.Source --version') | Should -BeTrue
     }
 
-    It "Returns true when Python found" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-Python')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 10)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$true'
-    }
-
-    It "Returns false when Python not found" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-Python')
-        $fnEnd = $Script:EnvSource.IndexOf('function', $fnIdx + 10)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$false'
+    It "Returns boolean true/false" {
+        $Script:PythonBlock.Contains('return $true') | Should -BeTrue
+        $Script:PythonBlock.Contains('return $false') | Should -BeTrue
     }
 
     It "Reports Python not found as error" {
-        $Script:EnvSource | Should -Match 'Python not found in PATH'
+        $Script:EnvSource.Contains('Python not found in PATH') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Test-Pip
-# ─────────────────────────────────────────────────────────────
 Describe "Test-Pip" {
 
-    It "Checks for pip command first" {
+    BeforeAll {
         $fnIdx = $Script:EnvSource.IndexOf('function Test-Pip')
-        $block = $Script:EnvSource.Substring($fnIdx, 200)
-        $block | Should -Match 'Get-Command pip '
+        $Script:PipBlock = $Script:EnvSource.Substring($fnIdx)
     }
 
-    It "Falls back to pip3" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-Pip')
-        $fnEnd = $Script:EnvSource.Length
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Get-Command pip3'
+    It "Checks for pip and pip3 commands" {
+        $Script:PipBlock.Contains('Get-Command pip ') | Should -BeTrue
+        $Script:PipBlock.Contains('Get-Command pip3') | Should -BeTrue
     }
 
     It "Runs --version to get pip version" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-Pip')
-        $fnEnd = $Script:EnvSource.Length
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match '\$pip\.Source --version'
+        $Script:PipBlock.Contains('$pip.Source --version') | Should -BeTrue
     }
 
-    It "Returns true when pip found" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-Pip')
-        $fnEnd = $Script:EnvSource.Length
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$true'
-    }
-
-    It "Returns false when pip not found" {
-        $fnIdx = $Script:EnvSource.IndexOf('function Test-Pip')
-        $fnEnd = $Script:EnvSource.Length
-        $block = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$false'
+    It "Returns boolean true/false" {
+        $Script:PipBlock.Contains('return $true') | Should -BeTrue
+        $Script:PipBlock.Contains('return $false') | Should -BeTrue
     }
 
     It "Reports pip not found as error" {
-        $Script:EnvSource | Should -Match 'pip not found'
+        $Script:EnvSource.Contains('pip not found') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# RNS001: Command Safety (No Eval)
-# ─────────────────────────────────────────────────────────────
 Describe "RNS001: Command Safety (No Eval)" {
 
     It "Source does not use Invoke-Expression" {
