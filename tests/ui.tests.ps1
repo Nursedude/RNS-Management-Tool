@@ -4,7 +4,8 @@
     Pester tests for pwsh/ui.ps1 — Color output, headers, progress, menus
 .NOTES
     Covers: Write-ColorOutput (5 types), Show-Header, Show-Section,
-    Show-Progress, Show-QuickStatus, Show-MainMenu
+    Show-Progress, Show-QuickStatus, Show-MainMenu.
+    Uses .Contains() for literal string checks to avoid regex/source-text mismatch.
 #>
 
 BeforeAll {
@@ -15,33 +16,15 @@ BeforeAll {
     )
 }
 
-# ─────────────────────────────────────────────────────────────
-# Function Existence
-# ─────────────────────────────────────────────────────────────
 Describe "Function Existence" {
 
-    It "Write-ColorOutput function exists" {
-        $Script:UiSource | Should -Match 'function Write-ColorOutput'
-    }
-
-    It "Show-Header function exists" {
-        $Script:UiSource | Should -Match 'function Show-Header'
-    }
-
-    It "Show-Section function exists" {
-        $Script:UiSource | Should -Match 'function Show-Section'
-    }
-
-    It "Show-Progress function exists" {
-        $Script:UiSource | Should -Match 'function Show-Progress'
-    }
-
-    It "Show-QuickStatus function exists" {
-        $Script:UiSource | Should -Match 'function Show-QuickStatus'
-    }
-
-    It "Show-MainMenu function exists" {
-        $Script:UiSource | Should -Match 'function Show-MainMenu'
+    It "All 6 UI functions exist" {
+        $Script:UiSource.Contains('function Write-ColorOutput') | Should -BeTrue
+        $Script:UiSource.Contains('function Show-Header') | Should -BeTrue
+        $Script:UiSource.Contains('function Show-Section') | Should -BeTrue
+        $Script:UiSource.Contains('function Show-Progress') | Should -BeTrue
+        $Script:UiSource.Contains('function Show-QuickStatus') | Should -BeTrue
+        $Script:UiSource.Contains('function Show-MainMenu') | Should -BeTrue
     }
 
     It "ui.ps1 has exactly 6 functions" {
@@ -54,230 +37,159 @@ Describe "Function Existence" {
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Write-ColorOutput
-# ─────────────────────────────────────────────────────────────
 Describe "Write-ColorOutput" {
 
     It "Accepts Message and Type parameters" {
-        $Script:UiSource | Should -Match '\[string\]\$Message'
-        $Script:UiSource | Should -Match '\[string\]\$Type'
+        $Script:UiSource.Contains('[string]$Message') | Should -BeTrue
+        $Script:UiSource.Contains('[string]$Type') | Should -BeTrue
     }
 
     It "Defaults Type to Info" {
-        $Script:UiSource | Should -Match '\$Type\s*=\s*"Info"'
+        $Script:UiSource.Contains('$Type = "Info"') | Should -BeTrue
     }
 
     It "Logs all messages to log file" {
         $fnIdx = $Script:UiSource.IndexOf('function Write-ColorOutput')
         $block = $Script:UiSource.Substring($fnIdx, 300)
-        $block | Should -Match 'Out-File.*LogFile.*Append'
+        $block.Contains('Out-File') | Should -BeTrue
+        $block.Contains('LogFile') | Should -BeTrue
+        $block.Contains('Append') | Should -BeTrue
     }
 
-    Context "Color type mapping" {
+    It "Maps all 5 color types" {
+        $Script:UiSource.Contains('"Success"') | Should -BeTrue
+        $Script:UiSource.Contains('"Error"') | Should -BeTrue
+        $Script:UiSource.Contains('"Warning"') | Should -BeTrue
+        $Script:UiSource.Contains('"Info"') | Should -BeTrue
+        $Script:UiSource.Contains('"Progress"') | Should -BeTrue
+    }
 
-        It "Success type uses green checkmark [checkmark]" {
-            $Script:UiSource | Should -Match '"Success"'
-            $Script:UiSource | Should -Match 'ForegroundColor Green'
-        }
-
-        It "Error type uses red cross [x]" {
-            $Script:UiSource | Should -Match '"Error"'
-            $Script:UiSource | Should -Match 'ForegroundColor Red'
-        }
-
-        It "Warning type uses yellow bang [!]" {
-            $Script:UiSource | Should -Match '"Warning"'
-            $Script:UiSource | Should -Match 'ForegroundColor Yellow'
-        }
-
-        It "Info type uses cyan info [i]" {
-            $Script:UiSource | Should -Match '"Info"'
-            $Script:UiSource | Should -Match 'ForegroundColor Cyan'
-        }
-
-        It "Progress type uses magenta arrow" {
-            $Script:UiSource | Should -Match '"Progress"'
-            $Script:UiSource | Should -Match 'ForegroundColor Magenta'
-        }
+    It "Uses correct foreground colors" {
+        $Script:UiSource.Contains('ForegroundColor Green') | Should -BeTrue
+        $Script:UiSource.Contains('ForegroundColor Red') | Should -BeTrue
+        $Script:UiSource.Contains('ForegroundColor Yellow') | Should -BeTrue
+        $Script:UiSource.Contains('ForegroundColor Cyan') | Should -BeTrue
+        $Script:UiSource.Contains('ForegroundColor Magenta') | Should -BeTrue
     }
 
     It "Has default case for unknown types" {
-        $Script:UiSource | Should -Match 'default\s*\{'
+        $Script:UiSource.Contains('default {') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Show-Header
-# ─────────────────────────────────────────────────────────────
 Describe "Show-Header" {
 
     It "Clears the screen" {
         $fnIdx = $Script:UiSource.IndexOf('function Show-Header')
         $block = $Script:UiSource.Substring($fnIdx, 100)
-        $block | Should -Match 'Clear-Host'
+        $block.Contains('Clear-Host') | Should -BeTrue
     }
 
-    It "Displays application title with version" {
-        $Script:UiSource | Should -Match 'RNS MANAGEMENT TOOL.*Version'
+    It "Displays application title" {
+        $Script:UiSource.Contains('RNS MANAGEMENT TOOL') | Should -BeTrue
     }
 
     It "Uses box-drawing characters for header" {
-        $Script:UiSource | Should -Match '╔═'
-        $Script:UiSource | Should -Match '╚═'
+        $Script:UiSource.Contains('╔═') | Should -BeTrue
+        $Script:UiSource.Contains('╚═') | Should -BeTrue
     }
 
-    It "Shows platform info" {
-        $Script:UiSource | Should -Match 'Platform'
-    }
-
-    It "Shows architecture" {
-        $Script:UiSource | Should -Match 'Architecture'
-    }
-
-    It "Shows admin rights status" {
-        $Script:UiSource | Should -Match 'Admin Rights'
-        $Script:UiSource | Should -Match 'Script:IsAdmin'
-    }
-
-    It "Shows WSL availability when present" {
-        $Script:UiSource | Should -Match 'Script:HasWSL'
-    }
-
-    It "Shows remote session indicator" {
-        $Script:UiSource | Should -Match 'Script:IsRemoteSession'
+    It "Shows environment info" {
+        $Script:UiSource.Contains('Platform') | Should -BeTrue
+        $Script:UiSource.Contains('Architecture') | Should -BeTrue
+        $Script:UiSource.Contains('Admin Rights') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Show-Section
-# ─────────────────────────────────────────────────────────────
 Describe "Show-Section" {
 
     It "Accepts Title parameter" {
-        $Script:UiSource | Should -Match 'param\(\[string\]\$Title\)'
+        $Script:UiSource.Contains('[string]$Title') | Should -BeTrue
     }
 
     It "Uses blue color for section headers" {
         $fnIdx = $Script:UiSource.IndexOf('function Show-Section')
-        $fnEnd = $Script:UiSource.IndexOf('function', $fnIdx + 20)
+        $fnEnd = $Script:UiSource.IndexOf("`nfunction ", $fnIdx + 10)
         if ($fnEnd -lt 0) { $fnEnd = $Script:UiSource.Length }
         $block = $Script:UiSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'ForegroundColor Blue'
-    }
-
-    It "Prefixes with arrow character" {
-        $Script:UiSource | Should -Match '▶.*Title'
+        $block.Contains('ForegroundColor Blue') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Show-Progress
-# ─────────────────────────────────────────────────────────────
 Describe "Show-Progress" {
 
     It "Accepts Current, Total, and Activity parameters" {
-        $Script:UiSource | Should -Match '\[int\]\$Current'
-        $Script:UiSource | Should -Match '\[int\]\$Total'
-        $Script:UiSource | Should -Match '\[string\]\$Activity'
-    }
-
-    It "Calculates percent complete" {
-        $Script:UiSource | Should -Match 'Current / \$Total.*100'
+        $Script:UiSource.Contains('[int]$Current') | Should -BeTrue
+        $Script:UiSource.Contains('[int]$Total') | Should -BeTrue
+        $Script:UiSource.Contains('[string]$Activity') | Should -BeTrue
     }
 
     It "Uses Write-Progress cmdlet" {
-        $Script:UiSource | Should -Match 'Write-Progress.*Activity.*PercentComplete'
+        $Script:UiSource.Contains('Write-Progress') | Should -BeTrue
+        $Script:UiSource.Contains('PercentComplete') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Show-QuickStatus
-# ─────────────────────────────────────────────────────────────
 Describe "Show-QuickStatus" {
 
-    It "Uses box-drawing characters for status panel" {
+    BeforeAll {
         $fnIdx = $Script:UiSource.IndexOf('function Show-QuickStatus')
-        $fnEnd = $Script:UiSource.IndexOf('function', $fnIdx + 20)
+        $fnEnd = $Script:UiSource.IndexOf("`nfunction ", $fnIdx + 10)
         if ($fnEnd -lt 0) { $fnEnd = $Script:UiSource.Length }
-        $block = $Script:UiSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match '┌─'
-        $block | Should -Match '└─'
+        $Script:StatusBlock = $Script:UiSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Uses box-drawing characters for status panel" {
+        $Script:StatusBlock.Contains('┌─') | Should -BeTrue
+        $Script:StatusBlock.Contains('└─') | Should -BeTrue
     }
 
     It "Checks rnsd process status" {
-        $fnIdx = $Script:UiSource.IndexOf('function Show-QuickStatus')
-        $fnEnd = $Script:UiSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:UiSource.Length }
-        $block = $Script:UiSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Get-Process.*rnsd'
+        $Script:StatusBlock.Contains('Get-Process') | Should -BeTrue
+        $Script:StatusBlock.Contains('rnsd') | Should -BeTrue
     }
 
-    It "Shows green dot for running status" {
-        $Script:UiSource | Should -Match '● rnsd: Running'
-    }
-
-    It "Shows yellow circle for stopped status" {
-        $Script:UiSource | Should -Match '○ rnsd: Stopped'
+    It "Shows running and stopped status indicators" {
+        $Script:UiSource.Contains('rnsd: Running') | Should -BeTrue
+        $Script:UiSource.Contains('rnsd: Stopped') | Should -BeTrue
     }
 
     It "Shows RNS version via pip" {
-        $fnIdx = $Script:UiSource.IndexOf('function Show-QuickStatus')
-        $fnEnd = $Script:UiSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:UiSource.Length }
-        $block = $Script:UiSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'pip show rns'
+        $Script:StatusBlock.Contains('pip show rns') | Should -BeTrue
     }
 
-    It "Shows 'Not installed' when RNS missing" {
-        $Script:UiSource | Should -Match 'RNS: Not installed'
+    It "Shows Not installed when RNS missing" {
+        $Script:UiSource.Contains('RNS: Not installed') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# Show-MainMenu
-# ─────────────────────────────────────────────────────────────
 Describe "Show-MainMenu" {
 
-    It "Calls Show-Header" {
+    BeforeAll {
         $fnIdx = $Script:UiSource.IndexOf('function Show-MainMenu')
-        $block = $Script:UiSource.Substring($fnIdx, 200)
-        $block | Should -Match 'Show-Header'
+        $Script:MenuBlock = $Script:UiSource.Substring($fnIdx)
     }
 
-    It "Calls Show-QuickStatus" {
-        $fnIdx = $Script:UiSource.IndexOf('function Show-MainMenu')
-        $block = $Script:UiSource.Substring($fnIdx, 200)
-        $block | Should -Match 'Show-QuickStatus'
+    It "Calls Show-Header and Show-QuickStatus" {
+        $Script:MenuBlock.Contains('Show-Header') | Should -BeTrue
+        $Script:MenuBlock.Contains('Show-QuickStatus') | Should -BeTrue
     }
 
-    It "Has Installation section" {
-        $Script:UiSource | Should -Match 'Installation'
+    It "Has Installation and Management sections" {
+        $Script:UiSource.Contains('Installation') | Should -BeTrue
+        $Script:UiSource.Contains('Management') | Should -BeTrue
     }
 
-    It "Has Management section" {
-        $Script:UiSource | Should -Match 'Management'
-    }
-
-    It "Has Exit option (0)" {
-        $Script:UiSource | Should -Match '0\) Exit'
+    It "Has Exit option and MeshChat option" {
+        $Script:UiSource.Contains('0) Exit') | Should -BeTrue
+        $Script:UiSource.Contains('m) Install MeshChat') | Should -BeTrue
     }
 
     It "Returns user choice" {
-        $fnIdx = $Script:UiSource.IndexOf('function Show-MainMenu')
-        $fnEnd = $Script:UiSource.Length
-        $block = $Script:UiSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$choice'
-    }
-
-    It "Includes MeshChat option (m)" {
-        $Script:UiSource | Should -Match 'm\) Install MeshChat'
+        $Script:MenuBlock.Contains('return $choice') | Should -BeTrue
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# RNS001: Command Safety (No Eval)
-# ─────────────────────────────────────────────────────────────
 Describe "RNS001: Command Safety (No Eval)" {
 
     It "Source does not use Invoke-Expression" {

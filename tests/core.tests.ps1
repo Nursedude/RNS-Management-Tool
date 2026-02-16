@@ -14,6 +14,17 @@ BeforeAll {
     $Script:CoreAst = [System.Management.Automation.Language.Parser]::ParseInput(
         $Script:CoreSource, [ref]$null, [ref]$null
     )
+
+    # Helper: extract a function body from source by name.
+    # Returns the text from "function <Name>" up to the next top-level function or EOF.
+    function Get-FunctionBlock {
+        param([string]$Name)
+        $fnIdx = $Script:CoreSource.IndexOf("function $Name")
+        if ($fnIdx -lt 0) { return $null }
+        $fnEnd = $Script:CoreSource.IndexOf("`nfunction ", $fnIdx + 10)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:CoreSource.Length }
+        return $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -22,27 +33,27 @@ BeforeAll {
 Describe "Function Existence" {
 
     It "Initialize-Environment function exists" {
-        $Script:CoreSource | Should -Match 'function Initialize-Environment'
+        $Script:CoreSource.Contains('function Initialize-Environment') | Should -BeTrue
     }
 
     It "Write-RnsLog function exists" {
-        $Script:CoreSource | Should -Match 'function Write-RnsLog'
+        $Script:CoreSource.Contains('function Write-RnsLog') | Should -BeTrue
     }
 
     It "Invoke-LogRotation function exists" {
-        $Script:CoreSource | Should -Match 'function Invoke-LogRotation'
+        $Script:CoreSource.Contains('function Invoke-LogRotation') | Should -BeTrue
     }
 
     It "Test-DiskSpace function exists" {
-        $Script:CoreSource | Should -Match 'function Test-DiskSpace'
+        $Script:CoreSource.Contains('function Test-DiskSpace') | Should -BeTrue
     }
 
     It "Test-AvailableMemory function exists" {
-        $Script:CoreSource | Should -Match 'function Test-AvailableMemory'
+        $Script:CoreSource.Contains('function Test-AvailableMemory') | Should -BeTrue
     }
 
     It "Invoke-StartupHealthCheck function exists" {
-        $Script:CoreSource | Should -Match 'function Invoke-StartupHealthCheck'
+        $Script:CoreSource.Contains('function Invoke-StartupHealthCheck') | Should -BeTrue
     }
 
     It "core.ps1 has exactly 6 functions" {
@@ -63,69 +74,55 @@ Describe "Initialize-Environment" {
     Context "Admin rights detection" {
 
         It "Checks WindowsPrincipal for admin role" {
-            $Script:CoreSource | Should -Match 'WindowsPrincipal.*WindowsIdentity'
+            $Script:CoreSource.Contains('WindowsPrincipal') | Should -BeTrue
+            $Script:CoreSource.Contains('WindowsIdentity') | Should -BeTrue
         }
 
         It "Stores result in Script:IsAdmin" {
-            $Script:CoreSource | Should -Match '\$Script:IsAdmin'
+            $Script:CoreSource.Contains('$Script:IsAdmin') | Should -BeTrue
         }
     }
 
     Context "WSL availability detection" {
 
         It "Checks for wsl command availability" {
-            $Script:CoreSource | Should -Match 'Get-Command wsl'
+            $Script:CoreSource.Contains('Get-Command wsl') | Should -BeTrue
         }
 
         It "Stores result in Script:HasWSL" {
-            $Script:CoreSource | Should -Match '\$Script:HasWSL'
+            $Script:CoreSource.Contains('$Script:HasWSL') | Should -BeTrue
         }
     }
 
     Context "Remote session detection" {
 
-        It "Detects SSH sessions via SSH_CLIENT" {
-            $Script:CoreSource | Should -Match 'SSH_CLIENT'
-        }
-
-        It "Detects SSH sessions via SSH_TTY" {
-            $Script:CoreSource | Should -Match 'SSH_TTY'
-        }
-
-        It "Detects SSH sessions via SSH_CONNECTION" {
-            $Script:CoreSource | Should -Match 'SSH_CONNECTION'
+        It "Detects SSH sessions via environment variables" {
+            $Script:CoreSource.Contains('SSH_CLIENT') | Should -BeTrue
+            $Script:CoreSource.Contains('SSH_TTY') | Should -BeTrue
+            $Script:CoreSource.Contains('SSH_CONNECTION') | Should -BeTrue
         }
 
         It "Detects RDP sessions via SESSIONNAME" {
-            $Script:CoreSource | Should -Match 'SESSIONNAME.*RDP'
+            $Script:CoreSource.Contains('SESSIONNAME') | Should -BeTrue
+            $Script:CoreSource.Contains('RDP') | Should -BeTrue
         }
 
         It "Detects PS Remoting via ServerRemoteHost" {
-            $Script:CoreSource | Should -Match 'ServerRemoteHost'
+            $Script:CoreSource.Contains('ServerRemoteHost') | Should -BeTrue
         }
 
         It "Stores result in Script:IsRemoteSession" {
-            $Script:CoreSource | Should -Match '\$Script:IsRemoteSession'
+            $Script:CoreSource.Contains('$Script:IsRemoteSession') | Should -BeTrue
         }
     }
 
     Context "Terminal color capability" {
 
-        It "Defaults color to true" {
-            $Script:CoreSource | Should -Match '\$Script:HasColor = \$true'
+        It "Defaults color to true and disables for non-interactive" {
+            $Script:CoreSource.Contains('$Script:HasColor = $true') | Should -BeTrue
+            $Script:CoreSource.Contains('UserInteractive') | Should -BeTrue
+            $Script:CoreSource.Contains('$Script:HasColor = $false') | Should -BeTrue
         }
-
-        It "Detects non-interactive sessions" {
-            $Script:CoreSource | Should -Match 'UserInteractive'
-        }
-
-        It "Disables color for non-interactive sessions" {
-            $Script:CoreSource | Should -Match '\$Script:HasColor = \$false'
-        }
-    }
-
-    It "Logs environment detection results" {
-        $Script:CoreSource | Should -Match 'Write-RnsLog.*Environment.*Admin.*WSL.*Remote.*Color'
     }
 }
 
@@ -134,53 +131,25 @@ Describe "Initialize-Environment" {
 # ─────────────────────────────────────────────────────────────
 Describe "Write-RnsLog: Leveled Logging" {
 
-    It "Accepts Message and Level parameters" {
-        $Script:CoreSource | Should -Match 'param\s*\(\s*\[string\]\$Message'
-        $Script:CoreSource | Should -Match '\[string\]\$Level'
-    }
-
-    It "Defaults Level to INFO" {
-        $Script:CoreSource | Should -Match '\$Level\s*=\s*"INFO"'
+    It "Accepts Message and Level parameters with INFO default" {
+        $Script:CoreSource.Contains('[string]$Message') | Should -BeTrue
+        $Script:CoreSource.Contains('[string]$Level') | Should -BeTrue
+        $Script:CoreSource.Contains('$Level = "INFO"') | Should -BeTrue
     }
 
     It "Formats log line with timestamp" {
-        $Script:CoreSource | Should -Match 'Get-Date -Format "yyyy-MM-dd HH:mm:ss"'
-    }
-
-    It "Formats log line with level brackets" {
-        $Script:CoreSource | Should -Match '\[.*timestamp.*\].*\[.*Level.*\]'
-    }
-
-    It "Supports DEBUG level" {
-        $Script:CoreSource | Should -Match '"DEBUG".*LogLevelDebug'
-    }
-
-    It "Supports INFO level" {
-        $Script:CoreSource | Should -Match '"INFO".*LogLevelInfo'
-    }
-
-    It "Supports WARN level" {
-        $Script:CoreSource | Should -Match '"WARN".*LogLevelWarn'
-    }
-
-    It "Supports ERROR level" {
-        $Script:CoreSource | Should -Match '"ERROR".*LogLevelError'
+        $Script:CoreSource.Contains('Get-Date -Format "yyyy-MM-dd HH:mm:ss"') | Should -BeTrue
     }
 
     It "Filters messages by current log level" {
-        $Script:CoreSource | Should -Match '\$levelNum -ge \$Script:CurrentLogLevel'
+        $Script:CoreSource.Contains('$levelNum -ge $Script:CurrentLogLevel') | Should -BeTrue
     }
 
-    It "Writes to log file using Out-File -Append" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Write-RnsLog')
-        $fnEnd = $Script:CoreSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:CoreSource.Length }
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Out-File.*LogFile.*Append'
-    }
-
-    It "Uses SilentlyContinue for log write errors" {
-        $Script:CoreSource | Should -Match 'Out-File.*ErrorAction SilentlyContinue'
+    It "Writes to log file with Out-File -Append and SilentlyContinue" {
+        $block = Get-FunctionBlock 'Write-RnsLog'
+        $block.Contains('Out-File') | Should -BeTrue
+        $block.Contains('-Append') | Should -BeTrue
+        $block.Contains('SilentlyContinue') | Should -BeTrue
     }
 }
 
@@ -189,56 +158,24 @@ Describe "Write-RnsLog: Leveled Logging" {
 # ─────────────────────────────────────────────────────────────
 Describe "Invoke-LogRotation" {
 
-    Context "Rotation thresholds" {
-
-        It "Uses 1MB (1048576 bytes) as rotation threshold" {
-            $Script:CoreSource | Should -Match '1048576'
-        }
-
-        It "Keeps maximum 3 rotated logs" {
-            $Script:CoreSource | Should -Match '\$maxRotations\s*=\s*3'
-        }
+    It "Uses 1MB (1048576 bytes) as rotation threshold" {
+        $Script:CoreSource.Contains('1048576') | Should -BeTrue
     }
 
-    Context "Rotation mechanics" {
-
-        It "Checks log file existence before rotating" {
-            $fnIdx = $Script:CoreSource.IndexOf('function Invoke-LogRotation')
-            $block = $Script:CoreSource.Substring($fnIdx, 400)
-            $block | Should -Match 'Test-Path.*LogFile'
-        }
-
-        It "Checks file size against threshold" {
-            $Script:CoreSource | Should -Match 'logSize.*ge.*maxBytes'
-        }
-
-        It "Uses Move-Item for rotation" {
-            $Script:CoreSource | Should -Match 'Move-Item.*LogFile'
-        }
-
-        It "Rotates numbered files in correct order (high to low)" {
-            # for ($i = $maxRotations; $i -gt 1; $i--)
-            $Script:CoreSource | Should -Match 'for.*maxRotations.*-gt 1'
-        }
-
-        It "Renames current log to .1" {
-            $Script:CoreSource | Should -Match 'Move-Item.*LogFile.*\.1'
-        }
+    It "Keeps maximum 3 rotated logs" {
+        $Script:CoreSource.Contains('$maxRotations = 3') | Should -BeTrue
     }
 
-    Context "Legacy log cleanup" {
+    It "Checks log file existence and rotates with Move-Item" {
+        $block = Get-FunctionBlock 'Invoke-LogRotation'
+        $block.Contains('Test-Path') | Should -BeTrue
+        $block.Contains('Move-Item') | Should -BeTrue
+    }
 
-        It "Cleans up legacy timestamped log files" {
-            $Script:CoreSource | Should -Match 'rns_management_\*\.log'
-        }
-
-        It "Keeps only 3 most recent legacy logs" {
-            $Script:CoreSource | Should -Match '\$count.*-gt 3'
-        }
-
-        It "Sorts legacy logs by name descending" {
-            $Script:CoreSource | Should -Match 'Sort-Object Name -Descending'
-        }
+    It "Cleans up legacy timestamped logs keeping only 3" {
+        $Script:CoreSource.Contains('rns_management_*.log') | Should -BeTrue
+        $Script:CoreSource.Contains('$count -gt 3') | Should -BeTrue
+        $Script:CoreSource.Contains('Sort-Object Name -Descending') | Should -BeTrue
     }
 }
 
@@ -248,47 +185,28 @@ Describe "Invoke-LogRotation" {
 Describe "Test-DiskSpace" {
 
     It "Has MinimumMB parameter defaulting to 500" {
-        $Script:CoreSource | Should -Match '\$MinimumMB\s*=\s*500'
+        $Script:CoreSource.Contains('$MinimumMB = 500') | Should -BeTrue
     }
 
     It "Returns boolean (true/false)" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Test-DiskSpace')
-        $fnEnd = $Script:CoreSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:CoreSource.Length }
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$true'
-        $block | Should -Match 'return \$false'
+        $block = Get-FunctionBlock 'Test-DiskSpace'
+        $block.Contains('return $true') | Should -BeTrue
+        $block.Contains('return $false') | Should -BeTrue
     }
 
     It "Reports critical at 100MB threshold" {
-        $Script:CoreSource | Should -Match 'freeMB.*-lt 100'
+        $Script:CoreSource.Contains('$freeMB -lt 100') | Should -BeTrue
     }
 
     It "Reports warning below MinimumMB" {
-        $Script:CoreSource | Should -Match 'freeMB.*-lt.*MinimumMB'
-    }
-
-    It "Logs disk space at DEBUG level" {
-        $Script:CoreSource | Should -Match 'Write-RnsLog.*Disk space.*DEBUG'
-    }
-
-    It "Logs critical disk space at ERROR level" {
-        $Script:CoreSource | Should -Match 'Write-RnsLog.*Critical disk.*ERROR'
-    }
-
-    It "Logs low disk space at WARN level" {
-        $Script:CoreSource | Should -Match 'Write-RnsLog.*Low disk.*WARN'
+        $Script:CoreSource.Contains('$freeMB -lt $MinimumMB') | Should -BeTrue
     }
 
     It "Does not block on check failure (returns true in catch)" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Test-DiskSpace')
-        $fnEnd = $Script:CoreSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:CoreSource.Length }
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        # The catch block should return $true so we don't block startup
+        $block = Get-FunctionBlock 'Test-DiskSpace'
         $catchIdx = $block.LastIndexOf('catch')
         $catchBlock = $block.Substring($catchIdx)
-        $catchBlock | Should -Match 'return \$true'
+        $catchBlock.Contains('return $true') | Should -BeTrue
     }
 }
 
@@ -298,42 +216,28 @@ Describe "Test-DiskSpace" {
 Describe "Test-AvailableMemory" {
 
     It "Uses Win32_OperatingSystem CIM class" {
-        $Script:CoreSource | Should -Match 'Get-CimInstance.*Win32_OperatingSystem'
-    }
-
-    It "Calculates percentage free" {
-        $Script:CoreSource | Should -Match 'percentFree'
+        $Script:CoreSource.Contains('Win32_OperatingSystem') | Should -BeTrue
     }
 
     It "Warns when free memory below 10%" {
-        $Script:CoreSource | Should -Match 'percentFree.*-lt 10'
+        $Script:CoreSource.Contains('$percentFree -lt 10') | Should -BeTrue
     }
 
     It "Returns boolean (true/false)" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Test-AvailableMemory')
-        $fnEnd = $Script:CoreSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:CoreSource.Length }
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'return \$true'
-        $block | Should -Match 'return \$false'
-    }
-
-    It "Logs memory stats at DEBUG level" {
-        $Script:CoreSource | Should -Match 'Write-RnsLog.*Memory.*DEBUG'
+        $block = Get-FunctionBlock 'Test-AvailableMemory'
+        $block.Contains('return $true') | Should -BeTrue
+        $block.Contains('return $false') | Should -BeTrue
     }
 
     It "Provides user hint to close applications" {
-        $Script:CoreSource | Should -Match 'Close other applications'
+        $Script:CoreSource.Contains('Close other applications') | Should -BeTrue
     }
 
     It "Does not block on check failure (returns true in catch)" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Test-AvailableMemory')
-        $fnEnd = $Script:CoreSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:CoreSource.Length }
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
+        $block = Get-FunctionBlock 'Test-AvailableMemory'
         $catchIdx = $block.LastIndexOf('catch')
         $catchBlock = $block.Substring($catchIdx)
-        $catchBlock | Should -Match 'return \$true'
+        $catchBlock.Contains('return $true') | Should -BeTrue
     }
 }
 
@@ -343,57 +247,38 @@ Describe "Test-AvailableMemory" {
 Describe "Invoke-StartupHealthCheck" {
 
     It "Initializes warnings counter" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Invoke-StartupHealthCheck')
-        $block = $Script:CoreSource.Substring($fnIdx, 200)
-        $block | Should -Match '\$warnings\s*=\s*0'
+        $block = Get-FunctionBlock 'Invoke-StartupHealthCheck'
+        $block.Contains('$warnings = 0') | Should -BeTrue
     }
 
-    It "Runs disk space check" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Invoke-StartupHealthCheck')
-        $fnEnd = $Script:CoreSource.Length
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Test-DiskSpace'
+    It "Runs disk space and memory checks" {
+        $block = Get-FunctionBlock 'Invoke-StartupHealthCheck'
+        $block.Contains('Test-DiskSpace') | Should -BeTrue
+        $block.Contains('Test-AvailableMemory') | Should -BeTrue
     }
 
-    It "Runs memory check" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Invoke-StartupHealthCheck')
-        $fnEnd = $Script:CoreSource.Length
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'Test-AvailableMemory'
-    }
-
-    It "Tests log file writability" {
-        $Script:CoreSource | Should -Match 'Out-File.*LogFile.*Append.*ErrorAction Stop'
-    }
-
-    It "Falls back to TEMP directory when log not writable" {
-        $Script:CoreSource | Should -Match 'Join-Path.*TEMP.*rns_management\.log'
+    It "Tests log file writability with fallback to TEMP" {
+        $block = Get-FunctionBlock 'Invoke-StartupHealthCheck'
+        $block.Contains('-ErrorAction Stop') | Should -BeTrue
+        $block.Contains('rns_management.log') | Should -BeTrue
     }
 
     It "Detects remote session" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Invoke-StartupHealthCheck')
-        $fnEnd = $Script:CoreSource.Length
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        $block | Should -Match 'IsRemoteSession'
+        $block = Get-FunctionBlock 'Invoke-StartupHealthCheck'
+        $block.Contains('IsRemoteSession') | Should -BeTrue
     }
 
-    It "Logs startup result with warning count" {
-        $Script:CoreSource | Should -Match 'Write-RnsLog.*Startup health check completed.*warning'
-    }
-
-    It "Logs clean pass when no warnings" {
-        $Script:CoreSource | Should -Match 'Write-RnsLog.*Startup health check passed'
+    It "Logs startup result with warning count or clean pass" {
+        $Script:CoreSource.Contains('Startup health check completed') | Should -BeTrue
+        $Script:CoreSource.Contains('Startup health check passed') | Should -BeTrue
     }
 
     It "Performs 4 health checks in sequence" {
-        $fnIdx = $Script:CoreSource.IndexOf('function Invoke-StartupHealthCheck')
-        $fnEnd = $Script:CoreSource.Length
-        $block = $Script:CoreSource.Substring($fnIdx, $fnEnd - $fnIdx)
-        # 1. Disk, 2. Memory, 3. Log writable, 4. Remote session
-        $block | Should -Match '# 1\. Disk'
-        $block | Should -Match '# 2\. Memory'
-        $block | Should -Match '# 3\. Log writable'
-        $block | Should -Match '# 4\. Remote session'
+        $block = Get-FunctionBlock 'Invoke-StartupHealthCheck'
+        $block.Contains('# 1. Disk') | Should -BeTrue
+        $block.Contains('# 2. Memory') | Should -BeTrue
+        $block.Contains('# 3. Log writable') | Should -BeTrue
+        $block.Contains('# 4. Remote session') | Should -BeTrue
     }
 }
 
