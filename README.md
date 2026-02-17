@@ -3,6 +3,8 @@
 **Complete Reticulum Network Stack Management Solution**
 *Part of the [MeshForge](https://github.com/Nursedude/meshforge) Ecosystem*
 
+> [RNS installer](https://github.com/Nursedude/meshforge/blob/main/.claude/foundations/meshforge_ecosystem.md) for the [MeshForge ecosystem](https://github.com/Nursedude/meshforge/blob/main/.claude/foundations/meshforge_ecosystem.md)
+
 A comprehensive, cross-platform management tool for the Reticulum ecosystem, featuring automated installation, configuration, and maintenance capabilities for Raspberry Pi, Linux, Windows 11, and WSL environments.
 
 This is the **only MeshForge ecosystem tool with native Windows support**. Users don't need MeshForge installed to use this tool, but if they do, they can extend its functionality through MeshForge's gateway. Upstream MeshForge updates are frequent - environment patterns, security rules, and best practices flow downstream into this tool regularly.
