@@ -4,10 +4,11 @@ Development history and current status. Each session builds on the previous.
 
 ---
 
-## Current Status (as of Session 12)
+## Current Status (as of Session 13)
 
 **Version:** 0.3.5-beta
 **Architecture:** Modular (main script 326 lines + 10 lib/ modules + 9 pwsh/ modules)
+**Security Rating:** A (formal review completed 2026-02-21 — see SECURITY_REVIEW.md)
 
 ### Test Coverage
 
@@ -43,6 +44,16 @@ Development history and current status. Each session builds on the previous.
 ---
 
 ## Session History
+
+### Session 13: Security & Code Review (2026-02-21)
+
+- Conducted formal security audit against RNS001-RNS006 compliance — all 6 rules PASS
+- Reviewed all 10 Bash modules (`lib/*.sh`) and 9 PowerShell modules (`pwsh/*.ps1`)
+- Audited all `rm -rf` usage, `pgrep` patterns, temp file handling, signal traps, variable quoting
+- Created `SECURITY_REVIEW.md` with comprehensive findings, line-number references, and 4 minor recommendations
+- Verified documentation accuracy across all `.md` files — version consistency confirmed at 0.3.5-beta
+- Overall security rating: A — no critical or high-severity vulnerabilities found
+- Minor recommendations: checksum verification for downloads, `umask 077` for backups, `set -u` consideration, `pgrep -f` documentation
 
 ### Session 12: Pester Tests, Bug Fixes, CI Expansion (2026-02-15)
 

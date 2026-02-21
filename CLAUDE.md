@@ -116,7 +116,8 @@ graph TB
 ├── CLAUDE.md                       # THIS FILE - Development guide
 ├── QUICKSTART.md                   # 5-minute setup guide
 ├── CHANGELOG.md                    # Version history (semantic versioning)
-└── SESSION_NOTES.md                # Development session history
+├── SESSION_NOTES.md                # Development session history
+└── SECURITY_REVIEW.md              # Security & code review (Session 13)
 ```
 
 ---
@@ -355,7 +356,8 @@ shellcheck -x -S warning rns_management_tool.sh
 - **PowerShell:** 144 lines (main) + 2,562 lines (9 pwsh/ modules) = ~2,706 lines
 - **Tests:** ~4,462 lines across 14 test files (575+ assertions)
 - **Functions:** 134+ across all bash modules
-- **Markdown:** 5 documentation files
+- **Markdown:** 6 documentation files (including SECURITY_REVIEW.md)
+- **Security Rating:** A (formal review 2026-02-21 — see SECURITY_REVIEW.md)
 - **CI Jobs:** 6 (shellcheck, check-mode, smoke-test, bats, powershell, pester)
 
 ---

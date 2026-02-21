@@ -302,6 +302,8 @@ flowchart LR
 | RNS005 | Confirmation for destructive actions | Enforced |
 | RNS006 | Subprocess timeout protection | Enforced |
 
+> **Security Review:** A formal security and code review was completed on 2026-02-21, rating the project **A** with no critical vulnerabilities. See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the full audit report.
+
 ---
 
 ## Troubleshooting
