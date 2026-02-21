@@ -4,10 +4,11 @@ Development history and current status. Each session builds on the previous.
 
 ---
 
-## Current Status (as of Session 12)
+## Current Status (as of Session 13)
 
 **Version:** 0.3.5-beta
 **Architecture:** Modular (main script 326 lines + 10 lib/ modules + 9 pwsh/ modules)
+**Security Rating:** A (formal review completed 2026-02-21 — see SECURITY_REVIEW.md)
 
 ### Test Coverage
 
@@ -15,16 +16,23 @@ Development history and current status. Each session builds on the previous.
 |-------|-------|
 | smoke_test.sh | 183 |
 | rns_management_tool.bats | 63 |
-| hardware_validation.bats | 104 |
-| integration_tests.bats | 107 |
-| Pester (8 .tests.ps1 files) | 118+ |
-| **Total** | **575+** |
+| hardware_validation.bats | 92 |
+| integration_tests.bats | 106 |
+| Pester (9 .tests.ps1 files) | 343 |
+| **Total** | **787+** |
 
 ### Next Steps
 
-**P1 — Pester Tests for Remaining PowerShell Modules**
-- 7 modules still lack Pester coverage: `core.ps1`, `ui.ps1`, `environment.ps1`, `install.ps1`, `services.ps1`, `diagnostics.ps1`, `advanced.ps1`
-- Priority order: `services.ps1` (autostart, rnsd control), `core.ps1` (log rotation, health checks), `advanced.ps1` (factory reset safety)
+**P1 — Fix RNODE Code Duplication (from Security Review R5)**
+- Remove 13 duplicated RNODE functions (~320 lines) from `lib/install.sh`
+- Keep `lib/rnode.sh` as single source of truth
+
+**P1 — Fix Curl-Pipe-Bash in PowerShell WSL (from Security Review R7/R9)**
+- `pwsh/install.ps1:184` and `pwsh/rnode.ps1:305` pipe remote script to bash
+- `--rnode` flag doesn't exist in bash script — functional bug
+
+**P1 — Consolidate PS Export/Import (from Security Review R8)**
+- Duplicate implementations in `pwsh/advanced.ps1` and `pwsh/backup.ps1`
 
 **P2 — RNS Interface Management from TUI**
 - Add/remove/edit interfaces in `~/.reticulum/config` from the TUI
@@ -43,6 +51,21 @@ Development history and current status. Each session builds on the previous.
 ---
 
 ## Session History
+
+### Session 13: Security & Code Review (2026-02-21)
+
+- Conducted formal security audit against RNS001-RNS006 compliance — all 6 rules PASS
+- Reviewed all 10 Bash modules (`lib/*.sh`) and 9 PowerShell modules (`pwsh/*.ps1`)
+- Audited all `rm -rf` usage, `pgrep` patterns, temp file handling, signal traps, variable quoting
+- Created `SECURITY_REVIEW.md` with comprehensive findings, line-number references, and 9 recommendations
+- **Found RNODE duplication (HIGH)**: 13 functions (~320 lines) byte-for-byte identical in `lib/install.sh` and `lib/rnode.sh`
+- **Found curl-pipe-bash (MODERATE)**: `pwsh/install.ps1:184` and `pwsh/rnode.ps1:305` pipe remote script to bash with non-existent `--rnode` flag
+- **Found PS duplication (MEDIUM)**: duplicate Export/Import functions in `pwsh/advanced.ps1` vs `pwsh/backup.ps1`
+- **Fixed LICENSE mismatch**: LICENSE file was GPLv3 but all docs said MIT — updated all docs to GPLv3
+- **Fixed test counts**: hardware_validation 92 (was 104), integration_tests 106 (was 107), Pester 343 across 9 files (was 118+ across 8)
+- Verified documentation accuracy across all `.md` files — version consistency confirmed at 0.3.5-beta
+- Overall security rating: A — no critical code vulnerabilities found
+- Recommendations: RNODE dedup (high), BATS test expansion (medium), checksum verification, `umask 077`, `set -u`, `pgrep -f` docs
 
 ### Session 12: Pester Tests, Bug Fixes, CI Expansion (2026-02-15)
 

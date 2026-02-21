@@ -11,11 +11,11 @@ This is the **only MeshForge ecosystem tool with native Windows support**. Users
 
 ![Version](https://img.shields.io/badge/version-0.3.5--beta-orange)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![MeshForge](https://img.shields.io/badge/MeshForge-ecosystem-blueviolet)
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
 ![ShellCheck](https://img.shields.io/badge/shellcheck-passing-green)
-![Tests](https://img.shields.io/badge/tests-575%2B%20passing-green)
+![Tests](https://img.shields.io/badge/tests-787%2B%20passing-green)
 
 > **Beta Software - Community Testing Needed**
 >
@@ -302,6 +302,8 @@ flowchart LR
 | RNS005 | Confirmation for destructive actions | Enforced |
 | RNS006 | Subprocess timeout protection | Enforced |
 
+> **Security Review:** A formal security and code review was completed on 2026-02-21, rating the project **A** with no critical vulnerabilities. See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the full audit report.
+
 ---
 
 ## Troubleshooting
@@ -359,8 +361,8 @@ for f in lib/*.sh; do shellcheck -x -S warning "$f"; done
 # Test suites
 ./tests/smoke_test.sh --verbose        # 183 assertions
 bats tests/rns_management_tool.bats    # 63 tests
-bats tests/hardware_validation.bats    # 104 tests
-bats tests/integration_tests.bats      # 107 tests
+bats tests/hardware_validation.bats    # 92 tests
+bats tests/integration_tests.bats      # 106 tests
 
 # CI dry-run
 ./rns_management_tool.sh --check
@@ -393,7 +395,7 @@ See [CLAUDE.md](CLAUDE.md) for the full development guide and [CHANGELOG.md](CHA
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

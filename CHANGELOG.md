@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.5-beta] - 2026-02-15
 
+### Security
+- Formal security and code review completed — all RNS001-RNS006 rules verified PASS
+- Created `SECURITY_REVIEW.md` documenting audit findings, line-number references, and recommendations
+- Audited all `rm -rf` usage, `pgrep` patterns, temp file handling, signal traps, variable quoting
+- Overall security rating: A — no critical vulnerabilities found
+- 9 recommendations: RNODE dedup (high), curl-pipe-bash (moderate), PS dedup (medium), BATS expansion (medium), 4 minor defense-in-depth, `--rnode` bug
+- **Found**: 13 RNODE functions (~320 lines) duplicated between `lib/install.sh` and `lib/rnode.sh`
+- **Found**: curl-pipe-bash in PowerShell WSL integration with non-existent `--rnode` flag
+- **Found**: Duplicate Export/Import functions in `pwsh/advanced.ps1` vs `pwsh/backup.ps1`
+
+### Documentation
+- Added `SECURITY_REVIEW.md` — comprehensive security and code review document
+- Updated `SESSION_NOTES.md` with Session 13 review findings
+- **Fixed LICENSE mismatch**: All docs now correctly reference GPLv3 (matching LICENSE file)
+- **Fixed test counts**: Corrected BATS and Pester counts (Pester: 343 across 9 files, was 118+ across 8)
+
 ### Added
 - **Log Rotation**: Automatic 1MB rotation for UPDATE_LOG with 3 rotated copies; cleanup of legacy per-session timestamped logs — both Bash and PowerShell
 - **PowerShell Modularization**: Split 2,727-line monolithic ps1 into 9 modules under `pwsh/` (core, ui, environment, install, rnode, services, backup, diagnostics, advanced)

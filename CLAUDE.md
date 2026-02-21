@@ -8,7 +8,7 @@ RNS Management Tool transforms any Raspberry Pi or Linux/Windows machine into a 
 
 **Key Tagline:** "Complete Reticulum Ecosystem Management - One Tool, All Platforms"
 
-**Version:** 0.3.5-beta | **License:** MIT | **Languages:** Bash 65%, PowerShell 30%, Markdown 5%
+**Version:** 0.3.5-beta | **License:** GPLv3 | **Languages:** Bash 65%, PowerShell 30%, Markdown 5%
 
 ---
 
@@ -103,12 +103,13 @@ graph TB
 ├── tests/                          # Test suites (~4,462 lines)
 │   ├── smoke_test.sh               # 183 assertions across 8 sections
 │   ├── rns_management_tool.bats    # 63 BATS tests
-│   ├── hardware_validation.bats    # 104 BATS tests (RNODE hardware safety)
-│   ├── integration_tests.bats      # 107 BATS tests (service, backup, platform)
+│   ├── hardware_validation.bats    # 92 BATS tests (RNODE hardware safety)
+│   ├── integration_tests.bats      # 106 BATS tests (service, backup, platform)
 │   ├── run_bats_compat.sh          # Lightweight BATS-compatible test runner
-│   ├── rnode.tests.ps1             # 70 Pester tests
+│   ├── rnode.tests.ps1             # 57 Pester tests
+│   ├── services.tests.ps1          # 61 Pester tests
 │   ├── backup.tests.ps1            # 48 Pester tests
-│   └── *.tests.ps1                 # Additional Pester suites (core, ui, services, etc.)
+│   └── *.tests.ps1                 # 7 more Pester suites (343 total across 9 files)
 │
 ├── .github/workflows/lint.yml      # CI: shellcheck, check-mode, smoke-test, bats, powershell, pester
 │
@@ -116,7 +117,8 @@ graph TB
 ├── CLAUDE.md                       # THIS FILE - Development guide
 ├── QUICKSTART.md                   # 5-minute setup guide
 ├── CHANGELOG.md                    # Version history (semantic versioning)
-└── SESSION_NOTES.md                # Development session history
+├── SESSION_NOTES.md                # Development session history
+└── SECURITY_REVIEW.md              # Security & code review (Session 13)
 ```
 
 ---
@@ -353,9 +355,10 @@ shellcheck -x -S warning rns_management_tool.sh
 
 - **Bash:** 326 lines (main) + 4,685 lines (10 lib/ modules) = ~5,011 lines
 - **PowerShell:** 144 lines (main) + 2,562 lines (9 pwsh/ modules) = ~2,706 lines
-- **Tests:** ~4,462 lines across 14 test files (575+ assertions)
+- **Tests:** ~4,462 lines across 14 test files (787+ assertions)
 - **Functions:** 134+ across all bash modules
-- **Markdown:** 5 documentation files
+- **Markdown:** 6 documentation files (including SECURITY_REVIEW.md)
+- **Security Rating:** A (formal review 2026-02-21 — see SECURITY_REVIEW.md)
 - **CI Jobs:** 6 (shellcheck, check-mode, smoke-test, bats, powershell, pester)
 
 ---
