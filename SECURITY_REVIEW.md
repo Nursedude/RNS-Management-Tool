@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All six project security rules (RNS001-RNS006) are properly enforced throughout the codebase. No critical or high-severity vulnerabilities were found. Four minor recommendations are provided for defense-in-depth hardening.
+The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All six project security rules (RNS001-RNS006) are properly enforced throughout the codebase. No critical or high-severity code vulnerabilities were found. One critical documentation issue was found and fixed (LICENSE file was GPLv3 but docs said MIT — now corrected to GPLv3). Four minor recommendations are provided for defense-in-depth hardening.
 
 **Overall Rating: A**
 
@@ -146,6 +146,14 @@ The RNS Management Tool demonstrates **production-quality security practices** f
 - No embedded credentials in config templates
 - Git URLs are hardcoded (not user-injectable)
 
+### License Compliance
+
+**Rating: Fixed (was Critical)**
+
+- **Finding:** LICENSE file contained GPLv3 but all documentation (README.md, CLAUDE.md, badges) referenced MIT
+- **Resolution:** Updated all documentation to correctly reference GPLv3, matching the LICENSE file
+- **Impact:** License mismatch is a legal/compliance issue that could confuse users and downstream projects
+
 ### Source File Security
 
 **Rating: Good**
@@ -215,10 +223,10 @@ All `rm -rf` operations target validated paths and are gated behind user confirm
 |-------|-----------|-------|
 | `tests/smoke_test.sh` | 183 | Function definitions, syntax, module loading |
 | `tests/rns_management_tool.bats` | 63 | Core functionality, menus, validation |
-| `tests/hardware_validation.bats` | 104 | RNODE hardware safety across 21+ boards |
-| `tests/integration_tests.bats` | 107 | Service polling, backup round-trip, platform detection |
+| `tests/hardware_validation.bats` | 92 | RNODE hardware safety across 21+ boards |
+| `tests/integration_tests.bats` | 106 | Service polling, backup round-trip, platform detection |
 | Pester tests (8 files) | 118+ | PowerShell modules (rnode, backup, core, ui, services, diagnostics, advanced, environment) |
-| **Total** | **575+** | |
+| **Total** | **562+** | |
 
 **Coverage gap**: 7 PowerShell modules (`core.ps1`, `ui.ps1`, `environment.ps1`, `install.ps1`, `services.ps1`, `diagnostics.ps1`, `advanced.ps1`) lack Pester test suites. Tracked in SESSION_NOTES.md as P1 priority.
 

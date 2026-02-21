@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 - Added `SECURITY_REVIEW.md` — comprehensive security and code review document
 - Updated `SESSION_NOTES.md` with Session 13 review findings
+- **Fixed LICENSE mismatch**: All docs now correctly reference GPLv3 (matching LICENSE file)
+- **Fixed test counts**: Corrected BATS test counts to match actual `@test` occurrences
 
 ### Added
 - **Log Rotation**: Automatic 1MB rotation for UPDATE_LOG with 3 rotated copies; cleanup of legacy per-session timestamped logs — both Bash and PowerShell

@@ -16,10 +16,10 @@ Development history and current status. Each session builds on the previous.
 |-------|-------|
 | smoke_test.sh | 183 |
 | rns_management_tool.bats | 63 |
-| hardware_validation.bats | 104 |
-| integration_tests.bats | 107 |
+| hardware_validation.bats | 92 |
+| integration_tests.bats | 106 |
 | Pester (8 .tests.ps1 files) | 118+ |
-| **Total** | **575+** |
+| **Total** | **562+** |
 
 ### Next Steps
 
@@ -51,8 +51,10 @@ Development history and current status. Each session builds on the previous.
 - Reviewed all 10 Bash modules (`lib/*.sh`) and 9 PowerShell modules (`pwsh/*.ps1`)
 - Audited all `rm -rf` usage, `pgrep` patterns, temp file handling, signal traps, variable quoting
 - Created `SECURITY_REVIEW.md` with comprehensive findings, line-number references, and 4 minor recommendations
+- **Fixed LICENSE mismatch**: LICENSE file was GPLv3 but all docs said MIT — updated all docs to GPLv3
+- **Fixed test counts**: hardware_validation.bats 92 (was 104), integration_tests.bats 106 (was 107)
 - Verified documentation accuracy across all `.md` files — version consistency confirmed at 0.3.5-beta
-- Overall security rating: A — no critical or high-severity vulnerabilities found
+- Overall security rating: A — no critical code vulnerabilities found
 - Minor recommendations: checksum verification for downloads, `umask 077` for backups, `set -u` consideration, `pgrep -f` documentation
 
 ### Session 12: Pester Tests, Bug Fixes, CI Expansion (2026-02-15)
