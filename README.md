@@ -717,11 +717,9 @@ All shell scripts must pass these checks before merging:
 ```bash
 # Syntax validation (all scripts)
 bash -n rns_management_tool.sh
-bash -n reticulum_updater.sh
 
 # ShellCheck linting (zero warnings required)
 shellcheck -x rns_management_tool.sh
-shellcheck reticulum_updater.sh
 shellcheck FIXES_TO_APPLY.sh
 shellcheck QUICK_FIXES.sh
 
@@ -749,9 +747,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Version History
 
 ### Version 0.3.1-beta (Current)
-- **ShellCheck Clean** - All 4 shell scripts pass `shellcheck` with zero warnings
+- **ShellCheck Clean** - All shell scripts pass `shellcheck` with zero warnings
   - 103 issues resolved in `rns_management_tool.sh` (printf format safety, variable quoting, error handling)
-  - 6 issues resolved in `reticulum_updater.sh` (encoding fixes, read safety, cd error handling)
   - Utility scripts (`FIXES_TO_APPLY.sh`, `QUICK_FIXES.sh`) also passing clean
 - **Test Suite** - 32 BATS tests, all passing (including strict `shellcheck -x` integration test)
 - **Code Quality** - Proper variable quoting, `popd` error handling, useless-cat elimination, parameter expansion

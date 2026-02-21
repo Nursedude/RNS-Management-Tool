@@ -1099,7 +1099,6 @@ Complete ShellCheck lint audit across all shell scripts, update README with test
 | Script | Before | After | Key Fixes |
 |--------|--------|-------|-----------|
 | `rns_management_tool.sh` | 103 warnings | 0 | Printf format safety, variable quoting, popd error handling, useless cat, find-over-ls |
-| `reticulum_updater.sh` | 6 warnings | 0 | Double-encoded UTF-8 fixed, read -r, cd error handling |
 | `FIXES_TO_APPLY.sh` | 0 warnings | 0 | Already clean |
 | `QUICK_FIXES.sh` | 1 warning | 0 | echo -> printf for escape sequences |
 

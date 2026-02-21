@@ -89,7 +89,6 @@ graph TB
 /home/user/RNS-Management-Tool/
 ├── rns_management_tool.sh          # PRIMARY: Linux/Raspberry Pi TUI (~4,400 lines)
 ├── rns_management_tool.ps1         # Windows PowerShell version (1,465 lines)
-├── reticulum_updater.sh            # Specialized update script (949 lines)
 │
 ├── README.md                        # Primary project documentation
 ├── CLAUDE.md                        # THIS FILE - Development guide

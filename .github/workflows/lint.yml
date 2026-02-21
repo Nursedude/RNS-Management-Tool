@@ -19,9 +19,6 @@ jobs:
       - name: Bash syntax check (rns_management_tool.sh)
         run: bash -n rns_management_tool.sh
 
-      - name: Bash syntax check (reticulum_updater.sh)
-        run: bash -n reticulum_updater.sh
-
       - name: Bash syntax check (lib/ modules)
         run: |
           for module in lib/*.sh; do
@@ -31,9 +28,6 @@ jobs:
 
       - name: ShellCheck rns_management_tool.sh
         run: shellcheck -x -S warning rns_management_tool.sh
-
-      - name: ShellCheck reticulum_updater.sh
-        run: shellcheck -x -S warning reticulum_updater.sh
 
       - name: ShellCheck lib/ modules
         run: |

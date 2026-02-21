@@ -426,7 +426,7 @@ handle_identity_management() {
     esac
 }
 
-# Start meshtasticd service (ported from meshforge/reticulum_updater.sh)
+# Start meshtasticd service
 meshtasticd_start() {
     print_section "Starting meshtasticd"
     if ! command -v meshtasticd &>/dev/null; then
