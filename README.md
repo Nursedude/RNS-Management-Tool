@@ -15,7 +15,7 @@ This is the **only MeshForge ecosystem tool with native Windows support**. Users
 ![MeshForge](https://img.shields.io/badge/MeshForge-ecosystem-blueviolet)
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
 ![ShellCheck](https://img.shields.io/badge/shellcheck-passing-green)
-![Tests](https://img.shields.io/badge/tests-562%2B%20passing-green)
+![Tests](https://img.shields.io/badge/tests-787%2B%20passing-green)
 
 > **Beta Software - Community Testing Needed**
 >

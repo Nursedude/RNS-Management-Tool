@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All six project security rules (RNS001-RNS006) are properly enforced throughout the codebase. No critical or high-severity code vulnerabilities were found. One critical documentation issue was found and fixed (LICENSE file was GPLv3 but docs said MIT — now corrected to GPLv3). One high-priority code quality issue was identified (RNODE function duplication across two files). Six total recommendations are provided — one high, one medium, and four minor.
+The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All six project security rules (RNS001-RNS006) are properly enforced throughout the codebase. No critical code vulnerabilities were found in the Bash codebase. One moderate security issue was found in PowerShell (curl-pipe-bash in WSL integration). One critical documentation issue was found and fixed (LICENSE file was GPLv3 but docs said MIT — now corrected to GPLv3). Two high-priority code quality issues were identified (RNODE function duplication in Bash, and duplicate Export/Import functions in PowerShell). Nine total recommendations are provided.
 
 **Overall Rating: A**
 
@@ -174,12 +174,28 @@ All `rm -rf` operations target validated paths and are gated behind user confirm
 
 ### PowerShell Security
 
-**Rating: Good**
+**Rating: Good (with one moderate finding)**
 
 - Uses PowerShell cmdlets properly (`Copy-Item`, `Get-ChildItem`, etc.)
 - No `Invoke-Expression` (PowerShell equivalent of `eval`)
-- No dynamic code execution
+- No dynamic code execution in normal paths
 - `.PSScriptAnalyzerSettings.psd1` configured for linting in CI
+
+**MODERATE: Curl-pipe-bash in WSL integration**
+
+Two locations pipe a remote script directly to bash:
+- `pwsh/install.ps1:184` — `wsl ... bash -c "curl -fsSL https://raw.githubusercontent.com/.../rns_management_tool.sh | bash -s -- --rnode"`
+- `pwsh/rnode.ps1:305` — identical pattern
+
+Issues:
+1. Classic curl-pipe-bash anti-pattern — partial download could execute truncated script
+2. The `--rnode` flag does not exist in `rns_management_tool.sh` (only `--check` is implemented) — this is a **bug**
+3. No checksum or signature verification
+
+**Duplicate Export/Import functions:**
+- `pwsh/advanced.ps1:57` defines `Export-Configuration` / `Import-Configuration`
+- `pwsh/backup.ps1:165` defines `Export-RnsConfiguration` / `Import-RnsConfiguration`
+- Two independent implementations of the same functionality with different function names
 
 ---
 
@@ -236,10 +252,10 @@ Duplicated functions: `rnode_get_device_port()`, `rnode_autoinstall()`, `rnode_l
 | `tests/rns_management_tool.bats` | 63 | Core functionality, menus, validation |
 | `tests/hardware_validation.bats` | 92 | RNODE hardware safety across 21+ boards |
 | `tests/integration_tests.bats` | 106 | Service polling, backup round-trip, platform detection |
-| Pester tests (8 files) | 118+ | PowerShell modules (rnode, backup, core, ui, services, diagnostics, advanced, environment) |
-| **Total** | **562+** | |
+| Pester tests (9 files) | 343 | PowerShell modules (rnode 57, services 61, backup 48, core 37, install 36, diagnostics 33, ui 27, advanced 23, environment 21) |
+| **Total** | **787+** | |
 
-**Coverage gap**: 7 PowerShell modules (`core.ps1`, `ui.ps1`, `environment.ps1`, `install.ps1`, `services.ps1`, `diagnostics.ps1`, `advanced.ps1`) lack Pester test suites. Tracked in SESSION_NOTES.md as P1 priority.
+All 9 PowerShell modules now have Pester test coverage.
 
 ---
 
@@ -309,6 +325,38 @@ The meshchat `pgrep -f` exception is necessary but could be more explicitly docu
 Installation functions (`install_meshchat()`, `install_sideband()`, `install_reticulum_ecosystem()`) and service management functions (`meshtasticd_*()`, `handle_file_transfer()`, `handle_identity_management()`) lack BATS test coverage. Adding ~40-50 tests would cover the most critical untested paths.
 
 **Priority:** Medium — current coverage is strong for validation and hardware safety, but installation/service paths are untested.
+
+### R7: Fix Curl-Pipe-Bash in PowerShell WSL Integration (Moderate)
+
+**Files:** `pwsh/install.ps1:184`, `pwsh/rnode.ps1:305`
+
+Both locations use `curl -fsSL ... | bash -s -- --rnode` to download and execute the management script through WSL. This has two problems: (a) curl-pipe-bash is vulnerable to partial download execution, and (b) the `--rnode` flag does not exist in the bash script — only `--check` is implemented.
+
+**Recommendation:** Either download to a temp file before execution (with checksum), or replace with a WSL command that clones the repo and runs the script properly. Fix or remove the non-existent `--rnode` flag.
+
+**Priority:** Moderate — affects WSL RNODE integration path only, but is a real security and correctness bug.
+
+### R8: Consolidate PowerShell Export/Import Functions (Medium)
+
+**Files:** `pwsh/advanced.ps1:57,109` and `pwsh/backup.ps1:165,210`
+
+Two independent implementations of configuration export/import exist:
+- `Export-Configuration` / `Import-Configuration` in advanced.ps1
+- `Export-RnsConfiguration` / `Import-RnsConfiguration` in backup.ps1
+
+**Recommendation:** Remove from `pwsh/advanced.ps1` and have the advanced menu call the `pwsh/backup.ps1` versions.
+
+**Priority:** Medium — code quality; two independent implementations may diverge over time.
+
+### R9: Implement `--rnode` Flag or Remove References (Moderate)
+
+**Files:** `pwsh/install.ps1:184`, `pwsh/rnode.ps1:305`, `rns_management_tool.sh`
+
+The PowerShell WSL integration passes `--rnode` to the bash script, but this flag is not handled. The script only recognizes `--check`. This is a **bug** that causes the RNODE WSL fallback to simply launch the full TUI instead of going directly to RNODE configuration.
+
+**Recommendation:** Either implement `--rnode` flag handling in `rns_management_tool.sh` (to jump directly to RNODE config), or remove the flag from the PowerShell WSL calls.
+
+**Priority:** Moderate — functional bug in the Windows-to-WSL RNODE path.
 
 ---
 

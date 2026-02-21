@@ -106,9 +106,10 @@ graph TB
 │   ├── hardware_validation.bats    # 92 BATS tests (RNODE hardware safety)
 │   ├── integration_tests.bats      # 106 BATS tests (service, backup, platform)
 │   ├── run_bats_compat.sh          # Lightweight BATS-compatible test runner
-│   ├── rnode.tests.ps1             # 70 Pester tests
+│   ├── rnode.tests.ps1             # 57 Pester tests
+│   ├── services.tests.ps1          # 61 Pester tests
 │   ├── backup.tests.ps1            # 48 Pester tests
-│   └── *.tests.ps1                 # Additional Pester suites (core, ui, services, etc.)
+│   └── *.tests.ps1                 # 7 more Pester suites (343 total across 9 files)
 │
 ├── .github/workflows/lint.yml      # CI: shellcheck, check-mode, smoke-test, bats, powershell, pester
 │
@@ -354,7 +355,7 @@ shellcheck -x -S warning rns_management_tool.sh
 
 - **Bash:** 326 lines (main) + 4,685 lines (10 lib/ modules) = ~5,011 lines
 - **PowerShell:** 144 lines (main) + 2,562 lines (9 pwsh/ modules) = ~2,706 lines
-- **Tests:** ~4,462 lines across 14 test files (562+ assertions)
+- **Tests:** ~4,462 lines across 14 test files (787+ assertions)
 - **Functions:** 134+ across all bash modules
 - **Markdown:** 6 documentation files (including SECURITY_REVIEW.md)
 - **Security Rating:** A (formal review 2026-02-21 — see SECURITY_REVIEW.md)
