@@ -8,18 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.5-beta] - 2026-02-15
 
 ### Added
-- **Whiptail/Dialog Backend**: Abstraction layer (`lib/dialog.sh`) implementing 7 dialog methods (msgbox, yesno, menu, inputbox, infobox, gauge, checklist) with whiptail/dialog/terminal fallback — adapted from meshforge DialogBackend pattern
 - **Log Rotation**: Automatic 1MB rotation for UPDATE_LOG with 3 rotated copies; cleanup of legacy per-session timestamped logs — both Bash and PowerShell
 - **PowerShell Modularization**: Split 2,727-line monolithic ps1 into 9 modules under `pwsh/` (core, ui, environment, install, rnode, services, backup, diagnostics, advanced)
+- **Bash Modularization**: Split 4,514-line monolithic bash script into 10 modules under `lib/` (core, utils, ui, install, rnode, services, backup, diagnostics, config, advanced)
 - **CI Smoke Test Job**: New `smoke-test` and `check-mode` jobs in GitHub Actions workflow
 - **CI Module Validation**: ShellCheck and syntax checks now cover `lib/*.sh` and `pwsh/*.ps1` modules
+- **Hardware Validation Tests**: 104 tests covering RNODE hardware safety across 21+ boards
+- **Integration Tests**: 107 tests covering service polling, backup round-trip, platform detection
+- **Pester Tests**: 118+ tests for PowerShell modules (rnode, backup)
+- **CI Pester Job**: Pester v5 on `windows-latest` runner
 
 ### Changed
 - PowerShell log path now uses stable `rns_management.log` instead of per-session timestamped files
 - Bash UPDATE_LOG now uses stable path with rotation instead of accumulating session files
-- CI workflow expanded from 3 to 5 jobs (shellcheck, check-mode, smoke-test, bats, powershell)
-- Smoke test expanded to validate dialog backend, log rotation, pwsh/ module structure
+- CI workflow expanded from 3 to 6 jobs (shellcheck, check-mode, smoke-test, bats, powershell, pester)
 - Version bumped to 0.3.5-beta
+
+### Fixed
+- `safe_call()` exit code capture bug — was capturing `if` test result, not command exit code
+- Hardcoded `/tmp` paths — now uses `${TMPDIR:-/tmp}` for WSL2 compatibility
 
 ## [0.3.0-beta] - 2026-01-26
 
@@ -32,7 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Archive Validation**: Import function validates tar structure before extraction
 - **Function Decomposition**: Long functions split into smaller, testable units
 - **Bats Test Suite**: Basic shell testing framework for CI validation
-- **MeshForge Compliance**: 100% compliance with MeshForge domain principles
+- **Config Templates**: 4 pre-built RNS configurations (minimal, LoRa RNODE, TCP client, transport node)
+- **First-Run Wizard**: Guides new users through install, config, and daemon start
+- **Capability Detection**: Scans 8 RNS tools + 5 dependencies at startup
+- **Enhanced Diagnostics**: 6-step actionable diagnostic with "Fix:" suggestions
+- **RNS Utility Integration**: rncp (file transfer), rnx (remote command), rnid (identity management)
+- **Emergency Quick Mode**: Simplified field operations menu
+- **ANSI Clear Screen**: Eliminates TUI flash on screen redraw
+- **Compact Status Line**: Shows version, rnsd status, tool count, SSH indicator in header
+- **rnsd Uptime Display**: Tracks daemon uptime with human-readable format
+- **PowerShell Service Menu**: File transfer, remote command, auto-start (Task Scheduler)
+- **PowerShell Backup Menu**: Export/import .zip, backup listing, old backup pruning
 
 ### Security
 - RNS001: Array-based command execution (enforced)
@@ -40,190 +57,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RNS003: Numeric range validation (enforced)
 - RNS004: Path traversal prevention (enforced)
 - RNS005: Destructive action confirmation (enforced)
-- RNS006: Subprocess timeout protection (NEW)
+- RNS006: Subprocess timeout protection (enforced)
 
 ### Documentation
 - Added CLAUDE.md development guide
-- Added CODE_REVIEW_MESHFORGE.md with domain analysis
 - Updated README.md with mermaid architecture diagrams
-
-### Upgrade Path from v2.x
-Users upgrading from v2.2.0 or earlier:
-1. **No breaking changes** - All existing configurations remain compatible
-2. **Backup preserved** - Your `~/.reticulum/`, `~/.nomadnetwork/`, `~/.lxmf/` untouched
-3. **Just replace the script** - Download new version, old one can be deleted
-4. **Version number reset** - v0.3.0-beta reflects honest maturity, not regression
-
-```bash
-# Upgrade from v2.x to v0.3.0-beta (Linux)
-wget -O rns_management_tool.sh https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh
-chmod +x rns_management_tool.sh
-
-# Upgrade (Windows PowerShell)
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.ps1" -OutFile "rns_management_tool.ps1"
-```
 
 ---
 
-## [2.2.0] - 2025-12-30 (Legacy Version Number)
+## [2.2.0] - 2025-12-30 (Legacy)
 
-### Added (PowerShell/Windows)
-- **Advanced Options Menu** with comprehensive system management
-  - Update Python packages functionality
-  - Reinstall all components option
-  - Clean cache and temporary files
-  - Export configuration to portable .zip archives
-  - Import configuration from .zip archives
-  - Factory reset with safety backup
-  - View logs directly from menu
-  - Check for tool updates from GitHub
-- **Service Management Submenu** for better rnsd control
-  - Start rnsd daemon
-  - Stop rnsd daemon
-  - Restart rnsd daemon
-  - View detailed service status
-- **Update Checker** - Automatically check GitHub for new releases
-- **Enhanced Diagnostics** - More comprehensive system information
+### Added
+- PowerShell Advanced Options menu (update packages, reinstall, clean cache, export/import, factory reset, logs, update checker)
+- PowerShell Service Management submenu (start/stop/restart/status)
+- Code quality improvements and inline documentation
 
-### Added (Both Scripts)
-- **Code Review Report** - Comprehensive code quality analysis document
-- **Better Error Context** - More actionable recovery suggestions
-
-### Changed (PowerShell/Windows)
-- Reorganized main menu for better clarity
-- Menu option 7 now opens Service Management submenu
-- Menu option 8 for Backup/Restore (was 9)
-- Menu option 9 now opens Advanced Options
+### Changed
+- Reorganized Windows main menu for better clarity
 - Improved visual consistency in status displays
-- Better alignment of Quick Status Dashboard
 
-### Changed (Bash/Linux)
-- Version number updated to 2.2.0 for consistency
+## [2.1.0] - 2024-12
 
-### Improved
-- **UI/UX Polish**
-  - Consistent navigation patterns across both scripts
-  - Better menu organization and categorization
-  - Improved box drawing and alignment
-  - Clearer option descriptions
-
-- **Code Quality**
-  - Added comprehensive inline documentation
-  - Better function organization
-  - Improved error handling patterns
-  - More consistent naming conventions
-
-### Fixed
-- Visual alignment issues in PowerShell Quick Status Dashboard
-- Menu numbering consistency across platforms
-- Various edge cases in configuration management
-
-### Security
-- Enhanced input validation in configuration import
-- Path validation for export/import operations
-- Secure temporary file handling in archive operations
-
-## [2.1.0] - 2024-12-XX
-
-### Added (Bash/Linux)
+### Added
 - Quick Status Dashboard on main menu
-- Organized menu sections (Installation, Management, System)
 - Export/Import configuration (.tar.gz archives)
 - Factory Reset functionality with safety backup
 
-### Added (PowerShell/Windows)
-- NomadNet installation support
-- Basic diagnostics functionality
-- Improved WSL integration
-
 ### Security
 - Replaced unsafe `eval` with array-based command execution
-- Device port validation (`^/dev/tty[A-Za-z0-9]+$`)
-- Radio parameter input validation
-  - Frequency: numeric validation
-  - Bandwidth: numeric validation
-  - Spreading Factor: range 7-12
-  - Coding Rate: range 5-8
-  - TX Power: range -10 to 30 dBm
+- Device port and radio parameter input validation
 
-### Fixed
-- Portability issues with `grep -oP` (replaced with `sed`)
-- Command injection vulnerabilities
-
-## [2.0.0] - 2024-XX-XX
+## [2.0.0] - 2024
 
 ### Added
 - Complete UI overhaul with interactive menus
 - Windows 11 support with PowerShell installer
 - WSL detection and integration
 - Interactive RNODE installer and configuration wizard
-- Enhanced Raspberry Pi detection (all models)
-- Comprehensive diagnostics system
-- Improved backup/restore functionality
-- Better error handling and recovery
-- Progress indicators and visual feedback
-- Automated environment detection
-- Service management improvements
 
-### Changed
-- Complete rewrite of menu system
-- Modernized user interface with colors
-- Improved error messages
-- Better logging system
-
-## [1.0.0] - 2024-XX-XX
+## [1.0.0] - 2024
 
 ### Added
-- Initial release
-- Basic update functionality
-- Raspberry Pi support
-- Simple command-line interface
-- Core RNS installation
-- LXMF support
-- NomadNet installation
+- Initial release with basic update functionality and Raspberry Pi support
 
 ---
-
-## Version Comparison
-
-| Feature | v1.0.0 | v2.0.0 | v2.1.0 | v2.2.0 |
-|---------|--------|--------|--------|--------|
-| Interactive Menu | ❌ | ✅ | ✅ | ✅ |
-| Windows Support | ❌ | ✅ | ✅ | ✅ |
-| Quick Status | ❌ | ❌ | ✅ | ✅ |
-| Security Hardening | ⚠️ | ⚠️ | ✅ | ✅ |
-| Export/Import Config (Linux) | ❌ | ❌ | ✅ | ✅ |
-| Export/Import Config (Windows) | ❌ | ❌ | ❌ | ✅ |
-| Advanced Options (Linux) | ❌ | ⚠️ | ✅ | ✅ |
-| Advanced Options (Windows) | ❌ | ❌ | ❌ | ✅ |
-| Factory Reset (Linux) | ❌ | ❌ | ✅ | ✅ |
-| Factory Reset (Windows) | ❌ | ❌ | ❌ | ✅ |
-| Update Checker | ❌ | ❌ | ❌ | ✅ |
-| Code Review Docs | ❌ | ❌ | ❌ | ✅ |
-
-## Upgrade Notes
-
-### Upgrading to 2.2.0
-
-- No breaking changes from 2.1.0
-- Windows users will see new Advanced Options menu (option 9)
-- Service management moved to dedicated submenu (option 7)
-- All existing configurations remain compatible
-- Backup/Restore moved from option 9 to option 8 (Windows only)
-
-### Upgrading to 2.1.0
-
-- No breaking changes from 2.0.0
-- New security features automatically applied
-- Existing configurations remain compatible
-- Recommended: Create backup before upgrading
-
-### Upgrading from 1.x to 2.x
-
-- Major UI changes - completely new menu system
-- All data preserved during upgrade
-- Recommended: Create manual backup of `~/.reticulum` before upgrading
-- New features available immediately after upgrade
 
 ## Links
 
