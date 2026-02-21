@@ -76,7 +76,8 @@ REAL_HOME="$(resolve_real_home)"
 
 # Global variables
 SCRIPT_VERSION="0.3.5-beta"
-BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
+# BACKUP_DIR is set dynamically in create_backup() to avoid stale timestamps
+BACKUP_DIR=""
 UPDATE_LOG="$REAL_HOME/rns_management.log"
 LOG_MAX_BYTES=1048576   # 1MB rotation threshold (meshforge pattern)
 LOG_MAX_ROTATIONS=3     # Keep .log.1, .log.2, .log.3

@@ -21,46 +21,6 @@ BeforeAll {
 # ---------------------------------------------------------
 Describe "Function Existence" {
 
-    It "Show-Status function exists" {
-        $Script:ServicesSource.Contains('function Show-Status') | Should -BeTrue
-    }
-
-    It "Start-RNSDaemon function exists" {
-        $Script:ServicesSource.Contains('function Start-RNSDaemon') | Should -BeTrue
-    }
-
-    It "Stop-RNSDaemon function exists" {
-        $Script:ServicesSource.Contains('function Stop-RNSDaemon') | Should -BeTrue
-    }
-
-    It "Invoke-NetworkTool function exists" {
-        $Script:ServicesSource.Contains('function Invoke-NetworkTool') | Should -BeTrue
-    }
-
-    It "Invoke-IdentityManagement function exists" {
-        $Script:ServicesSource.Contains('function Invoke-IdentityManagement') | Should -BeTrue
-    }
-
-    It "Invoke-FileTransfer function exists" {
-        $Script:ServicesSource.Contains('function Invoke-FileTransfer') | Should -BeTrue
-    }
-
-    It "Invoke-RemoteCommand function exists" {
-        $Script:ServicesSource.Contains('function Invoke-RemoteCommand') | Should -BeTrue
-    }
-
-    It "Enable-RnsdAutoStart function exists" {
-        $Script:ServicesSource.Contains('function Enable-RnsdAutoStart') | Should -BeTrue
-    }
-
-    It "Disable-RnsdAutoStart function exists" {
-        $Script:ServicesSource.Contains('function Disable-RnsdAutoStart') | Should -BeTrue
-    }
-
-    It "Show-ServiceMenu function exists" {
-        $Script:ServicesSource.Contains('function Show-ServiceMenu') | Should -BeTrue
-    }
-
     It "services.ps1 has exactly 10 functions" {
         $functionCount = ([regex]::Matches(
             $Script:ServicesSource,

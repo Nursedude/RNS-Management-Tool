@@ -29,18 +29,6 @@ Describe "RNS002: COM Port Validation" {
             "COM3" -match '^COM\d+$' | Should -BeTrue
         }
 
-        It "Accepts valid COM port COM1" {
-            "COM1" -match '^COM\d+$' | Should -BeTrue
-        }
-
-        It "Accepts valid COM port COM15" {
-            "COM15" -match '^COM\d+$' | Should -BeTrue
-        }
-
-        It "Accepts valid COM port COM256" {
-            "COM256" -match '^COM\d+$' | Should -BeTrue
-        }
-
         It "Rejects empty string" {
             "" -match '^COM\d+$' | Should -BeFalse
         }

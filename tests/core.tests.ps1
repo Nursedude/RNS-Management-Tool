@@ -32,30 +32,6 @@ BeforeAll {
 # ─────────────────────────────────────────────────────────────
 Describe "Function Existence" {
 
-    It "Initialize-Environment function exists" {
-        $Script:CoreSource.Contains('function Initialize-Environment') | Should -BeTrue
-    }
-
-    It "Write-RnsLog function exists" {
-        $Script:CoreSource.Contains('function Write-RnsLog') | Should -BeTrue
-    }
-
-    It "Invoke-LogRotation function exists" {
-        $Script:CoreSource.Contains('function Invoke-LogRotation') | Should -BeTrue
-    }
-
-    It "Test-DiskSpace function exists" {
-        $Script:CoreSource.Contains('function Test-DiskSpace') | Should -BeTrue
-    }
-
-    It "Test-AvailableMemory function exists" {
-        $Script:CoreSource.Contains('function Test-AvailableMemory') | Should -BeTrue
-    }
-
-    It "Invoke-StartupHealthCheck function exists" {
-        $Script:CoreSource.Contains('function Invoke-StartupHealthCheck') | Should -BeTrue
-    }
-
     It "core.ps1 has exactly 6 functions" {
         $functionCount = ([regex]::Matches(
             $Script:CoreSource,

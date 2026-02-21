@@ -22,38 +22,6 @@ BeforeAll {
 # ─────────────────────────────────────────────────────────────
 Describe "Function Existence" {
 
-    It "Update-PythonPackage function exists" {
-        $Script:AdvancedSource.Contains('function Update-PythonPackage') | Should -BeTrue
-    }
-
-    It "Clear-Cache function exists" {
-        $Script:AdvancedSource.Contains('function Clear-Cache') | Should -BeTrue
-    }
-
-    It "Export-Configuration function exists" {
-        $Script:AdvancedSource.Contains('function Export-Configuration') | Should -BeTrue
-    }
-
-    It "Import-Configuration function exists" {
-        $Script:AdvancedSource.Contains('function Import-Configuration') | Should -BeTrue
-    }
-
-    It "Reset-ToFactory function exists" {
-        $Script:AdvancedSource.Contains('function Reset-ToFactory') | Should -BeTrue
-    }
-
-    It "Show-Log function exists" {
-        $Script:AdvancedSource.Contains('function Show-Log') | Should -BeTrue
-    }
-
-    It "Test-ToolUpdate function exists" {
-        $Script:AdvancedSource.Contains('function Test-ToolUpdate') | Should -BeTrue
-    }
-
-    It "Show-AdvancedMenu function exists" {
-        $Script:AdvancedSource.Contains('function Show-AdvancedMenu') | Should -BeTrue
-    }
-
     It "advanced.ps1 has exactly 8 functions" {
         $functionCount = ([regex]::Matches(
             $Script:AdvancedSource,

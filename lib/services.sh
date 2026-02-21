@@ -253,8 +253,10 @@ handle_network_tools() {
                 echo -n "Enter destination hash to probe: "
                 read -r PROBE_DEST
                 if [ -n "$PROBE_DEST" ]; then
-                    print_info "Probing $PROBE_DEST..."
-                    rnprobe "$PROBE_DEST" 2>&1
+                    if validate_rns_hash "$PROBE_DEST"; then
+                        print_info "Probing $PROBE_DEST..."
+                        rnprobe "$PROBE_DEST" 2>&1
+                    fi
                 else
                     print_info "Cancelled"
                 fi
@@ -309,14 +311,18 @@ handle_file_transfer() {
                 echo -n "Destination hash: "
                 read -r RNCP_DEST
                 if [ -n "$RNCP_DEST" ]; then
-                    print_info "Sending $RNCP_FILE to $RNCP_DEST..."
-                    rncp "$RNCP_FILE" "$RNCP_DEST" 2>&1
+                    if validate_rns_hash "$RNCP_DEST"; then
+                        print_info "Sending $RNCP_FILE to $RNCP_DEST..."
+                        rncp "$RNCP_FILE" "$RNCP_DEST" 2>&1
+                    fi
                 else
                     print_info "Cancelled"
                 fi
             fi
             ;;
         l|L)
+            # Ensure save directory exists before listening
+            mkdir -p "$REAL_HOME/Downloads" 2>/dev/null
             print_info "Listening for incoming file transfers..."
             print_info "Press Ctrl+C to stop listening"
             rncp -l -s "$REAL_HOME/Downloads" 2>&1 || true
@@ -348,6 +354,10 @@ handle_remote_command() {
     echo -n "Destination hash (or 0 to cancel): "
     read -r RNX_DEST
     if [ -n "$RNX_DEST" ] && [ "$RNX_DEST" != "0" ]; then
+        if ! validate_rns_hash "$RNX_DEST"; then
+            return
+        fi
+        echo -e "${YELLOW}Warning: Command will execute on the remote system.${NC}"
         echo -n "Command to execute: "
         read -r RNX_CMD
         if [ -n "$RNX_CMD" ]; then
@@ -426,7 +436,13 @@ meshtasticd_start() {
     else
         print_info "Starting meshtasticd service..."
         if sudo systemctl start meshtasticd 2>&1; then
-            sleep 3
+            # Poll with timeout instead of hardcoded sleep (consistent with rnsd pattern)
+            local wait_count=0
+            local max_wait=10
+            while ! check_service_status "meshtasticd" && [ $wait_count -lt $max_wait ]; do
+                sleep 1
+                ((wait_count++))
+            done
             if check_service_status "meshtasticd"; then
                 print_success "meshtasticd service started"
                 log_message "Started meshtasticd service"
@@ -479,7 +495,13 @@ meshtasticd_restart() {
     else
         print_info "Restarting meshtasticd service..."
         if sudo systemctl restart meshtasticd 2>&1; then
-            sleep 3
+            # Poll with timeout instead of hardcoded sleep
+            local wait_count=0
+            local max_wait=10
+            while ! check_service_status "meshtasticd" && [ $wait_count -lt $max_wait ]; do
+                sleep 1
+                ((wait_count++))
+            done
             if check_service_status "meshtasticd"; then
                 print_success "meshtasticd restarted"
                 log_message "Restarted meshtasticd service"

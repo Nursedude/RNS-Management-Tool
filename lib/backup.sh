@@ -255,6 +255,8 @@ create_backup() {
         return 0
     fi
 
+    # Generate fresh timestamp per backup (avoids stale BACKUP_DIR from source time)
+    BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$BACKUP_DIR"
     local backed_up=false
 
@@ -343,12 +345,22 @@ restore_backup() {
             print_info "Restoring from: $selected_backup"
 
             # Restore configs
-            [ -d "$selected_backup/.reticulum" ] && cp -r "$selected_backup/.reticulum" "$REAL_HOME/"
-            [ -d "$selected_backup/.nomadnetwork" ] && cp -r "$selected_backup/.nomadnetwork" "$REAL_HOME/"
-            [ -d "$selected_backup/.lxmf" ] && cp -r "$selected_backup/.lxmf" "$REAL_HOME/"
+            local restore_ok=true
+            [ -d "$selected_backup/.reticulum" ] && { cp -r "$selected_backup/.reticulum" "$REAL_HOME/" || restore_ok=false; }
+            [ -d "$selected_backup/.nomadnetwork" ] && { cp -r "$selected_backup/.nomadnetwork" "$REAL_HOME/" || restore_ok=false; }
+            [ -d "$selected_backup/.lxmf" ] && { cp -r "$selected_backup/.lxmf" "$REAL_HOME/" || restore_ok=false; }
 
-            print_success "Backup restored successfully"
-            log_message "Restored backup from: $selected_backup"
+            # Post-restore verification
+            if [ "$restore_ok" = true ] && [ -d "$REAL_HOME/.reticulum" ]; then
+                print_success "Backup restored successfully"
+                log_message "Restored backup from: $selected_backup"
+            elif [ "$restore_ok" = false ]; then
+                print_error "Some files failed to restore - check permissions"
+                log_error "Partial restore failure from: $selected_backup"
+            else
+                print_warning "Restore completed but no .reticulum directory found"
+                log_warn "Restore completed without .reticulum from: $selected_backup"
+            fi
         fi
     else
         print_error "Invalid selection"

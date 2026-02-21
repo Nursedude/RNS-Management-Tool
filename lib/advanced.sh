@@ -84,7 +84,7 @@ emergency_quick_mode() {
                 if [ "$HAS_RNPROBE" = true ]; then
                     echo -n "Destination hash: "
                     read -r QM_DEST
-                    if [ -n "$QM_DEST" ]; then
+                    if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
                         rnprobe "$QM_DEST" 2>&1
                     fi
                 else
@@ -99,7 +99,7 @@ emergency_quick_mode() {
                     if [ -n "$QM_FILE" ] && [ -f "$QM_FILE" ]; then
                         echo -n "Destination hash: "
                         read -r QM_DEST
-                        if [ -n "$QM_DEST" ]; then
+                        if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
                             rncp "$QM_FILE" "$QM_DEST" 2>&1
                         fi
                     elif [ -n "$QM_FILE" ]; then

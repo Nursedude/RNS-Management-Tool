@@ -199,7 +199,13 @@ install_nodejs_modern() {
     fi
 
     # Install NodeSource repository for Node.js 22.x (LTS) - with retry
-    if retry_with_backoff 3 run_with_timeout "$NETWORK_TIMEOUT" curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - 2>&1 | tee -a "$UPDATE_LOG"; then
+    # Download to temp file first to avoid executing a partial/corrupt download
+    local nodesource_script
+    nodesource_script=$(mktemp "${TMPDIR:-/tmp}/nodesource_setup_XXXXXX.sh")
+    if retry_with_backoff 3 run_with_timeout "$NETWORK_TIMEOUT" curl -fsSL -o "$nodesource_script" https://deb.nodesource.com/setup_22.x && \
+       [ -s "$nodesource_script" ] && \
+       sudo -E bash "$nodesource_script" 2>&1 | tee -a "$UPDATE_LOG"; then
+        rm -f "$nodesource_script"
         print_success "NodeSource repository configured"
 
         # Install Node.js (includes npm)
@@ -215,6 +221,7 @@ install_nodejs_modern() {
             return 1
         fi
     else
+        rm -f "$nodesource_script"
         print_error "Failed to add NodeSource repository"
         print_warning "Falling back to system Node.js (may be outdated)"
         log_message "NodeSource setup failed, using system nodejs"
@@ -626,7 +633,8 @@ configure_rnode_interactive() {
 
 get_installed_version() {
     local package=$1
-    "$PIP_CMD" show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}'
+    local pip="${PIP_CMD:-pip3}"
+    "$pip" show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}'
 }
 
 update_pip_package() {
