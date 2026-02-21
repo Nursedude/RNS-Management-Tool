@@ -8,7 +8,7 @@ RNS Management Tool transforms any Raspberry Pi or Linux/Windows machine into a 
 
 **Key Tagline:** "Complete Reticulum Ecosystem Management - One Tool, All Platforms"
 
-**Version:** 0.3.0-beta | **License:** MIT | **Languages:** Bash 65%, PowerShell 30%, Markdown 5%
+**Version:** 0.3.5-beta | **License:** MIT | **Languages:** Bash 65%, PowerShell 30%, Markdown 5%
 
 ---
 
@@ -30,7 +30,6 @@ graph TB
     subgraph "User Interfaces"
         TUI[Terminal UI - Primary]
         PS[PowerShell UI - Windows]
-        CLI[Command Line Tools]
     end
 
     subgraph "RNS Management Core"
@@ -55,30 +54,12 @@ graph TB
         SPI[SPI HAT Devices]
     end
 
-    TUI --> INST
-    TUI --> DIAG
-    TUI --> SVC
-    TUI --> BACKUP
-    TUI --> RNODE
-    PS --> INST
-    PS --> DIAG
-    PS --> SVC
-    PS --> BACKUP
+    TUI --> INST & DIAG & SVC & BACKUP & RNODE
+    PS --> INST & DIAG & SVC & BACKUP
 
-    INST --> RNS
-    INST --> LXMF
-    INST --> NOMAD
-    INST --> MESH
-    INST --> SIDE
-
-    RNODE --> LORA
-    RNODE --> USB
-    RNODE --> SPI
-
-    RNS --> LXMF
-    LXMF --> NOMAD
-    LXMF --> MESH
-    LXMF --> SIDE
+    INST --> RNS & LXMF & NOMAD & MESH & SIDE
+    RNODE --> LORA & USB & SPI
+    RNS --> LXMF --> NOMAD & MESH & SIDE
 ```
 
 ---
@@ -87,40 +68,56 @@ graph TB
 
 ```
 /home/user/RNS-Management-Tool/
-├── rns_management_tool.sh          # PRIMARY: Linux/Raspberry Pi TUI (~4,400 lines)
-├── rns_management_tool.ps1         # Windows PowerShell version (1,465 lines)
+├── rns_management_tool.sh          # Main dispatcher (326 lines)
+├── rns_management_tool.ps1         # Windows PowerShell dispatcher (144 lines)
 │
-├── README.md                        # Primary project documentation
-├── CLAUDE.md                        # THIS FILE - Development guide
+├── lib/                            # Bash modules (10 files, ~4,685 lines)
+│   ├── core.sh                     # Terminal detection, colors, home resolution, globals
+│   ├── utils.sh                    # Timeout, retry, logging, caching, service checks
+│   ├── ui.sh                       # Print functions, box drawing, menus, help
+│   ├── install.sh                  # Prerequisites, ecosystem, MeshChat, Sideband
+│   ├── rnode.sh                    # RNODE device configuration and management
+│   ├── services.sh                 # Service management, meshtasticd, autostart
+│   ├── backup.sh                   # Backup/restore, export/import
+│   ├── diagnostics.sh              # 6-step diagnostics with return-value pattern
+│   ├── config.sh                   # Config templates, editor, viewer, logs
+│   └── advanced.sh                 # Emergency mode, advanced menu, startup
+│
+├── pwsh/                           # PowerShell modules (9 files, ~2,562 lines)
+│   ├── core.ps1                    # Environment, logging, health checks, log rotation
+│   ├── ui.ps1                      # Color output, headers, menus, quick status
+│   ├── environment.ps1             # WSL, Python, pip detection
+│   ├── install.ps1                 # Python, Reticulum, MeshChat, Sideband, ecosystem
+│   ├── rnode.ps1                   # Serial port, radio config, EEPROM, bootloader
+│   ├── services.ps1                # Daemon control, network tools, identity, autostart
+│   ├── backup.ps1                  # Backup/restore, export/import, list/delete
+│   ├── diagnostics.ps1             # 6-step diagnostic checks
+│   └── advanced.ps1                # Cache, factory reset, updates, config management
+│
+├── config_templates/               # Pre-built RNS configurations
+│   ├── minimal.conf                # Local network only (AutoInterface)
+│   ├── lora_rnode.conf             # RNODE radio + LAN
+│   ├── tcp_client.conf             # Internet connectivity via community nodes
+│   └── transport_node.conf         # Full routing node
+│
+├── tests/                          # Test suites (~4,462 lines)
+│   ├── smoke_test.sh               # 183 assertions across 8 sections
+│   ├── rns_management_tool.bats    # 63 BATS tests
+│   ├── hardware_validation.bats    # 104 BATS tests (RNODE hardware safety)
+│   ├── integration_tests.bats      # 107 BATS tests (service, backup, platform)
+│   ├── run_bats_compat.sh          # Lightweight BATS-compatible test runner
+│   ├── rnode.tests.ps1             # 70 Pester tests
+│   ├── backup.tests.ps1            # 48 Pester tests
+│   └── *.tests.ps1                 # Additional Pester suites (core, ui, services, etc.)
+│
+├── .github/workflows/lint.yml      # CI: shellcheck, check-mode, smoke-test, bats, powershell, pester
+│
+├── README.md                       # Primary project documentation
+├── CLAUDE.md                       # THIS FILE - Development guide
 ├── QUICKSTART.md                   # 5-minute setup guide
 ├── CHANGELOG.md                    # Version history (semantic versioning)
-├── SESSION_NOTES.md                # Active development session log
-└── SESSION_NOTES_MESHFORGE_DIFF.md # MeshForge comparison (seed document)
+└── SESSION_NOTES.md                # Development session history
 ```
-
----
-
-## Core Capabilities
-
-### Feature Matrix
-
-| Category | Feature | Bash | PowerShell | Status |
-|----------|---------|------|------------|--------|
-| Installation | Full ecosystem install | ✅ | ✅ | Working |
-| Installation | Selective component updates | ✅ | ✅ | Working |
-| Installation | MeshChat with Node.js | ✅ | ✅ | Working |
-| RNODE | Auto-install firmware | ✅ | ⚠️ Basic | Working |
-| RNODE | Radio parameter config | ✅ | ❌ | Bash only |
-| RNODE | EEPROM management | ✅ | ❌ | Bash only |
-| Services | Start/Stop/Restart rnsd | ✅ | ✅ | Working |
-| Services | meshtasticd integration | ✅ | ❌ | Bash only |
-| Backup | Automatic timestamped | ✅ | ✅ | Working |
-| Backup | Export/Import archives | ✅ | ✅ | Working |
-| Backup | Factory reset | ✅ | ✅ | Working |
-| Diagnostics | Environment detection | ✅ | ✅ | Working |
-| Diagnostics | USB device detection | ✅ | ⚠️ | Working |
-| UI | Quick Status Dashboard | ✅ | ✅ | Working |
-| UI | Progress indicators | ✅ | ✅ | Working |
 
 ---
 
@@ -134,7 +131,8 @@ The project enforces strict security practices:
 | RNS002 | Input validation for all device ports | Regex validation |
 | RNS003 | Numeric range validation for radio parameters | Bounds checking |
 | RNS004 | Path traversal prevention in import/export | Path validation |
-| RNS005 | No shell=True in subprocess (Python tools) | Linter |
+| RNS005 | Confirmation for destructive actions | UI prompts |
+| RNS006 | Subprocess timeout protection | Timeout wrappers |
 
 ### Security Examples
 
@@ -165,35 +163,21 @@ fi
 
 ### Raspi-Config Style Terminal UI
 
-The tool follows the raspi-config design philosophy:
-
 1. **TUI as Dispatcher** - Terminal UI selects what to run, not how
 2. **Clear Visual Hierarchy** - Box drawing, colors, and sections
-3. **Status at a Glance** - Quick dashboard on main menu
+3. **Status at a Glance** - Compact status line in every header
 4. **Breadcrumb Navigation** - Always know where you are
 5. **Graceful Degradation** - Missing features disable, don't crash
 
 ### Color Scheme
 
 ```bash
-# Status Indicators
 GREEN   = Success/Running   [✓] or ●
 YELLOW  = Warning/Stopped   [!] or ○
 RED     = Error/Failed      [✗]
 CYAN    = Information       [i]
 BLUE    = Section headers   ▶
 MAGENTA = Emphasis          (sparingly)
-
-# Box Drawing Characters
-╔════════════════════════╗  # Header top
-║  Content               ║  # Content line
-╟────────────────────────╢  # Divider
-╚════════════════════════╝  # Header bottom
-
-┌────────────────────────┐  # Standard box top
-│  Content               │  # Standard content
-├────────────────────────┤  # Standard divider
-└────────────────────────┘  # Standard box bottom
 ```
 
 ### Menu Structure
@@ -210,10 +194,16 @@ Main Menu
 ├── Management ─────────────────────
 │   ├── 6) System Status & Diagnostics
 │   ├── 7) Manage Services
+│   │   ├── Daemon Control (start/stop/restart/status)
+│   │   ├── Network Tools (rnstatus/rnpath/rnprobe/rncp/rnx)
+│   │   └── Identity & Boot (rnid/autostart)
 │   ├── 8) Backup/Restore Configuration
 │   └── 9) Advanced Options
+│       ├── Configuration (view/edit/templates)
+│       └── Maintenance (packages/reinstall/cache/logs/reset)
 │
-└── Help & Exit ────────────────────
+└── Quick & Help ──────────────────
+    ├── q) Quick Mode (field operations)
     ├── h) Help & Quick Reference
     └── 0) Exit
 ```
@@ -232,11 +222,22 @@ Main Menu
 ### Testing Requirements
 
 ```bash
-# Syntax validation (run before committing)
+# Syntax validation
 bash -n rns_management_tool.sh
+for f in lib/*.sh; do bash -n "$f"; done
 
-# ShellCheck for style and security
-shellcheck rns_management_tool.sh
+# ShellCheck linting (zero warnings required)
+shellcheck -x -S warning rns_management_tool.sh
+for f in lib/*.sh; do shellcheck -x -S warning "$f"; done
+
+# Test suites
+./tests/smoke_test.sh --verbose
+bats tests/rns_management_tool.bats
+bats tests/hardware_validation.bats
+bats tests/integration_tests.bats
+
+# CI dry-run
+./rns_management_tool.sh --check
 
 # PowerShell syntax check
 pwsh -NoProfile -Command "& { Get-Content rns_management_tool.ps1 | Out-Null }"
@@ -260,86 +261,42 @@ docs: update CLAUDE.md with security rules
 
 ## Known Issues & Workarounds
 
-### Critical Issues
-
-1. **Node.js 18 EOL** (April 2025)
-   - Impact: MeshChat requires Node.js 18+
-   - Solution: Script auto-upgrades to Node.js 22 LTS via NodeSource
-
-2. **pip --break-system-packages**
-   - Impact: Required on Debian 12+ for pip install
-   - Solution: Already implemented in install commands
-
-### Platform-Specific
-
-| Issue | Platform | Workaround |
-|-------|----------|------------|
-| RNODE not detected | Linux | `sudo usermod -aG dialout $USER` |
+| Issue | Platform | Status |
+|-------|----------|--------|
+| RNODE not detected | Linux | `sudo usermod -aG dialout $USER` then logout/login |
 | rnsd won't start | All | Check `~/.reticulum/config` exists |
-| MeshChat build fails | All | Upgrade Node.js to 18+ |
+| MeshChat build fails | All | Script auto-upgrades Node.js to 22 LTS via NodeSource |
 | Permission denied | Linux | `chmod +x rns_management_tool.sh` |
+| pip externally-managed error | Debian 12+ | Script auto-adds `--break-system-packages` flag |
 
 ---
 
-## Tool Audit for Reticulum Ecosystem
-
-### Core Tools Integration
+## Core Tools Integration
 
 | Tool | Purpose | Integration Level |
 |------|---------|-------------------|
-| `rnsd` | Reticulum daemon | Full (start/stop/status) |
-| `rnstatus` | Network status | Full (diagnostics) |
+| `rnsd` | Reticulum daemon | Full (start/stop/status/uptime) |
+| `rnstatus` | Network status | Full (diagnostics + services menu) |
+| `rnpath` | Path table | Full (services menu) |
+| `rnprobe` | Destination probe | Full (services menu) |
+| `rncp` | File transfer | Full (services menu) |
+| `rnx` | Remote command | Full (services menu) |
+| `rnid` | Identity management | Full (services menu) |
 | `rnodeconf` | RNODE configuration | Full (21+ device support) |
-| `pip3` | Python packages | Full (RNS, LXMF, NomadNet) |
-| `npm` | Node.js packages | Full (MeshChat) |
-| `git` | Source cloning | Full (MeshChat, Sideband) |
-| `systemctl` | Service management | Partial (user services) |
-
-### External Dependencies
-
-```mermaid
-graph LR
-    subgraph "System Packages"
-        APT[apt/apt-get]
-        PYTHON[Python 3.7+]
-        NODE[Node.js 18+]
-        GIT[Git]
-    end
-
-    subgraph "Python Packages"
-        RNS[rns]
-        LXMF[lxmf]
-        NOMAD[nomadnet]
-        SIDE[sideband]
-    end
-
-    subgraph "Node Packages"
-        MESHCHAT[reticulum-meshchat]
-    end
-
-    APT --> PYTHON
-    APT --> NODE
-    APT --> GIT
-    PYTHON --> RNS
-    RNS --> LXMF
-    LXMF --> NOMAD
-    LXMF --> SIDE
-    NODE --> MESHCHAT
-```
 
 ---
 
-## Code Review Checklist (MeshForge Principles)
+## Code Review Checklist
 
-### Security Checklist
-- [ ] No `eval` or `shell=True` usage
+### Security
+- [ ] No `eval` usage
 - [ ] Input validation for all user inputs
 - [ ] Device port regex validation
 - [ ] Numeric bounds checking
 - [ ] Path traversal prevention
 - [ ] No hardcoded credentials
 
-### Quality Checklist
+### Quality
 - [ ] Functions under 200 lines
 - [ ] Single responsibility per function
 - [ ] Consistent error handling
@@ -347,12 +304,11 @@ graph LR
 - [ ] User feedback (progress, status)
 - [ ] Graceful degradation for missing deps
 
-### UI/UX Checklist
+### UI/UX
 - [ ] Clear menu hierarchy
 - [ ] Consistent color usage
 - [ ] Status indicators visible
 - [ ] Help available (h or ?)
-- [ ] Breadcrumb navigation
 - [ ] Confirmation for destructive actions
 
 ---
@@ -362,16 +318,12 @@ graph LR
 ### Development Setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/Nursedude/RNS-Management-Tool.git
 cd RNS-Management-Tool
 
-# Run syntax checks
 bash -n rns_management_tool.sh
-shellcheck rns_management_tool.sh
-
-# Test locally (dry run)
-./rns_management_tool.sh
+shellcheck -x -S warning rns_management_tool.sh
+./rns_management_tool.sh --check
 ```
 
 ### Pull Request Process
@@ -386,24 +338,25 @@ shellcheck rns_management_tool.sh
 
 ## Resources
 
-| Resource | URL | Purpose |
-|----------|-----|---------|
-| Reticulum Manual | reticulum.network/manual | Primary documentation |
-| RNS GitHub | github.com/markqvist/Reticulum | Source code |
-| RNODE Firmware | github.com/markqvist/RNode_Firmware | Device firmware |
-| MeshChat | github.com/liamcottle/reticulum-meshchat | Web interface |
-| Sideband | unsigned.io/sideband | Mobile client |
-| MeshForge | github.com/Nursedude/meshforge | NOC reference |
+| Resource | URL |
+|----------|-----|
+| Reticulum Manual | reticulum.network/manual |
+| RNS GitHub | github.com/markqvist/Reticulum |
+| RNODE Firmware | github.com/markqvist/RNode_Firmware |
+| MeshChat | github.com/liamcottle/reticulum-meshchat |
+| Sideband | unsigned.io/sideband |
+| MeshForge | github.com/Nursedude/meshforge |
 
 ---
 
 ## Project Metrics
 
-- **Total Lines of Code:** ~4,000 lines (all shell scripts)
-- **Documentation:** 16 markdown files (~150 KB)
-- **Functions:** 65+ total functions
-- **Security Rating:** A (91/100)
-- **Code Quality:** A- (90/100)
+- **Bash:** 326 lines (main) + 4,685 lines (10 lib/ modules) = ~5,011 lines
+- **PowerShell:** 144 lines (main) + 2,562 lines (9 pwsh/ modules) = ~2,706 lines
+- **Tests:** ~4,462 lines across 14 test files (575+ assertions)
+- **Functions:** 134+ across all bash modules
+- **Markdown:** 5 documentation files
+- **CI Jobs:** 6 (shellcheck, check-mode, smoke-test, bats, powershell, pester)
 
 ---
 
