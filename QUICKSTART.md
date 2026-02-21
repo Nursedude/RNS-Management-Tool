@@ -121,9 +121,9 @@ Next Steps:
 
 ### Scenario 1: "I have everything installed, just want to update"
 ```bash
-./reticulum_updater.sh
+./rns_management_tool.sh
+# Select Option 1: Install/Update Reticulum Ecosystem
 # Press Enter for backup (recommended): [Enter]
-# Press Enter to continue: [Enter]
 # Wait for updates...
 # Start rnsd? (Y/n): [Enter]
 # Done!
@@ -131,33 +131,27 @@ Next Steps:
 
 ### Scenario 2: "I only have RNS, want to add Nomad Network"
 ```bash
-./reticulum_updater.sh
-# Script detects only RNS installed
-# Updates RNS
-# Offers to install LXMF and Nomad Network
-# Say yes to both
+./rns_management_tool.sh
+# Select Option 3: Install NomadNet
+# Follow the prompts
 # Done!
 ```
 
 ### Scenario 3: "Nothing is installed yet"
 ```bash
-./reticulum_updater.sh
-# Script detects nothing installed
-# "Would you like to perform a fresh installation instead?"
-# Type: y [Enter]
-# "Install MeshChat as well?"
-# Type: y [Enter]
+./rns_management_tool.sh
+# First-run wizard auto-detects fresh setup
+# Select Option 1: Install/Update Reticulum Ecosystem
 # Everything gets installed
 # Done!
 ```
 
 ### Scenario 4: "I don't want MeshChat, just the Python stuff"
 ```bash
-./reticulum_updater.sh
-# Follow prompts normally
-# When asked "Install MeshChat?" 
-# Type: n [Enter]
-# Only RNS/LXMF/Nomad get updated
+./rns_management_tool.sh
+# Select Option 1: Install/Update Reticulum Ecosystem
+# Only RNS/LXMF/Nomad get installed
+# Skip Option 4 (MeshChat)
 ```
 
 ---
@@ -167,8 +161,8 @@ Next Steps:
 ### Problem: "Permission denied"
 **Solution:**
 ```bash
-chmod +x reticulum_updater.sh
-./reticulum_updater.sh
+chmod +x rns_management_tool.sh
+./rns_management_tool.sh
 ```
 
 ### Problem: "pip: command not found"
@@ -176,7 +170,7 @@ chmod +x reticulum_updater.sh
 ```bash
 sudo apt update
 sudo apt install python3-pip
-./reticulum_updater.sh
+./rns_management_tool.sh
 ```
 
 ### Problem: "Git not found" (for MeshChat)
@@ -184,7 +178,7 @@ sudo apt install python3-pip
 ```bash
 sudo apt update
 sudo apt install git nodejs npm
-./reticulum_updater.sh
+./rns_management_tool.sh
 ```
 
 ### Problem: Updates completed but "command not found" when running programs
@@ -255,11 +249,11 @@ npm run dev
 ## One-Liner Cheat Sheet
 
 ```bash
-# Download, make executable, and run
-wget https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/reticulum_updater.sh && chmod +x reticulum_updater.sh && ./reticulum_updater.sh
+# Clone and run
+git clone https://github.com/Nursedude/RNS-Management-Tool.git && cd RNS-Management-Tool && chmod +x rns_management_tool.sh && ./rns_management_tool.sh
 
 # Or if you already have it
-chmod +x reticulum_updater.sh && ./reticulum_updater.sh
+chmod +x rns_management_tool.sh && ./rns_management_tool.sh
 ```
 
 ---

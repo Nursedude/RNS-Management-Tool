@@ -149,13 +149,6 @@ EXPECTED_FUNCTIONS=(
     # Advanced
     advanced_menu
     emergency_quick_mode
-    # Dialog backend
-    detect_dialog_backend
-    has_dialog_backend
-    dlg_msgbox
-    dlg_yesno
-    dlg_menu
-    dlg_inputbox
     # Log rotation
     rotate_log
     # Entry
@@ -298,26 +291,7 @@ else
     skip "pwsh/ directory not found"
 fi
 
-# ─── 6c. Dialog Backend ─────────────────────────────────
-section "Dialog Backend"
-
-if [ -f "$LIB_DIR/dialog.sh" ]; then
-    pass "lib/dialog.sh exists"
-    if grep -qE 'detect_dialog_backend|DIALOG_BACKEND' "$LIB_DIR/dialog.sh" 2>/dev/null; then
-        pass "Dialog backend detection implemented"
-    else
-        fail "Dialog backend detection not found in dialog.sh"
-    fi
-    if grep -qE 'dlg_msgbox|dlg_yesno|dlg_menu' "$LIB_DIR/dialog.sh" 2>/dev/null; then
-        pass "Dialog widget functions implemented (msgbox, yesno, menu)"
-    else
-        fail "Dialog widget functions not found"
-    fi
-else
-    skip "lib/dialog.sh not found"
-fi
-
-# ─── 6d. Log Rotation ───────────────────────────────────
+# ─── 6c. Log Rotation ────────────────────────────────────
 section "Log Rotation"
 
 if grep -qE 'rotate_log|LOG_MAX_BYTES' $COMBINED_SOURCE 2>/dev/null; then

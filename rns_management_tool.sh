@@ -33,9 +33,6 @@ source "$SCRIPT_DIR/lib/utils.sh"
 # UI: print functions, box drawing, menus, help
 source "$SCRIPT_DIR/lib/ui.sh"
 
-# Dialog: whiptail/dialog backend abstraction (meshforge DialogBackend pattern)
-source "$SCRIPT_DIR/lib/dialog.sh"
-
 # Installation: prerequisites, ecosystem, MeshChat, Sideband
 source "$SCRIPT_DIR/lib/install.sh"
 
@@ -147,7 +144,6 @@ show_main_menu() {
 main() {
     # Initialize
     detect_environment
-    detect_dialog_backend
     detect_available_tools
     log_message "=== RNS Management Tool Started ==="
     log_message "Version: $SCRIPT_VERSION"
