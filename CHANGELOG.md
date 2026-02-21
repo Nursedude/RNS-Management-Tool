@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Created `SECURITY_REVIEW.md` documenting audit findings, line-number references, and recommendations
 - Audited all `rm -rf` usage, `pgrep` patterns, temp file handling, signal traps, variable quoting
 - Overall security rating: A — no critical vulnerabilities found
-- 4 minor recommendations documented for defense-in-depth hardening
+- 6 recommendations: RNODE dedup (high), BATS expansion (medium), 4 minor defense-in-depth
+- **Found**: 13 RNODE functions (~320 lines) duplicated between `lib/install.sh` and `lib/rnode.sh`
 
 ### Documentation
 - Added `SECURITY_REVIEW.md` — comprehensive security and code review document

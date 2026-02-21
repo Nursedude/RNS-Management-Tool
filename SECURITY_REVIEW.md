@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All six project security rules (RNS001-RNS006) are properly enforced throughout the codebase. No critical or high-severity code vulnerabilities were found. One critical documentation issue was found and fixed (LICENSE file was GPLv3 but docs said MIT — now corrected to GPLv3). Four minor recommendations are provided for defense-in-depth hardening.
+The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All six project security rules (RNS001-RNS006) are properly enforced throughout the codebase. No critical or high-severity code vulnerabilities were found. One critical documentation issue was found and fixed (LICENSE file was GPLv3 but docs said MIT — now corrected to GPLv3). One high-priority code quality issue was identified (RNODE function duplication across two files). Six total recommendations are provided — one high, one medium, and four minor.
 
 **Overall Rating: A**
 
@@ -191,12 +191,23 @@ All `rm -rf` operations target validated paths and are gated behind user confirm
 - **Single dispatcher**: Main script is 326 lines, purely menu routing
 - **Separation of concerns**: Each module handles one domain (backup, services, diagnostics, etc.)
 
+### Code Duplication — HIGH
+
+**Finding:** 13 RNODE functions (~320 lines) are byte-for-byte identical in both `lib/install.sh:308-628` and `lib/rnode.sh:9-329`.
+
+Duplicated functions: `rnode_get_device_port()`, `rnode_autoinstall()`, `rnode_list_devices()`, `rnode_flash_device()`, `rnode_update_device()`, `rnode_get_info()`, `rnode_configure_radio()`, `rnode_set_model()`, `rnode_eeprom()`, `rnode_bootloader()`, `rnode_serial_console()`, `rnode_show_help()`, `configure_rnode_interactive()`.
+
+**Impact:** Bug fixes in one file won't propagate to the other. Adds ~320 lines (~6%) of unnecessary bloat. Since `lib/rnode.sh` is sourced before `lib/install.sh` in the main script (line 40 vs 37), the `install.sh` definitions silently overwrite the `rnode.sh` ones.
+
+**Recommendation:** Remove the 13 duplicated RNODE functions from `lib/install.sh`, keeping `lib/rnode.sh` as the single source of truth.
+
 ### Function Design
 
 - All functions under the 200-line project limit
 - Consistent naming: `print_*`, `show_*`, `check_*`, `install_*`, `get_*`
 - Single responsibility per function
 - Input validation at function entry points
+- Minor naming inconsistency: `rnode_*` prefix used in rnode module vs `install_*`/`check_*` pattern elsewhere
 
 ### Error Handling
 
@@ -283,6 +294,22 @@ The meshchat `pgrep -f` exception is necessary but could be more explicitly docu
 
 **Priority:** Cosmetic — existing comment on line 322 provides context, but a line-level comment would aid future reviewers.
 
+### R5: Remove RNODE Function Duplication (High)
+
+**Files:** `lib/install.sh:308-628` and `lib/rnode.sh:9-329`
+
+13 RNODE functions (~320 lines) are byte-for-byte duplicated across both files. Since both files are sourced by the main script, the `install.sh` definitions silently overwrite `rnode.sh` definitions. This is a maintenance hazard — a bug fix in one file won't propagate to the other.
+
+**Recommendation:** Delete the 13 duplicated functions from `lib/install.sh`, keeping `lib/rnode.sh` as the single source of truth. This removes ~320 lines of dead weight and eliminates a class of potential consistency bugs.
+
+**Priority:** High — this is the most impactful code quality improvement available.
+
+### R6: Expand BATS Test Coverage (Medium)
+
+Installation functions (`install_meshchat()`, `install_sideband()`, `install_reticulum_ecosystem()`) and service management functions (`meshtasticd_*()`, `handle_file_transfer()`, `handle_identity_management()`) lack BATS test coverage. Adding ~40-50 tests would cover the most critical untested paths.
+
+**Priority:** Medium — current coverage is strong for validation and hardware safety, but installation/service paths are untested.
+
 ---
 
 ## Files Reviewed
@@ -310,7 +337,7 @@ The meshchat `pgrep -f` exception is necessary but could be more explicitly docu
 
 ## Conclusion
 
-The RNS Management Tool has a strong security foundation with well-implemented defenses against common shell scripting vulnerabilities. The project's security rules (RNS001-RNS006) are effectively enforced and the codebase reflects disciplined security practices. The four recommendations are all minor/cosmetic improvements for defense-in-depth — none represent exploitable vulnerabilities.
+The RNS Management Tool has a strong security foundation with well-implemented defenses against common shell scripting vulnerabilities. The project's security rules (RNS001-RNS006) are effectively enforced and the codebase reflects disciplined security practices. The most actionable finding is R5 (RNODE function duplication) — a straightforward cleanup that removes ~320 lines of redundant code. The four minor recommendations are defense-in-depth improvements. No exploitable vulnerabilities were found.
 
 ---
 

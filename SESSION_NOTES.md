@@ -50,12 +50,13 @@ Development history and current status. Each session builds on the previous.
 - Conducted formal security audit against RNS001-RNS006 compliance — all 6 rules PASS
 - Reviewed all 10 Bash modules (`lib/*.sh`) and 9 PowerShell modules (`pwsh/*.ps1`)
 - Audited all `rm -rf` usage, `pgrep` patterns, temp file handling, signal traps, variable quoting
-- Created `SECURITY_REVIEW.md` with comprehensive findings, line-number references, and 4 minor recommendations
+- Created `SECURITY_REVIEW.md` with comprehensive findings, line-number references, and 6 recommendations
+- **Found RNODE duplication (HIGH)**: 13 functions (~320 lines) byte-for-byte identical in `lib/install.sh` and `lib/rnode.sh`
 - **Fixed LICENSE mismatch**: LICENSE file was GPLv3 but all docs said MIT — updated all docs to GPLv3
 - **Fixed test counts**: hardware_validation.bats 92 (was 104), integration_tests.bats 106 (was 107)
 - Verified documentation accuracy across all `.md` files — version consistency confirmed at 0.3.5-beta
 - Overall security rating: A — no critical code vulnerabilities found
-- Minor recommendations: checksum verification for downloads, `umask 077` for backups, `set -u` consideration, `pgrep -f` documentation
+- Recommendations: RNODE dedup (high), BATS test expansion (medium), checksum verification, `umask 077`, `set -u`, `pgrep -f` docs
 
 ### Session 12: Pester Tests, Bug Fixes, CI Expansion (2026-02-15)
 
