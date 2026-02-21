@@ -337,45 +337,46 @@ teardown() {
 }
 
 #########################################################
-# Diagnostics Integration (Return-Value Protocol)
+# Diagnostics Integration (Global Counter Pattern)
 #########################################################
 
-@test "DIAG: all 5 step functions emit DIAG_RESULT" {
-    grep -c 'echo "DIAG_RESULT:' "$LIB_DIR/diagnostics.sh" | grep -q '^5$'
+@test "DIAG: all 5 step functions exist" {
+    grep -q 'diag_check_environment()' "$LIB_DIR/diagnostics.sh" &&
+    grep -q 'diag_check_rns_tools()' "$LIB_DIR/diagnostics.sh" &&
+    grep -q 'diag_check_configuration()' "$LIB_DIR/diagnostics.sh" &&
+    grep -q 'diag_check_services()' "$LIB_DIR/diagnostics.sh" &&
+    grep -q 'diag_check_network()' "$LIB_DIR/diagnostics.sh"
 }
 
-@test "DIAG: DIAG_RESULT format is consistent (issues:warnings)" {
-    # All direct echo DIAG_RESULT lines should use the same variable pattern
-    local result_lines
-    result_lines=$(grep '^\s*echo "DIAG_RESULT:' "$LIB_DIR/diagnostics.sh")
-    local bad_format
-    bad_format=$(echo "$result_lines" | grep -v 'DIAG_RESULT:\$_diag_issues:\$_diag_warnings' || true)
-    [ -z "$bad_format" ]
+@test "DIAG: steps increment global counters directly" {
+    # Verify steps use _DIAG_TOTAL_ISSUES / _DIAG_TOTAL_WARNINGS globals
+    grep -q '_DIAG_TOTAL_ISSUES' "$LIB_DIR/diagnostics.sh" &&
+    grep -q '_DIAG_TOTAL_WARNINGS' "$LIB_DIR/diagnostics.sh"
 }
 
-@test "DIAG: _run_diag_step strips DIAG_RESULT from display" {
-    local func_body
-    func_body=$(sed -n '/^_run_diag_step()/,/^}/p' "$LIB_DIR/diagnostics.sh")
-    echo "$func_body" | grep -q 'grep -v.*DIAG_RESULT'
-}
-
-@test "DIAG: run_diagnostics uses BASH_REMATCH to parse results" {
+@test "DIAG: run_diagnostics resets counters before running" {
     local func_body
     func_body=$(sed -n '/^run_diagnostics()/,/^}/p' "$LIB_DIR/diagnostics.sh")
-    echo "$func_body" | grep -q 'BASH_REMATCH'
+    echo "$func_body" | grep -q '_DIAG_TOTAL_ISSUES=0' &&
+    echo "$func_body" | grep -q '_DIAG_TOTAL_WARNINGS=0'
 }
 
-@test "DIAG: diag_report_summary takes parameters (not globals)" {
-    # The function should use $1 and $2, not global variables
-    local func_head
-    func_head=$(sed -n '/^diag_report_summary()/,/^}/p' "$LIB_DIR/diagnostics.sh" | head -5)
-    echo "$func_head" | grep -q '${1:-0}\|"$1"'
+@test "DIAG: run_diagnostics calls all 5 steps and summary" {
+    local func_body
+    func_body=$(sed -n '/^run_diagnostics()/,/^}/p' "$LIB_DIR/diagnostics.sh")
+    echo "$func_body" | grep -q 'diag_check_environment' &&
+    echo "$func_body" | grep -q 'diag_check_rns_tools' &&
+    echo "$func_body" | grep -q 'diag_check_configuration' &&
+    echo "$func_body" | grep -q 'diag_check_services' &&
+    echo "$func_body" | grep -q 'diag_check_network' &&
+    echo "$func_body" | grep -q 'diag_report_summary'
 }
 
-@test "DIAG: each step uses local counters (not globals)" {
-    # Verify steps use 'local _diag_issues' not global 'DIAG_ISSUES'
-    ! grep -q '^DIAG_ISSUES=' "$LIB_DIR/diagnostics.sh"
-    grep -c 'local _diag_issues=0' "$LIB_DIR/diagnostics.sh" | grep -q '^5$'
+@test "DIAG: diag_report_summary reads global counters" {
+    local func_body
+    func_body=$(sed -n '/^diag_report_summary()/,/^}/p' "$LIB_DIR/diagnostics.sh")
+    echo "$func_body" | grep -q '_DIAG_TOTAL_ISSUES' &&
+    echo "$func_body" | grep -q '_DIAG_TOTAL_WARNINGS'
 }
 
 #########################################################

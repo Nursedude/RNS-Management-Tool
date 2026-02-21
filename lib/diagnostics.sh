@@ -1,15 +1,15 @@
 # shellcheck shell=bash
 #########################################################
-# lib/diagnostics.sh — System diagnostics with return-value pattern
+# lib/diagnostics.sh — System diagnostics
 # Sourced by rns_management_tool.sh
 #########################################################
 
-# Step 1: Check environment and prerequisites
-# Returns issue/warning counts via stdout (last line: DIAG_RESULT:issues:warnings)
-diag_check_environment() {
-    local _diag_issues=0
-    local _diag_warnings=0
+# Globals for accumulating diagnostic results across steps
+_DIAG_TOTAL_ISSUES=0
+_DIAG_TOTAL_WARNINGS=0
 
+# Step 1: Check environment and prerequisites
+diag_check_environment() {
     echo -e "${BLUE}▶ Step 1/6: Environment & Prerequisites${NC}"
 
     echo "  Platform: $OS_TYPE ($ARCHITECTURE)"
@@ -24,7 +24,7 @@ diag_check_environment() {
     else
         print_error "Python 3 not found"
         echo -e "  ${YELLOW}Fix: sudo apt install python3 python3-pip${NC}"
-        ((_diag_issues++))
+        ((_DIAG_TOTAL_ISSUES++))
     fi
 
     if [ "$HAS_PIP" = true ]; then
@@ -32,22 +32,17 @@ diag_check_environment() {
     else
         print_error "pip not found"
         echo -e "  ${YELLOW}Fix: sudo apt install python3-pip${NC}"
-        ((_diag_issues++))
+        ((_DIAG_TOTAL_ISSUES++))
     fi
 
     if [ "$PEP668_DETECTED" = true ]; then
         echo -e "  ${CYAN}[i] PEP 668: Python externally managed (Debian 12+)${NC}"
     fi
     echo ""
-
-    echo "DIAG_RESULT:$_diag_issues:$_diag_warnings"
 }
 
 # Step 2: Check RNS tool availability
 diag_check_rns_tools() {
-    local _diag_issues=0
-    local _diag_warnings=0
-
     echo -e "${BLUE}▶ Step 2/6: RNS Tool Availability${NC}"
 
     local tool_list=(
@@ -79,18 +74,13 @@ diag_check_rns_tools() {
     if [ "$tool_missing" -gt 0 ]; then
         echo ""
         echo -e "  ${CYAN}[i] Install missing tools: pip3 install rns${NC}"
-        ((_diag_warnings++))
+        ((_DIAG_TOTAL_WARNINGS++))
     fi
     echo ""
-
-    echo "DIAG_RESULT:$_diag_issues:$_diag_warnings"
 }
 
 # Step 3: Validate Reticulum configuration
 diag_check_configuration() {
-    local _diag_issues=0
-    local _diag_warnings=0
-
     echo -e "${BLUE}▶ Step 3/6: Configuration Validation${NC}"
 
     local config_file="$REAL_HOME/.reticulum/config"
@@ -102,12 +92,12 @@ diag_check_configuration() {
         if [ "$config_size" -lt 10 ]; then
             print_error "Config file appears empty ($config_size bytes)"
             echo -e "  ${YELLOW}Fix: Apply a config template from Advanced > Apply Configuration Template${NC}"
-            ((_diag_issues++))
+            ((_DIAG_TOTAL_ISSUES++))
         fi
 
         if grep -q "interface_enabled = false" "$config_file" 2>/dev/null; then
             print_warning "Some interfaces are disabled in config"
-            ((_diag_warnings++))
+            ((_DIAG_TOTAL_WARNINGS++))
         fi
 
         if [ -d "$REAL_HOME/.reticulum/storage/identities" ]; then
@@ -118,18 +108,13 @@ diag_check_configuration() {
     else
         print_warning "No configuration found"
         echo -e "  ${YELLOW}Fix: Run first-time setup or start rnsd to create default config${NC}"
-        ((_diag_warnings++))
+        ((_DIAG_TOTAL_WARNINGS++))
     fi
     echo ""
-
-    echo "DIAG_RESULT:$_diag_issues:$_diag_warnings"
 }
 
 # Step 4: Check service health (rnsd + meshtasticd)
 diag_check_services() {
-    local _diag_issues=0
-    local _diag_warnings=0
-
     echo -e "${BLUE}▶ Step 4/6: Service Health${NC}"
 
     if check_service_status "rnsd"; then
@@ -156,7 +141,7 @@ diag_check_services() {
     else
         print_warning "rnsd daemon is not running"
         echo -e "  ${YELLOW}Fix: Start from Services menu or run: rnsd --daemon${NC}"
-        ((_diag_warnings++))
+        ((_DIAG_TOTAL_WARNINGS++))
     fi
 
     if command -v systemctl &>/dev/null; then
@@ -182,24 +167,19 @@ diag_check_services() {
                 local config_hint
                 config_hint=$(check_meshtasticd_webserver_config)
                 echo -e "  ${YELLOW}${config_hint}${NC}"
-                ((_diag_warnings++))
+                ((_DIAG_TOTAL_WARNINGS++))
             fi
         else
             print_warning "meshtasticd installed but not running"
             echo -e "  ${YELLOW}Fix: sudo systemctl start meshtasticd${NC}"
-            ((_diag_warnings++))
+            ((_DIAG_TOTAL_WARNINGS++))
         fi
     fi
     echo ""
-
-    echo "DIAG_RESULT:$_diag_issues:$_diag_warnings"
 }
 
 # Step 5: Check network interfaces and USB devices
 diag_check_network() {
-    local _diag_issues=0
-    local _diag_warnings=0
-
     echo -e "${BLUE}▶ Step 5/6: Network & Interfaces${NC}"
 
     if command -v ip &> /dev/null; then
@@ -212,7 +192,7 @@ diag_check_network() {
             done
         else
             print_warning "No active network interfaces found"
-            ((_diag_warnings++))
+            ((_DIAG_TOTAL_WARNINGS++))
         fi
     fi
 
@@ -228,7 +208,7 @@ diag_check_network() {
         if ! groups 2>/dev/null | grep -q "dialout"; then
             print_warning "User not in dialout group"
             echo -e "  ${YELLOW}Fix: sudo usermod -aG dialout \$USER && logout${NC}"
-            ((_diag_warnings++))
+            ((_DIAG_TOTAL_WARNINGS++))
         fi
     else
         echo -e "  ${CYAN}[i] No USB serial devices (RNODE) detected${NC}"
@@ -243,24 +223,18 @@ diag_check_network() {
         done
     fi
     echo ""
-
-    echo "DIAG_RESULT:$_diag_issues:$_diag_warnings"
 }
 
 # Step 6: Print summary and recommendations
-# Takes total issues and warnings as parameters (return-value pattern)
 diag_report_summary() {
-    local diag_issues="${1:-0}"
-    local diag_warnings="${2:-0}"
-
     echo -e "${BLUE}▶ Step 6/6: Summary & Recommendations${NC}"
     echo ""
 
-    if [ "$diag_issues" -eq 0 ] && [ "$diag_warnings" -eq 0 ]; then
+    if [ "$_DIAG_TOTAL_ISSUES" -eq 0 ] && [ "$_DIAG_TOTAL_WARNINGS" -eq 0 ]; then
         print_success "All checks passed - system looks healthy"
     else
-        [ "$diag_issues" -gt 0 ] && print_error "$diag_issues issue(s) found requiring attention"
-        [ "$diag_warnings" -gt 0 ] && print_warning "$diag_warnings warning(s) found"
+        [ "$_DIAG_TOTAL_ISSUES" -gt 0 ] && print_error "$_DIAG_TOTAL_ISSUES issue(s) found requiring attention"
+        [ "$_DIAG_TOTAL_WARNINGS" -gt 0 ] && print_warning "$_DIAG_TOTAL_WARNINGS warning(s) found"
         echo ""
         echo -e "${BOLD}Recommended actions:${NC}"
 
@@ -284,66 +258,26 @@ diag_report_summary() {
     fi
 
     echo ""
-    log_message "Diagnostics complete: $diag_issues issues, $diag_warnings warnings"
+    log_message "Diagnostics complete: $_DIAG_TOTAL_ISSUES issues, $_DIAG_TOTAL_WARNINGS warnings"
 }
 
 #########################################################
-# Diagnostics - Main Coordinator (return-value pattern)
+# Diagnostics - Main Coordinator
 #########################################################
-
-# Helper: parse DIAG_RESULT line from step function output
-# Displays all output except the result line, returns counts
-_run_diag_step() {
-    local output
-    output=$("$@")
-
-    # Print everything except the DIAG_RESULT line
-    echo "$output" | grep -v "^DIAG_RESULT:"
-
-    # Extract and return the result
-    echo "$output" | grep "^DIAG_RESULT:" | tail -1
-}
 
 run_diagnostics() {
     print_section "System Diagnostics"
 
-    local total_issues=0
-    local total_warnings=0
+    # Reset global counters — each step increments directly
+    _DIAG_TOTAL_ISSUES=0
+    _DIAG_TOTAL_WARNINGS=0
 
     echo -e "${BOLD}Running 6-step diagnostic...${NC}\n"
 
-    # Run each step and accumulate results
-    local result_line
-
-    result_line=$(_run_diag_step diag_check_environment)
-    if [[ "$result_line" =~ DIAG_RESULT:([0-9]+):([0-9]+) ]]; then
-        total_issues=$((total_issues + ${BASH_REMATCH[1]}))
-        total_warnings=$((total_warnings + ${BASH_REMATCH[2]}))
-    fi
-
-    result_line=$(_run_diag_step diag_check_rns_tools)
-    if [[ "$result_line" =~ DIAG_RESULT:([0-9]+):([0-9]+) ]]; then
-        total_issues=$((total_issues + ${BASH_REMATCH[1]}))
-        total_warnings=$((total_warnings + ${BASH_REMATCH[2]}))
-    fi
-
-    result_line=$(_run_diag_step diag_check_configuration)
-    if [[ "$result_line" =~ DIAG_RESULT:([0-9]+):([0-9]+) ]]; then
-        total_issues=$((total_issues + ${BASH_REMATCH[1]}))
-        total_warnings=$((total_warnings + ${BASH_REMATCH[2]}))
-    fi
-
-    result_line=$(_run_diag_step diag_check_services)
-    if [[ "$result_line" =~ DIAG_RESULT:([0-9]+):([0-9]+) ]]; then
-        total_issues=$((total_issues + ${BASH_REMATCH[1]}))
-        total_warnings=$((total_warnings + ${BASH_REMATCH[2]}))
-    fi
-
-    result_line=$(_run_diag_step diag_check_network)
-    if [[ "$result_line" =~ DIAG_RESULT:([0-9]+):([0-9]+) ]]; then
-        total_issues=$((total_issues + ${BASH_REMATCH[1]}))
-        total_warnings=$((total_warnings + ${BASH_REMATCH[2]}))
-    fi
-
-    diag_report_summary "$total_issues" "$total_warnings"
+    diag_check_environment
+    diag_check_rns_tools
+    diag_check_configuration
+    diag_check_services
+    diag_check_network
+    diag_report_summary
 }

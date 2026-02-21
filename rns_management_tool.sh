@@ -103,15 +103,8 @@ show_main_menu() {
     fi
 
     # Tool availability summary
-    local tool_count=0
-    [ "$HAS_RNSD" = true ] && ((tool_count++))
-    [ "$HAS_RNSTATUS" = true ] && ((tool_count++))
-    [ "$HAS_RNPATH" = true ] && ((tool_count++))
-    [ "$HAS_RNPROBE" = true ] && ((tool_count++))
-    [ "$HAS_RNCP" = true ] && ((tool_count++))
-    [ "$HAS_RNX" = true ] && ((tool_count++))
-    [ "$HAS_RNID" = true ] && ((tool_count++))
-    [ "$HAS_RNODECONF" = true ] && ((tool_count++))
+    local tool_count
+    tool_count=$(count_rns_tools)
     if [ "$tool_count" -eq 8 ]; then
         print_box_line "${GREEN}●${NC} RNS tools: ${tool_count}/8 available"
     elif [ "$tool_count" -gt 0 ]; then
@@ -314,15 +307,7 @@ if [ "${1:-}" = "--check" ]; then
 
     # 5. Tool discovery
     detect_available_tools 2>/dev/null
-    _tc=0
-    [ "$HAS_RNSD" = true ] && ((_tc++))
-    [ "$HAS_RNSTATUS" = true ] && ((_tc++))
-    [ "$HAS_RNPATH" = true ] && ((_tc++))
-    [ "$HAS_RNPROBE" = true ] && ((_tc++))
-    [ "$HAS_RNCP" = true ] && ((_tc++))
-    [ "$HAS_RNX" = true ] && ((_tc++))
-    [ "$HAS_RNID" = true ] && ((_tc++))
-    [ "$HAS_RNODECONF" = true ] && ((_tc++))
+    _tc=$(count_rns_tools)
     echo "[PASS] RNS tools: $_tc/8 available, python3=$HAS_PYTHON3, pip=$HAS_PIP"
     ((_check_pass++))
 

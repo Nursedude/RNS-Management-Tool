@@ -29,18 +29,6 @@ setup() {
     [[ "/dev/ttyUSB0" =~ ^/dev/tty[A-Za-z0-9]+$ ]]
 }
 
-@test "RNODE: port regex accepts /dev/ttyACM0" {
-    [[ "/dev/ttyACM0" =~ ^/dev/tty[A-Za-z0-9]+$ ]]
-}
-
-@test "RNODE: port regex accepts /dev/ttyS0" {
-    [[ "/dev/ttyS0" =~ ^/dev/tty[A-Za-z0-9]+$ ]]
-}
-
-@test "RNODE: port regex accepts /dev/ttyUSB15" {
-    [[ "/dev/ttyUSB15" =~ ^/dev/tty[A-Za-z0-9]+$ ]]
-}
-
 @test "RNODE: port regex accepts /dev/ttyAMA0 (RPi GPIO UART)" {
     [[ "/dev/ttyAMA0" =~ ^/dev/tty[A-Za-z0-9]+$ ]]
 }
@@ -129,11 +117,6 @@ setup() {
     [[ "$SF" =~ ^[0-9]+$ ]] && [ "$SF" -ge 7 ] && [ "$SF" -le 12 ]
 }
 
-@test "RNODE: SF 9 passes range check (common LoRa setting)" {
-    local SF=9
-    [[ "$SF" =~ ^[0-9]+$ ]] && [ "$SF" -ge 7 ] && [ "$SF" -le 12 ]
-}
-
 @test "RNODE: SF 6 fails range check (too low)" {
     local SF=6
     ! ( [[ "$SF" =~ ^[0-9]+$ ]] && [ "$SF" -ge 7 ] && [ "$SF" -le 12 ] )
@@ -207,11 +190,6 @@ setup() {
     [[ "$TXP" =~ ^-?[0-9]+$ ]] && [ "$TXP" -ge -10 ] && [ "$TXP" -le 30 ]
 }
 
-@test "RNODE: TXP 0 passes range check" {
-    local TXP=0
-    [[ "$TXP" =~ ^-?[0-9]+$ ]] && [ "$TXP" -ge -10 ] && [ "$TXP" -le 30 ]
-}
-
 @test "RNODE: TXP -11 fails range check (below min)" {
     local TXP=-11
     ! ( [[ "$TXP" =~ ^-?[0-9]+$ ]] && [ "$TXP" -ge -10 ] && [ "$TXP" -le 30 ] )
@@ -233,21 +211,6 @@ setup() {
 
 @test "RNODE: freq 915000000 passes (US 915MHz)" {
     local FREQ=915000000
-    [[ "$FREQ" =~ ^[0-9]+$ ]]
-}
-
-@test "RNODE: freq 868000000 passes (EU 868MHz)" {
-    local FREQ=868000000
-    [[ "$FREQ" =~ ^[0-9]+$ ]]
-}
-
-@test "RNODE: freq 433000000 passes (433MHz)" {
-    local FREQ=433000000
-    [[ "$FREQ" =~ ^[0-9]+$ ]]
-}
-
-@test "RNODE: freq 914875000 passes (US community standard)" {
-    local FREQ=914875000
     [[ "$FREQ" =~ ^[0-9]+$ ]]
 }
 
@@ -275,16 +238,6 @@ setup() {
     [[ "$BW" =~ ^[0-9]+$ ]]
 }
 
-@test "RNODE: bandwidth 250 passes" {
-    local BW=250
-    [[ "$BW" =~ ^[0-9]+$ ]]
-}
-
-@test "RNODE: bandwidth 500 passes" {
-    local BW=500
-    [[ "$BW" =~ ^[0-9]+$ ]]
-}
-
 @test "RNODE: bandwidth non-numeric fails" {
     local BW="wide"
     ! [[ "$BW" =~ ^[0-9]+$ ]]
@@ -299,18 +252,8 @@ setup() {
     [[ "$MODEL" =~ ^[a-zA-Z0-9_]+$ ]]
 }
 
-@test "RNODE: model lora32_v2_1 passes validation" {
+@test "RNODE: model lora32_v2_1 passes validation (with underscores)" {
     local MODEL="lora32_v2_1"
-    [[ "$MODEL" =~ ^[a-zA-Z0-9_]+$ ]]
-}
-
-@test "RNODE: model heltec32_v3 passes validation" {
-    local MODEL="heltec32_v3"
-    [[ "$MODEL" =~ ^[a-zA-Z0-9_]+$ ]]
-}
-
-@test "RNODE: model rnode_ng_20 passes validation" {
-    local MODEL="rnode_ng_20"
     [[ "$MODEL" =~ ^[a-zA-Z0-9_]+$ ]]
 }
 

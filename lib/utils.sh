@@ -134,19 +134,22 @@ detect_available_tools() {
         HAS_MESHCHAT=true
     fi
 
-    # Count available RNS tools
-    local rns_tool_count=0
-    [ "$HAS_RNSD" = true ] && ((rns_tool_count++))
-    [ "$HAS_RNSTATUS" = true ] && ((rns_tool_count++))
-    [ "$HAS_RNPATH" = true ] && ((rns_tool_count++))
-    [ "$HAS_RNPROBE" = true ] && ((rns_tool_count++))
-    [ "$HAS_RNCP" = true ] && ((rns_tool_count++))
-    [ "$HAS_RNX" = true ] && ((rns_tool_count++))
-    [ "$HAS_RNID" = true ] && ((rns_tool_count++))
-    [ "$HAS_RNODECONF" = true ] && ((rns_tool_count++))
-
-    log_message "Tools detected: RNS=$rns_tool_count/8 (rnsd=$HAS_RNSD rnstatus=$HAS_RNSTATUS rnpath=$HAS_RNPATH rnprobe=$HAS_RNPROBE rncp=$HAS_RNCP rnx=$HAS_RNX rnid=$HAS_RNID rnodeconf=$HAS_RNODECONF)"
+    log_message "Tools detected: RNS=$(count_rns_tools)/8 (rnsd=$HAS_RNSD rnstatus=$HAS_RNSTATUS rnpath=$HAS_RNPATH rnprobe=$HAS_RNPROBE rncp=$HAS_RNCP rnx=$HAS_RNX rnid=$HAS_RNID rnodeconf=$HAS_RNODECONF)"
     log_message "Dependencies: python3=$HAS_PYTHON3 pip=$HAS_PIP node=$HAS_NODE git=$HAS_GIT"
+}
+
+# Count available RNS tools (eliminates duplicate counting logic)
+count_rns_tools() {
+    local count=0
+    [ "$HAS_RNSD" = true ] && ((count++))
+    [ "$HAS_RNSTATUS" = true ] && ((count++))
+    [ "$HAS_RNPATH" = true ] && ((count++))
+    [ "$HAS_RNPROBE" = true ] && ((count++))
+    [ "$HAS_RNCP" = true ] && ((count++))
+    [ "$HAS_RNX" = true ] && ((count++))
+    [ "$HAS_RNID" = true ] && ((count++))
+    [ "$HAS_RNODECONF" = true ] && ((count++))
+    echo "$count"
 }
 
 # Step-based progress display for multi-step operations
@@ -256,7 +259,7 @@ show_error_help() {
             echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
             echo "  1) Check file/directory permissions"
             echo "  2) Try running with sudo if appropriate"
-            echo "  3) Verify you own the files: ls -la $context"
+            echo "  3) Verify you own the files: ls -la \"$context\""
             ;;
         "python")
             echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
@@ -288,7 +291,7 @@ show_error_help() {
             echo "  1) Check device is connected: ls /dev/ttyUSB* /dev/ttyACM*"
             echo "  2) Add user to dialout group: sudo usermod -aG dialout \$USER"
             echo "  3) Reconnect device and try again"
-            echo "  4) Check permissions: sudo chmod 666 $context"
+            echo "  4) Check permissions: sudo chmod 666 \"$context\""
             ;;
         "service")
             echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
@@ -315,9 +318,12 @@ check_service_status() {
     local service="$1"
     case "$service" in
         rnsd)
-            pgrep -x "rnsd" > /dev/null 2>&1 || \
-                pgrep -f "^rnsd\b" > /dev/null 2>&1 || \
-                pgrep -f "[r]nsd --daemon" > /dev/null 2>&1
+            # Prefer systemctl (single source of truth), fall back to exact pgrep
+            # Never use pgrep -f — it matches editors, grep, and the script itself
+            if command -v systemctl &>/dev/null && systemctl --user is-active rnsd.service &>/dev/null 2>&1; then
+                return 0
+            fi
+            pgrep -x "rnsd" > /dev/null 2>&1
             ;;
         meshtasticd)
             if command -v systemctl &>/dev/null && systemctl is-active --quiet meshtasticd 2>/dev/null; then
@@ -326,11 +332,11 @@ check_service_status() {
             pgrep -x "meshtasticd" > /dev/null 2>&1
             ;;
         nomadnet)
-            pgrep -x "nomadnet" > /dev/null 2>&1 || \
-                pgrep -f "^nomadnet\b" > /dev/null 2>&1
+            pgrep -x "nomadnet" > /dev/null 2>&1
             ;;
         meshchat)
-            pgrep -f "reticulum-meshchat" > /dev/null 2>&1
+            # Match node process running meshchat, not any process mentioning the string
+            pgrep -f "node.*reticulum-meshchat" > /dev/null 2>&1
             ;;
         *)
             pgrep -x "$service" > /dev/null 2>&1
@@ -343,7 +349,8 @@ is_rnsd_running() {
     check_service_status "rnsd"
 }
 
-# meshtasticd HTTP API health check (ported from meshforge meshtastic_http.py)
+# meshtasticd HTTP API health check (simplified from meshforge meshtastic_http.py)
+# Reads port from config first, falls back to common ports
 MESHTASTICD_HTTP_URL=""
 check_meshtasticd_http_api() {
     MESHTASTICD_HTTP_URL=""
@@ -352,43 +359,50 @@ check_meshtasticd_http_api() {
         return 1
     fi
 
-    local ports=(443 9443 80 4403)
-    local schemes
+    # Try to read configured port first (avoids probing 16 combinations)
+    local config_port=""
+    local config_path="/etc/meshtasticd/config.yaml"
+    if [ -r "$config_path" ]; then
+        config_port=$(grep -A2 "Webserver:" "$config_path" 2>/dev/null | grep "Port:" | awk '{print $2}' | tr -d '[:space:]')
+    fi
+
+    # Build port list: configured port first, then common fallbacks
+    local ports=()
+    [ -n "$config_port" ] && ports+=("$config_port")
+    for p in 443 9443 80 4403; do
+        [ "$p" != "$config_port" ] && ports+=("$p")
+    done
 
     for port in "${ports[@]}"; do
-        if [ "$port" -eq 80 ]; then
-            schemes=("http")
-        else
-            schemes=("https" "http")
+        local scheme="https"
+        [ "$port" -eq 80 ] && scheme="http"
+
+        local base_url="${scheme}://127.0.0.1:${port}"
+
+        # Single probe: JSON report endpoint
+        local response
+        if response=$(curl -sk --connect-timeout 2 --max-time 3 \
+            -H "Accept: application/json" \
+            "${base_url}/json/report" 2>/dev/null) && [ -n "$response" ]; then
+            local trimmed
+            trimmed="${response#"${response%%[![:space:]]*}"}"
+            if [[ "$trimmed" == "{"* ]]; then
+                MESHTASTICD_HTTP_URL="$base_url"
+                return 0
+            fi
         fi
 
-        for scheme in "${schemes[@]}"; do
-            local base_url="${scheme}://127.0.0.1:${port}"
-
-            local response
-            if response=$(curl -sk --connect-timeout 3 --max-time 5 \
-                -H "Accept: application/json" \
-                "${base_url}/json/report" 2>/dev/null) && [ -n "$response" ]; then
-                local trimmed
-                trimmed="${response#"${response%%[![:space:]]*}"}"
-                if [[ "$trimmed" == "{"* ]]; then
-                    MESHTASTICD_HTTP_URL="$base_url"
-                    return 0
-                fi
-            fi
-
-            local http_code
-            http_code=$(curl -sk --connect-timeout 3 --max-time 5 \
-                -o /dev/null -w "%{http_code}" \
-                -H "Accept: application/x-protobuf" \
-                "${base_url}/api/v1/fromradio" 2>/dev/null)
-            case "$http_code" in
-                200|204|400|404|405)
-                    MESHTASTICD_HTTP_URL="$base_url"
-                    return 0
-                    ;;
-            esac
-        done
+        # Fallback: check HTTP status on protobuf endpoint
+        local http_code
+        http_code=$(curl -sk --connect-timeout 2 --max-time 3 \
+            -o /dev/null -w "%{http_code}" \
+            "${base_url}/api/v1/fromradio" 2>/dev/null)
+        case "$http_code" in
+            200|204|400|404|405)
+                MESHTASTICD_HTTP_URL="$base_url"
+                return 0
+                ;;
+        esac
     done
 
     return 1
@@ -421,6 +435,21 @@ check_meshtasticd_webserver_config() {
     fi
 
     echo "Config has Webserver section — check meshtasticd logs if API unreachable"
+    return 0
+}
+
+# Validate RNS destination hash format (hex string, 20-64 chars)
+# Usage: validate_rns_hash "$hash" || return 1
+validate_rns_hash() {
+    local hash="$1"
+    if [ -z "$hash" ]; then
+        print_error "No destination hash provided"
+        return 1
+    fi
+    if [[ ! "$hash" =~ ^[0-9a-fA-F]{20,64}$ ]]; then
+        print_error "Invalid destination hash format (expected 20-64 hex characters)"
+        return 1
+    fi
     return 0
 }
 
@@ -507,8 +536,7 @@ get_cached_rns_version() {
     now=$(date +%s)
     local age=$(( now - _CACHE_RNS_TIME ))
     if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_RNS_VER" ]; then
-        _CACHE_RNS_VER=$(pip3 show rns 2>/dev/null | grep "^Version:" | awk '{print $2}')
-        [ -z "$_CACHE_RNS_VER" ] && _CACHE_RNS_VER=""
+        _CACHE_RNS_VER=$(get_installed_version "rns")
         _CACHE_RNS_TIME=$now
     fi
     echo "$_CACHE_RNS_VER"
@@ -519,8 +547,7 @@ get_cached_lxmf_version() {
     now=$(date +%s)
     local age=$(( now - _CACHE_LXMF_TIME ))
     if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_LXMF_VER" ]; then
-        _CACHE_LXMF_VER=$(pip3 show lxmf 2>/dev/null | grep "^Version:" | awk '{print $2}')
-        [ -z "$_CACHE_LXMF_VER" ] && _CACHE_LXMF_VER=""
+        _CACHE_LXMF_VER=$(get_installed_version "lxmf")
         _CACHE_LXMF_TIME=$now
     fi
     echo "$_CACHE_LXMF_VER"
