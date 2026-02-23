@@ -204,6 +204,8 @@ advanced_menu() {
                     create_backup
 
                     print_info "Removing configuration directories..."
+                    # Escape CWD before rm -rf (meshforge reinstall.sh pattern)
+                    cd "$REAL_HOME" || cd /tmp || cd /
                     [ -d "$REAL_HOME/.reticulum" ] && rm -rf "$REAL_HOME/.reticulum" && print_success "Removed ~/.reticulum"
                     [ -d "$REAL_HOME/.nomadnetwork" ] && rm -rf "$REAL_HOME/.nomadnetwork" && print_success "Removed ~/.nomadnetwork"
                     [ -d "$REAL_HOME/.lxmf" ] && rm -rf "$REAL_HOME/.lxmf" && print_success "Removed ~/.lxmf"

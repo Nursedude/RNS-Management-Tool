@@ -349,6 +349,28 @@ is_rnsd_running() {
     check_service_status "rnsd"
 }
 
+# Check if RNS shared instance is reachable (ported from meshforge service_check.py)
+# Uses 2-tier detection: domain socket (RNS v0.4.x+) then process check
+# Returns 0 if available, 1 if not. Echoes detection method on stdout.
+check_rns_shared_instance() {
+    local instance_name="${1:-default}"
+
+    # Tier 1: Check /proc/net/unix for RNS abstract domain socket (RNS v0.4.x+)
+    # This is the most reliable method — works even if rnsd was started by another user
+    if [ -r /proc/net/unix ] && grep -q "@rns/${instance_name}" /proc/net/unix 2>/dev/null; then
+        echo "socket"
+        return 0
+    fi
+
+    # Tier 2: Fall back to process check (always works for local rnsd)
+    if pgrep -x "rnsd" > /dev/null 2>&1; then
+        echo "process"
+        return 0
+    fi
+
+    return 1
+}
+
 # meshtasticd HTTP API health check (simplified from meshforge meshtastic_http.py)
 # Reads port from config first, falls back to common ports
 MESHTASTICD_HTTP_URL=""

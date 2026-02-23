@@ -669,14 +669,18 @@ setup_autostart() {
 
     local service_file="$REAL_HOME/.config/systemd/user/rnsd.service"
 
-    cat > "$service_file" << 'EOF'
+    # Resolve actual rnsd path (may be in ~/.local/bin/ for pip --user installs)
+    local rnsd_path
+    rnsd_path=$(command -v rnsd 2>/dev/null || echo "/usr/local/bin/rnsd")
+
+    cat > "$service_file" << EOF
 [Unit]
 Description=Reticulum Network Stack Daemon
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/rnsd
+ExecStart=$rnsd_path
 Restart=always
 RestartSec=5
 

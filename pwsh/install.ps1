@@ -181,7 +181,8 @@ function Install-RNODE {
                 Write-ColorOutput "Launching RNODE installer in WSL..." "Info"
                 $distros = Get-WSLDistribution
                 if ($distros.Count -gt 0) {
-                    wsl -d $distros[0] -- bash -c "curl -fsSL https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh | bash -s -- --rnode"
+                    # R7: Download to temp file before executing (avoids partial-download execution)
+                    wsl -d $distros[0] -- bash -c "tmpf=`$(mktemp) && curl -fsSL -o `$tmpf https://raw.githubusercontent.com/Nursedude/RNS-Management-Tool/main/rns_management_tool.sh && [ -s `$tmpf ] && bash `$tmpf --rnode; rm -f `$tmpf"
                 }
             } else {
                 Write-ColorOutput "WSL not available" "Error"

@@ -1,6 +1,7 @@
 # Security & Code Review — RNS Management Tool
 
-**Review Date:** 2026-02-21
+**Initial Review Date:** 2026-02-21 (Session 13)
+**Updated:** 2026-02-23 (Session 14 — MeshForge cross-audit + remediation)
 **Version Reviewed:** 0.3.5-beta
 **Reviewer:** Automated security audit (Claude)
 **Scope:** All Bash modules (`lib/*.sh`), PowerShell modules (`pwsh/*.ps1`), dispatchers, config templates, CI, and tests
@@ -389,4 +390,73 @@ The RNS Management Tool has a strong security foundation with well-implemented d
 
 ---
 
-*Review conducted as part of Session 13 — see SESSION_NOTES.md for development history.*
+*Initial review conducted as part of Session 13. Updated in Session 14 with MeshForge cross-audit and remediation.*
+
+---
+
+## Session 14 Addendum — MeshForge Cross-Audit (2026-02-23)
+
+### Overview
+
+Session 14 pulled recent improvements from [Nursedude/meshforge](https://github.com/Nursedude/meshforge) and performed a cross-audit, applying security patterns and fixes that benefit both projects. Additionally, 3 new security findings were identified and resolved.
+
+### Recommendations Resolved
+
+| Rec | Description | Resolution |
+|-----|-------------|------------|
+| **R3** | Restrictive `umask` for backup operations | Added `umask 077` around backup and export operations in `lib/backup.sh` |
+| **R5** | Remove RNODE function duplication | Removed 13 duplicated functions (~326 lines) from `lib/install.sh`; `lib/rnode.sh` is now single source of truth |
+| **R7** | Fix curl-pipe-bash in PowerShell WSL | Replaced pipe-to-bash with download-to-tempfile-then-execute in `pwsh/install.ps1` and `pwsh/rnode.ps1` |
+| **R8** | Consolidate PowerShell Export/Import | Replaced duplicate implementations in `pwsh/advanced.ps1` with delegation to canonical versions in `pwsh/backup.ps1` |
+| **R9** | Implement `--rnode` flag | Added `--rnode` flag handler in `rns_management_tool.sh` to jump directly to RNODE configuration |
+
+### Recommendations Still Open
+
+| Rec | Description | Priority | Notes |
+|-----|-------------|----------|-------|
+| **R1** | Checksum for NodeSource script | Minor | Low risk — HTTPS transport security sufficient for most use cases |
+| **R2** | Consider `set -u` (nounset) | Minor | Requires extensive testing; codebase uses defensive `${VAR:-}` patterns |
+| **R4** | Explicit `pgrep -f` documentation | Cosmetic | Existing comment adequate |
+| **R6** | Expand BATS test coverage | Medium | Installation/service paths still untested |
+
+### New Findings — Session 14
+
+#### N1: Hardcoded rnsd Path in Autostart Service (Moderate) — RESOLVED
+
+**File:** `lib/services.sh:679`
+
+The systemd user service file for auto-start hardcoded `ExecStart=/usr/local/bin/rnsd`. When rnsd is installed via `pip install --user` (common on non-root systems), the binary resides at `~/.local/bin/rnsd`, causing silent autostart failure.
+
+**Resolution:** Replaced with `$(command -v rnsd)` to dynamically resolve the actual binary location.
+
+#### N2: Missing Timeout on npm audit (Minor) — RESOLVED
+
+**File:** `lib/install.sh:879`
+
+`npm audit fix` ran without the `run_with_timeout` wrapper, potentially hanging indefinitely on slow or unreachable npm registries.
+
+**Resolution:** Wrapped with `run_with_timeout "$NETWORK_TIMEOUT"`.
+
+#### N3: Log File Permissions (Minor) — RESOLVED
+
+**File:** `lib/core.sh:82`
+
+The management log file (`rns_management.log`) was created with default umask permissions, potentially readable by other users. The log may contain file paths, system information, and operational details.
+
+**Resolution:** Added `chmod 600` on log file creation.
+
+### MeshForge-Sourced Improvements
+
+The following patterns were ported from [meshforge](https://github.com/Nursedude/meshforge):
+
+| Improvement | Source | Applied To |
+|-------------|--------|------------|
+| RNS domain socket detection (`/proc/net/unix`) | `service_check.py` commit `44007da` | `lib/utils.sh:check_rns_shared_instance()`, `lib/diagnostics.sh` |
+| Escape CWD before destructive ops | `scripts/reinstall.sh` commit `f477464` | `lib/advanced.sh` factory reset |
+| Download-then-execute (vs curl-pipe-bash) | `install.sh` | `pwsh/install.ps1`, `pwsh/rnode.ps1` |
+
+### Updated Security Rating
+
+**Overall Rating: A** (unchanged)
+
+All 6 security rules (RNS001-RNS006) remain compliant. 5 of 9 original recommendations now resolved. 3 new findings identified and resolved in the same session. No exploitable vulnerabilities found.

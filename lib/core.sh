@@ -79,6 +79,8 @@ SCRIPT_VERSION="0.3.5-beta"
 # BACKUP_DIR is set dynamically in create_backup() to avoid stale timestamps
 BACKUP_DIR=""
 UPDATE_LOG="$REAL_HOME/rns_management.log"
+# Ensure log file has restrictive permissions (may contain paths/system info)
+touch "$UPDATE_LOG" 2>/dev/null && chmod 600 "$UPDATE_LOG" 2>/dev/null || true
 LOG_MAX_BYTES=1048576   # 1MB rotation threshold (meshforge pattern)
 LOG_MAX_ROTATIONS=3     # Keep .log.1, .log.2, .log.3
 MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"

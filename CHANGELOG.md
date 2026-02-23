@@ -5,6 +5,27 @@ All notable changes to the RNS Management Tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-02-23
+
+### Security
+- **Resolved R5**: Removed 13 duplicated RNODE functions (~326 lines) from `lib/install.sh` — `lib/rnode.sh` is now single source of truth
+- **Resolved R7**: Replaced curl-pipe-bash in PowerShell WSL with download-to-tempfile-then-execute pattern
+- **Resolved R9**: Implemented `--rnode` flag in bash script for direct RNODE configuration access from PowerShell WSL
+- **Resolved R3**: Added restrictive `umask 077` for backup and export operations to protect identity keys
+- **Resolved R8**: Consolidated duplicate PowerShell Export/Import functions — `pwsh/advanced.ps1` now delegates to `pwsh/backup.ps1`
+- **Fixed N1**: Autostart service now dynamically resolves rnsd path instead of hardcoding `/usr/local/bin/rnsd`
+- **Fixed N2**: Added timeout wrapper to `npm audit fix` to prevent hangs on slow networks
+- **Fixed N3**: Log file now created with `chmod 600` permissions
+- Updated `SECURITY_REVIEW.md` with Session 14 cross-audit findings
+
+### Added
+- **RNS Domain Socket Detection**: Ported from MeshForge — `check_rns_shared_instance()` detects RNS via `/proc/net/unix` abstract domain sockets (RNS v0.4.x+), with process-check fallback
+- **Enhanced Diagnostics**: Service health check now reports RNS instance detection method (socket vs process)
+
+### Changed
+- Factory reset now escapes CWD before `rm -rf` operations (MeshForge safety pattern)
+- `lib/install.sh` reduced from 1170 to 845 lines after RNODE deduplication
+
 ## [0.3.5-beta] - 2026-02-15
 
 ### Security

@@ -120,6 +120,13 @@ diag_check_services() {
     if check_service_status "rnsd"; then
         print_success "rnsd daemon is running"
 
+        # RNS shared instance detection (ported from meshforge service_check.py)
+        local rns_method
+        rns_method=$(check_rns_shared_instance 2>/dev/null)
+        if [ -n "$rns_method" ]; then
+            echo "  RNS instance: detected via $rns_method"
+        fi
+
         local rnsd_pid
         rnsd_pid=$(pgrep -x "rnsd" 2>/dev/null | head -1)
         if [ -n "$rnsd_pid" ] && [ -d "/proc/$rnsd_pid" ]; then
@@ -139,8 +146,16 @@ diag_check_services() {
             fi
         fi
     else
-        print_warning "rnsd daemon is not running"
-        echo -e "  ${YELLOW}Fix: Start from Services menu or run: rnsd --daemon${NC}"
+        # Check if RNS shared instance exists even without rnsd process
+        # (e.g., started by another application)
+        local rns_method
+        rns_method=$(check_rns_shared_instance 2>/dev/null)
+        if [ -n "$rns_method" ]; then
+            print_info "RNS shared instance detected (via $rns_method) but rnsd not running as daemon"
+        else
+            print_warning "rnsd daemon is not running"
+            echo -e "  ${YELLOW}Fix: Start from Services menu or run: rnsd --daemon${NC}"
+        fi
         ((_DIAG_TOTAL_WARNINGS++))
     fi
 

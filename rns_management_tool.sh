@@ -259,6 +259,15 @@ if [ "$(uname)" != "Linux" ]; then
     exit 1
 fi
 
+# --rnode: Jump directly to RNODE configuration (used by PowerShell WSL integration)
+if [ "${1:-}" = "--rnode" ]; then
+    detect_environment
+    detect_available_tools
+    log_message "=== RNS Management Tool Started (--rnode mode) ==="
+    configure_rnode_interactive
+    exit $?
+fi
+
 # --check: Dry-run validation mode for CI
 # Validates syntax, function definitions, and environment without launching TUI
 if [ "${1:-}" = "--check" ]; then
