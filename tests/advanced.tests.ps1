@@ -38,10 +38,12 @@ Describe "Function Existence" {
 Describe "Factory Reset Safety: Reset-ToFactory" {
 
     BeforeAll {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Reset-ToFactory')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $Script:ResetBlock = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
+        $fn = $Script:AdvancedAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Reset-ToFactory'
+        }, $true) | Select-Object -First 1
+        $Script:ResetBlock = $fn.Extent.Text
     }
 
     It "Uses SupportsShouldProcess" {
@@ -86,10 +88,12 @@ Describe "Factory Reset Safety: Reset-ToFactory" {
 Describe "Import-Configuration: RNS004 Path Traversal Prevention" {
 
     BeforeAll {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Import-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $Script:ImportBlock = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
+        $fn = $Script:AdvancedAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Import-Configuration'
+        }, $true) | Select-Object -First 1
+        $Script:ImportBlock = $fn.Extent.Text
     }
 
     It "Validates .zip extension" {
@@ -146,10 +150,12 @@ Describe "Import-Configuration: RNS004 Path Traversal Prevention" {
 Describe "Export-Configuration" {
 
     BeforeAll {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Export-Configuration')
-        $fnEnd = $Script:AdvancedSource.IndexOf('function', $fnIdx + 20)
-        if ($fnEnd -lt 0) { $fnEnd = $Script:AdvancedSource.Length }
-        $Script:ExportBlock = $Script:AdvancedSource.Substring($fnIdx, $fnEnd - $fnIdx)
+        $fn = $Script:AdvancedAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Export-Configuration'
+        }, $true) | Select-Object -First 1
+        $Script:ExportBlock = $fn.Extent.Text
     }
 
     It "Uses Compress-Archive for zip creation" {
@@ -191,8 +197,12 @@ Describe "RNS001: Command Safety (No Eval)" {
 Describe "Advanced Menu Structure" {
 
     BeforeAll {
-        $fnIdx = $Script:AdvancedSource.IndexOf('function Show-AdvancedMenu')
-        $Script:MenuBlock = $Script:AdvancedSource.Substring($fnIdx)
+        $fn = $Script:AdvancedAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Show-AdvancedMenu'
+        }, $true) | Select-Object -First 1
+        $Script:MenuBlock = $fn.Extent.Text
     }
 
     It "Menu has back option (0) that returns" {
