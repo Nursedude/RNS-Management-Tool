@@ -604,5 +604,9 @@ invalidate_status_cache() {
     _CACHE_LXMF_TIME=0
     _CACHE_MTD_STATUS=""
     _CACHE_MTD_TIME=0
+    # Clear pip version cache (defined in lib/install.sh)
+    if declare -p _VERSION_CACHE &>/dev/null 2>&1; then
+        _VERSION_CACHE=()
+    fi
     detect_available_tools
 }

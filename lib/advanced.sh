@@ -201,7 +201,12 @@ advanced_menu() {
 
                 if [ "$CONFIRM" = "RESET" ]; then
                     print_info "Creating final backup before reset..."
-                    create_backup
+                    if ! create_backup; then
+                        print_error "Backup failed — aborting factory reset to protect your data"
+                        log_error "Factory reset aborted: backup creation failed"
+                        pause_for_input
+                        continue
+                    fi
 
                     print_info "Removing configuration directories..."
                     [ -d "$REAL_HOME/.reticulum" ] && rm -rf "$REAL_HOME/.reticulum" && print_success "Removed ~/.reticulum"

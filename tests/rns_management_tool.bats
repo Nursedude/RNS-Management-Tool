@@ -297,7 +297,7 @@ teardown() {
     # Function is now in lib/utils.sh
     local utils="$LIB_DIR/utils.sh"
     [ -f "$utils" ] || utils="$MAIN_SCRIPT"
-    grep -A10 'invalidate_status_cache()' "$utils" | grep -q 'detect_available_tools'
+    grep -A15 'invalidate_status_cache()' "$utils" | grep -q 'detect_available_tools'
 }
 
 @test "menu_item helper function exists" {

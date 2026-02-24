@@ -162,8 +162,9 @@ export_configuration() {
     if [ -d "$REAL_HOME/.reticulum" ] || [ -d "$REAL_HOME/.nomadnetwork" ] || [ -d "$REAL_HOME/.lxmf" ]; then
         print_info "Creating export archive..."
 
-        # Create temporary directory for export
+        # Create temporary directory for export (trap ensures cleanup on any exit path)
         TEMP_EXPORT=$(mktemp -d)
+        trap 'rm -rf "$TEMP_EXPORT" 2>/dev/null' RETURN
 
         [ -d "$REAL_HOME/.reticulum" ] && cp -r "$REAL_HOME/.reticulum" "$TEMP_EXPORT/"
         [ -d "$REAL_HOME/.nomadnetwork" ] && cp -r "$REAL_HOME/.nomadnetwork" "$TEMP_EXPORT/"
@@ -189,6 +190,17 @@ import_configuration() {
     echo -n "Archive path: "
     read -r IMPORT_FILE
 
+    # Sanitize input path: reject empty or paths with null bytes
+    if [[ -z "$IMPORT_FILE" ]] || [[ "$IMPORT_FILE" == *$'\0'* ]]; then
+        print_error "Invalid file path"
+        return 1
+    fi
+    # Resolve to absolute path without following symlinks
+    IMPORT_FILE=$(realpath -s "$IMPORT_FILE" 2>/dev/null) || {
+        print_error "Cannot resolve path: $IMPORT_FILE"
+        return 1
+    }
+
     if [ ! -f "$IMPORT_FILE" ]; then
         print_error "File not found: $IMPORT_FILE"
     elif [[ ! "$IMPORT_FILE" =~ \.tar\.gz$ ]]; then
@@ -201,6 +213,13 @@ import_configuration() {
         if tar -tzf "$IMPORT_FILE" 2>/dev/null | grep -qE '(^/|\.\./)'; then
             print_error "Security: Archive contains invalid paths (absolute or traversal)"
             log_message "SECURITY: Rejected archive with invalid paths: $IMPORT_FILE"
+            return 1
+        fi
+
+        # Check for symlink entries (potential symlink attack — adapted from meshforge)
+        if tar -tvf "$IMPORT_FILE" 2>/dev/null | grep -qE '^l'; then
+            print_error "Security: Archive contains symbolic links (potential symlink attack)"
+            log_message "SECURITY: Rejected archive with symlinks: $IMPORT_FILE"
             return 1
         fi
 
@@ -225,7 +244,7 @@ import_configuration() {
             create_backup
 
             print_info "Importing configuration..."
-            if tar -xzf "$IMPORT_FILE" -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
+            if tar -xzf "$IMPORT_FILE" --no-same-owner -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
                 print_success "Configuration imported successfully"
                 log_message "Imported configuration from: $IMPORT_FILE"
             else
