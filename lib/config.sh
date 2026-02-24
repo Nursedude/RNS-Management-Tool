@@ -57,12 +57,14 @@ apply_config_template() {
             esac
             if [ -f "$template_file" ]; then
                 echo ""
-                head -n 80 "$template_file"
+                local display_lines=$(($(tput lines 2>/dev/null || echo 40) - 5))
+                [ "$display_lines" -lt 20 ] && display_lines=20
+                head -n "$display_lines" "$template_file"
                 local total_lines
                 total_lines=$(wc -l < "$template_file")
-                if [ "$total_lines" -gt 80 ]; then
+                if [ "$total_lines" -gt "$display_lines" ]; then
                     echo ""
-                    print_info "Showing first 80 of $total_lines lines"
+                    print_info "Showing first $display_lines of $total_lines lines"
                 fi
             fi
             return 0
@@ -135,14 +137,14 @@ apply_config_template() {
 edit_config_file() {
     print_section "Edit Configuration"
 
-    local editor="${EDITOR:-${VISUAL:-nano}}"
-
-    # Verify editor is available
-    if ! command -v "$editor" &>/dev/null; then
-        editor="nano"
-        if ! command -v "$editor" &>/dev/null; then
-            editor="vi"
-        fi
+    # Select available editor: prefer $EDITOR, then $VISUAL, then nano, then vi
+    local editor=""
+    for candidate in "${EDITOR:-}" "${VISUAL:-}" nano vi; do
+        [ -n "$candidate" ] && command -v "$candidate" &>/dev/null && editor="$candidate" && break
+    done
+    if [ -z "$editor" ]; then
+        print_error "No text editor found (tried \$EDITOR, nano, vi)"
+        return 1
     fi
 
     echo -e "${BOLD}Select file to edit (using $editor):${NC}\n"
@@ -270,10 +272,12 @@ view_config_files() {
             if [ -f "$REAL_HOME/.reticulum/config" ]; then
                 print_section "Reticulum Configuration"
                 echo -e "${CYAN}File: ~/.reticulum/config${NC}\n"
-                head -n 100 "$REAL_HOME/.reticulum/config"
-                if [ "$(wc -l < "$REAL_HOME/.reticulum/config")" -gt 100 ]; then
+                local display_lines=$(($(tput lines 2>/dev/null || echo 40) - 5))
+                [ "$display_lines" -lt 20 ] && display_lines=20
+                head -n "$display_lines" "$REAL_HOME/.reticulum/config"
+                if [ "$(wc -l < "$REAL_HOME/.reticulum/config")" -gt "$display_lines" ]; then
                     echo ""
-                    print_info "Showing first 100 lines. Use 'cat ~/.reticulum/config' for full file."
+                    print_info "Showing first $display_lines lines. Use 'cat ~/.reticulum/config' for full file."
                 fi
             fi
             ;;
@@ -281,14 +285,18 @@ view_config_files() {
             if [ -f "$REAL_HOME/.nomadnetwork/config" ]; then
                 print_section "NomadNet Configuration"
                 echo -e "${CYAN}File: ~/.nomadnetwork/config${NC}\n"
-                head -n 100 "$REAL_HOME/.nomadnetwork/config"
+                local display_lines=$(($(tput lines 2>/dev/null || echo 40) - 5))
+                [ "$display_lines" -lt 20 ] && display_lines=20
+                head -n "$display_lines" "$REAL_HOME/.nomadnetwork/config"
             fi
             ;;
         3)
             if [ -f "$REAL_HOME/.lxmf/config" ]; then
                 print_section "LXMF Configuration"
                 echo -e "${CYAN}File: ~/.lxmf/config${NC}\n"
-                head -n 100 "$REAL_HOME/.lxmf/config"
+                local display_lines=$(($(tput lines 2>/dev/null || echo 40) - 5))
+                [ "$display_lines" -lt 20 ] && display_lines=20
+                head -n "$display_lines" "$REAL_HOME/.lxmf/config"
             fi
             ;;
         0|"")

@@ -10,6 +10,7 @@
 # Usage:
 #   ./scripts/lint.sh              # Lint all bash source files
 #   ./scripts/lint.sh lib/rnode.sh # Lint specific file
+#   ./scripts/lint.sh --staged     # Lint only git-staged files (for pre-commit hooks)
 #########################################################
 
 set -o pipefail
@@ -95,12 +96,46 @@ lint_file() {
                 "pip install without timeout wrapper — use run_with_timeout"
         fi
 
+        # RNS003: Radio parameters added to CMD_ARGS should have range validation nearby
+        if [[ "$line" =~ CMD_ARGS\+=.*--(sf|cr|txp|freq|bw) ]] && [[ "$filepath" != *"test"* ]]; then
+            local context
+            context=$(head -n "$lineno" "$filepath" | tail -n 12)
+            if ! echo "$context" | grep -qE '\-ge.*\-le|\-lt.*\-gt|\^[0-9]+\$|\^\-\??\[0-9\]' 2>/dev/null; then
+                report "W" "$filepath" "$lineno" "RNS003" \
+                    "Radio parameter added to CMD_ARGS without visible range validation nearby"
+            fi
+        fi
+
+        # RNS005: Destructive operations (rm -rf) should have confirmation nearby
+        if [[ "$line" =~ rm[[:space:]]+-rf ]] && [[ "$filepath" != *"test"* ]]; then
+            local context
+            context=$(head -n "$lineno" "$filepath" | tail -n 15)
+            if ! echo "$context" | grep -qE 'confirm_action|CONFIRM.*RESET|y/N|Y/n|cleanup_on_exit|TEMP_EXPORT|mktemp|TMPDIR' 2>/dev/null; then
+                report "W" "$filepath" "$lineno" "RNS005" \
+                    "rm -rf without visible confirmation or temp-dir context nearby"
+            fi
+        fi
+
+        # RNS006 extension: rnodeconf calls without timeout protection
+        if [[ "$line" =~ [^_a-zA-Z]rnodeconf[[:space:]] ]] && \
+           [[ "$line" != *"run_with_timeout"* ]] && [[ "$line" != *"command -v"* ]] && \
+           [[ "$line" != *"--version"* ]] && [[ "$line" != *"--help"* ]] && \
+           [[ "$line" != *"console"* ]] && [[ "$filepath" != *"test"* ]]; then
+            report "W" "$filepath" "$lineno" "RNS006" \
+                "rnodeconf call without timeout wrapper — use run_with_timeout"
+        fi
+
     done < "$filepath"
 }
 
 # Determine files to lint
 FILES=()
-if [ $# -gt 0 ]; then
+if [ "${1:-}" = "--staged" ]; then
+    # Lint only git-staged .sh files (for pre-commit hook integration)
+    while IFS= read -r f; do
+        [[ "$f" == *.sh ]] && [ -f "$f" ] && FILES+=("$f")
+    done < <(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+elif [ $# -gt 0 ]; then
     FILES=("$@")
 else
     # Default: all bash source files (excluding tests — they intentionally test patterns)

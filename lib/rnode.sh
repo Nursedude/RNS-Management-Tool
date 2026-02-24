@@ -36,7 +36,7 @@ rnode_autoinstall() {
     if confirm_action "Continue?" "y"; then
         print_info "Running rnodeconf --autoinstall..."
         echo ""
-        rnodeconf --autoinstall 2>&1 | tee -a "$UPDATE_LOG"
+        run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf --autoinstall 2>&1 | tee -a "$UPDATE_LOG"
 
         if [ "${PIPESTATUS[0]}" -eq 0 ]; then
             print_success "RNODE firmware installed successfully!"
@@ -53,7 +53,7 @@ rnode_autoinstall() {
 rnode_list_devices() {
     print_section "Supported RNODE Devices"
     echo -e "${CYAN}Listing supported devices...${NC}\n"
-    rnodeconf --list 2>&1 | tee -a "$UPDATE_LOG"
+    run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf --list 2>&1 | tee -a "$UPDATE_LOG"
 }
 
 # RNODE: Flash specific device
@@ -63,7 +63,7 @@ rnode_flash_device() {
     device_port=$(rnode_get_device_port) || return 1
 
     print_info "Flashing device at $device_port..."
-    rnodeconf "$device_port" 2>&1 | tee -a "$UPDATE_LOG"
+    run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf "$device_port" 2>&1 | tee -a "$UPDATE_LOG"
 }
 
 # RNODE: Update existing device
@@ -73,7 +73,7 @@ rnode_update_device() {
     device_port=$(rnode_get_device_port) || return 1
 
     print_info "Updating device at $device_port..."
-    rnodeconf "$device_port" --update 2>&1 | tee -a "$UPDATE_LOG"
+    run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf "$device_port" --update 2>&1 | tee -a "$UPDATE_LOG"
 }
 
 # RNODE: Get device information
@@ -83,7 +83,7 @@ rnode_get_info() {
     device_port=$(rnode_get_device_port) || return 1
 
     print_info "Getting device information..."
-    rnodeconf "$device_port" --info 2>&1 | tee -a "$UPDATE_LOG"
+    run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf "$device_port" --info 2>&1 | tee -a "$UPDATE_LOG"
 }
 
 # RNODE: Configure radio parameters
@@ -158,7 +158,7 @@ rnode_configure_radio() {
 
     echo ""
     print_info "Executing: rnodeconf ${CMD_ARGS[*]}"
-    rnodeconf "${CMD_ARGS[@]}" 2>&1 | tee -a "$UPDATE_LOG"
+    run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf "${CMD_ARGS[@]}" 2>&1 | tee -a "$UPDATE_LOG"
 }
 
 # RNODE: Set device model and platform
@@ -202,7 +202,7 @@ rnode_set_model() {
 
     echo ""
     print_info "Executing: rnodeconf ${CMD_ARGS[*]}"
-    rnodeconf "${CMD_ARGS[@]}" 2>&1 | tee -a "$UPDATE_LOG"
+    run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf "${CMD_ARGS[@]}" 2>&1 | tee -a "$UPDATE_LOG"
 }
 
 # RNODE: View/edit EEPROM
@@ -212,7 +212,7 @@ rnode_eeprom() {
     device_port=$(rnode_get_device_port) || return 1
 
     print_info "Reading device EEPROM..."
-    rnodeconf "$device_port" --eeprom 2>&1 | tee -a "$UPDATE_LOG"
+    run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf "$device_port" --eeprom 2>&1 | tee -a "$UPDATE_LOG"
 }
 
 # RNODE: Update bootloader
@@ -228,7 +228,7 @@ rnode_bootloader() {
     # RNS005: Confirmation for destructive actions
     if confirm_action "Are you sure you want to update the bootloader?"; then
         print_info "Updating bootloader..."
-        rnodeconf "$device_port" --rom 2>&1 | tee -a "$UPDATE_LOG"
+        run_with_timeout "$RNODECONF_TIMEOUT" rnodeconf "$device_port" --rom 2>&1 | tee -a "$UPDATE_LOG"
     else
         print_info "Bootloader update cancelled"
     fi

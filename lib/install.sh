@@ -308,10 +308,14 @@ install_rnode_tools() {
 # Component Installation Functions
 #########################################################
 
+declare -A _VERSION_CACHE=()
 get_installed_version() {
     local package=$1
-    local pip="${PIP_CMD:-pip3}"
-    "$pip" show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}'
+    if [ -z "${_VERSION_CACHE[$package]+x}" ]; then
+        local pip="${PIP_CMD:-pip3}"
+        _VERSION_CACHE[$package]=$("$pip" show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    fi
+    echo "${_VERSION_CACHE[$package]}"
 }
 
 update_pip_package() {
@@ -673,7 +677,7 @@ install_sideband() {
             install_sideband_source
             ;;
         3)
-            download_sideband_appimage
+            show_sideband_appimage_info
             ;;
         4)
             show_sideband_platform_instructions
@@ -753,13 +757,13 @@ install_sideband_source() {
         if confirm_action "Update existing installation?" "y"; then
             pushd "$SIDEBAND_DIR" > /dev/null || return 1
             print_info "Updating from git..."
-            git pull origin main 2>&1 | tee -a "$UPDATE_LOG"
+            retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git pull origin main 2>&1 | tee -a "$UPDATE_LOG"
         else
             return 1
         fi
     else
         print_info "Cloning Sideband repository..."
-        if run_with_timeout "$GIT_TIMEOUT" git clone https://github.com/markqvist/Sideband.git "$SIDEBAND_DIR" 2>&1 | tee -a "$UPDATE_LOG"; then
+        if retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git clone https://github.com/markqvist/Sideband.git "$SIDEBAND_DIR" 2>&1 | tee -a "$UPDATE_LOG"; then
             pushd "$SIDEBAND_DIR" > /dev/null || return 1
         else
             print_error "Failed to clone Sideband repository"
@@ -780,7 +784,7 @@ install_sideband_source() {
     fi
 }
 
-download_sideband_appimage() {
+show_sideband_appimage_info() {
     print_section "Downloading Sideband AppImage"
 
     local appimage_url="https://github.com/markqvist/Sideband/releases/latest"
