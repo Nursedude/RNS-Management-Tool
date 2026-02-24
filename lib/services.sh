@@ -76,9 +76,11 @@ start_services() {
                 print_success "rnsd daemon started"
                 log_message "Started rnsd daemon successfully"
 
-                # Show status
-                print_info "Network status:"
-                rnstatus 2>&1 | head -n 15
+                # Show status (only if rnstatus is available)
+                if [ "$HAS_RNSTATUS" = true ]; then
+                    print_info "Network status:"
+                    rnstatus 2>&1 | head -n 15
+                fi
             else
                 print_error "rnsd failed to start after ${max_wait}s"
                 show_error_help "service" ""
@@ -361,6 +363,7 @@ handle_remote_command() {
         echo -n "Command to execute: "
         read -r RNX_CMD
         if [ -n "$RNX_CMD" ]; then
+            log_message "rnx remote command: dest=$RNX_DEST cmd=$RNX_CMD"
             print_info "Executing on $RNX_DEST: $RNX_CMD"
             rnx "$RNX_DEST" "$RNX_CMD" 2>&1
         else
@@ -473,12 +476,19 @@ meshtasticd_stop() {
     else
         print_info "Stopping meshtasticd service..."
         if sudo systemctl stop meshtasticd 2>&1; then
-            sleep 2
+            # Poll with timeout instead of hardcoded sleep (consistent with rnsd pattern)
+            local wait_count=0
+            local max_wait=10
+            while check_service_status "meshtasticd" && [ $wait_count -lt $max_wait ]; do
+                sleep 1
+                ((wait_count++))
+            done
             if ! check_service_status "meshtasticd"; then
                 print_success "meshtasticd stopped"
                 log_message "Stopped meshtasticd service"
             else
-                print_warning "meshtasticd may still be stopping..."
+                print_warning "meshtasticd may still be running after ${max_wait}s"
+                log_warn "meshtasticd did not stop within ${max_wait}s"
             fi
         else
             print_error "Failed to stop meshtasticd"

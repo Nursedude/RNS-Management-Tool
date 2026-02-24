@@ -136,6 +136,29 @@ detect_available_tools() {
 
     log_message "Tools detected: RNS=$(count_rns_tools)/8 (rnsd=$HAS_RNSD rnstatus=$HAS_RNSTATUS rnpath=$HAS_RNPATH rnprobe=$HAS_RNPROBE rncp=$HAS_RNCP rnx=$HAS_RNX rnid=$HAS_RNID rnodeconf=$HAS_RNODECONF)"
     log_message "Dependencies: python3=$HAS_PYTHON3 pip=$HAS_PIP node=$HAS_NODE git=$HAS_GIT"
+
+    # Dependency version validation (adapted from meshforge dependency_guard.py)
+    # Log warnings for outdated versions, don't block startup
+    if [ "$HAS_PYTHON3" = true ]; then
+        local pyver
+        pyver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+        if [ -n "$pyver" ]; then
+            local pymajor pyminor
+            pymajor="${pyver%%.*}"
+            pyminor="${pyver##*.}"
+            if [ "$pymajor" -lt 3 ] || { [ "$pymajor" -eq 3 ] && [ "$pyminor" -lt 7 ]; }; then
+                log_warn "Python $pyver detected — RNS requires 3.7+"
+            fi
+        fi
+    fi
+
+    if [ "$HAS_NODE" = true ] && [ "$HAS_MESHCHAT" = true ]; then
+        local nodever
+        nodever=$(node --version 2>/dev/null | sed 's/v//' | cut -d. -f1)
+        if [ -n "$nodever" ] && [ "$nodever" -lt 18 ] 2>/dev/null; then
+            log_warn "Node.js v${nodever} detected — MeshChat requires 18+"
+        fi
+    fi
 }
 
 # Count available RNS tools (eliminates duplicate counting logic)
@@ -553,6 +576,23 @@ get_cached_lxmf_version() {
     echo "$_CACHE_LXMF_VER"
 }
 
+# Cached meshtasticd status (avoids hitting systemctl+curl on every menu redraw)
+# Adapted from meshforge service_check.py caching pattern
+get_cached_meshtasticd_status() {
+    local now
+    now=$(date +%s)
+    local age=$(( now - _CACHE_MTD_TIME ))
+    if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_MTD_STATUS" ]; then
+        if check_service_status "meshtasticd"; then
+            _CACHE_MTD_STATUS="running"
+        else
+            _CACHE_MTD_STATUS="stopped"
+        fi
+        _CACHE_MTD_TIME=$now
+    fi
+    echo "$_CACHE_MTD_STATUS"
+}
+
 # Invalidate all status caches (call after install/service changes)
 invalidate_status_cache() {
     _CACHE_RNSD_STATUS=""
@@ -562,5 +602,7 @@ invalidate_status_cache() {
     _CACHE_RNS_TIME=0
     _CACHE_LXMF_VER=""
     _CACHE_LXMF_TIME=0
+    _CACHE_MTD_STATUS=""
+    _CACHE_MTD_TIME=0
     detect_available_tools
 }

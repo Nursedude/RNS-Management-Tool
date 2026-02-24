@@ -88,16 +88,9 @@ get_status_line() {
         parts+=("rns:${YELLOW}--${NC}")
     fi
 
-    # Tool count
-    local tc=0
-    [ "$HAS_RNSD" = true ] && ((tc++))
-    [ "$HAS_RNSTATUS" = true ] && ((tc++))
-    [ "$HAS_RNPATH" = true ] && ((tc++))
-    [ "$HAS_RNPROBE" = true ] && ((tc++))
-    [ "$HAS_RNCP" = true ] && ((tc++))
-    [ "$HAS_RNX" = true ] && ((tc++))
-    [ "$HAS_RNID" = true ] && ((tc++))
-    [ "$HAS_RNODECONF" = true ] && ((tc++))
+    # Tool count (uses canonical count_rns_tools from utils.sh)
+    local tc
+    tc=$(count_rns_tools)
     parts+=("tools:${tc}/8")
 
     # SSH indicator (meshforge hardware detection pattern)
