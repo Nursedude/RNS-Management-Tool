@@ -159,6 +159,8 @@ _CACHE_RNS_VER=""
 _CACHE_RNS_TIME=0
 _CACHE_LXMF_VER=""
 _CACHE_LXMF_TIME=0
+_CACHE_MTD_STATUS=""
+_CACHE_MTD_TIME=0
 
 # Log levels (adapted from meshforge logging_config.py)
 LOG_LEVEL_DEBUG=0

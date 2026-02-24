@@ -36,6 +36,15 @@ jobs:
             shellcheck -x -S warning "$module"
           done
 
+  custom-lint:
+    name: Custom Linter (RNS001-RNS006)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run project-specific linter
+        run: bash scripts/lint.sh
+
   check-mode:
     name: Dry-Run Check Mode
     runs-on: ubuntu-latest

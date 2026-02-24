@@ -40,8 +40,9 @@ teardown() {
 }
 
 @test "Script does not use eval" {
-    # RNS001: No eval usage for security (exclude comments)
-    ! grep -v '^\s*#' $COMBINED_SOURCE | grep -q '\beval\b'
+    # RNS001: No eval usage for security
+    # Exclude comments, grep patterns, and echo/printf strings that reference eval
+    ! grep -v '^\s*#' $COMBINED_SOURCE | grep -v 'grep.*eval' | grep -v 'echo.*eval' | grep -v 'printf.*eval' | grep -v '_eval_' | grep -q '\beval\b'
 }
 
 @test "Script does not use shell=True pattern" {

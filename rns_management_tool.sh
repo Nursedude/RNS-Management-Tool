@@ -314,6 +314,53 @@ if [ "${1:-}" = "--check" ]; then
         echo "[INFO] Reticulum config not found (first run expected)"
     fi
 
+    # 7. Config templates exist and are non-empty
+    if [ -d "$SCRIPT_DIR/config_templates" ]; then
+        _tmpl_ok=true
+        for _tmpl in minimal.conf lora_rnode.conf tcp_client.conf transport_node.conf; do
+            _tmpl_path="$SCRIPT_DIR/config_templates/$_tmpl"
+            if [ ! -f "$_tmpl_path" ]; then
+                echo "[FAIL] Missing config template: $_tmpl"
+                _tmpl_ok=false
+                ((_check_fail++))
+            elif [ ! -s "$_tmpl_path" ]; then
+                echo "[FAIL] Empty config template: $_tmpl"
+                _tmpl_ok=false
+                ((_check_fail++))
+            fi
+        done
+        if [ "$_tmpl_ok" = true ]; then
+            echo "[PASS] 4 config templates present and non-empty"
+            ((_check_pass++))
+        fi
+    fi
+
+    # 8. Security: verify no eval usage in source files (RNS001)
+    _eval_found=false
+    for _src in "$SCRIPT_DIR"/lib/*.sh; do
+        if grep -nE '(^|[^_a-zA-Z])eval ' "$_src" 2>/dev/null | grep -v '^\s*#' | grep -q .; then
+            echo "[FAIL] eval usage found in $(basename "$_src")"
+            _eval_found=true
+            ((_check_fail++))
+        fi
+    done
+    if [ "$_eval_found" = false ]; then
+        echo "[PASS] No eval usage (RNS001 compliant)"
+        ((_check_pass++))
+    fi
+
+    # 9. ShellCheck (if available, informational only)
+    if command -v shellcheck &>/dev/null; then
+        if shellcheck -x -S warning "$SCRIPT_DIR/rns_management_tool.sh" &>/dev/null; then
+            echo "[PASS] ShellCheck: main script clean"
+            ((_check_pass++))
+        else
+            echo "[WARN] ShellCheck: warnings in main script (run shellcheck -x for details)"
+        fi
+    else
+        echo "[INFO] ShellCheck not installed (optional)"
+    fi
+
     echo ""
     echo "Validation passed: $_check_pass checks OK, $_check_fail failures"
     [ "$_check_fail" -gt 0 ] && exit 1
