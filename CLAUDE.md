@@ -71,8 +71,9 @@ graph TB
 ├── rns_management_tool.sh          # Main dispatcher (326 lines)
 ├── rns_management_tool.ps1         # Windows PowerShell dispatcher (144 lines)
 │
-├── lib/                            # Bash modules (10 files, ~4,685 lines)
+├── lib/                            # Bash modules (11 files, ~4,850 lines)
 │   ├── core.sh                     # Terminal detection, colors, home resolution, globals
+│   ├── validation.sh               # Centralized input validation (RNS002-RNS004)
 │   ├── utils.sh                    # Timeout, retry, logging, caching, service checks
 │   ├── ui.sh                       # Print functions, box drawing, menus, help
 │   ├── install.sh                  # Prerequisites, ecosystem, MeshChat, Sideband
@@ -100,25 +101,34 @@ graph TB
 │   ├── tcp_client.conf             # Internet connectivity via community nodes
 │   └── transport_node.conf         # Full routing node
 │
-├── tests/                          # Test suites (~4,462 lines)
+├── tests/                          # Test suites (~5,200 lines)
 │   ├── smoke_test.sh               # 183 assertions across 8 sections
 │   ├── rns_management_tool.bats    # 63 BATS tests
 │   ├── hardware_validation.bats    # 92 BATS tests (RNODE hardware safety)
-│   ├── integration_tests.bats      # 106 BATS tests (service, backup, platform)
+│   ├── integration_tests.bats      # 140+ BATS tests (service, backup, platform, behavioral)
+│   ├── regression_guards.bats      # 30+ BATS tests (architectural invariant prevention)
 │   ├── run_bats_compat.sh          # Lightweight BATS-compatible test runner
 │   ├── rnode.tests.ps1             # 57 Pester tests
 │   ├── services.tests.ps1          # 61 Pester tests
 │   ├── backup.tests.ps1            # 48 Pester tests
 │   └── *.tests.ps1                 # 7 more Pester suites (343 total across 9 files)
 │
-├── .github/workflows/lint.yml      # CI: shellcheck, check-mode, smoke-test, bats, powershell, pester
+├── scripts/                        # Development and verification scripts
+│   ├── lint.sh                     # Custom linter (RNS001-RNS006)
+│   └── verify_install.sh           # Post-install verification (colored/quiet/JSON)
+│
+├── .githooks/                      # Git hooks (setup: git config core.hooksPath .githooks)
+│   └── pre-commit                  # Enforces syntax + linter on every commit
+│
+├── .github/workflows/lint.yml      # CI: shellcheck, custom-lint, check-mode, smoke-test, bats, powershell, pester
 │
 ├── README.md                       # Primary project documentation
 ├── CLAUDE.md                       # THIS FILE - Development guide
 ├── QUICKSTART.md                   # 5-minute setup guide
 ├── CHANGELOG.md                    # Version history (semantic versioning)
 ├── SESSION_NOTES.md                # Development session history
-└── SECURITY_REVIEW.md              # Security & code review (Session 13)
+├── SECURITY_REVIEW.md              # Security & code review (Session 13)
+└── PERSISTENT_ISSUES.md            # Recurring issues & resolution patterns
 ```
 
 ---
@@ -237,12 +247,20 @@ for f in lib/*.sh; do shellcheck -x -S warning "$f"; done
 bats tests/rns_management_tool.bats
 bats tests/hardware_validation.bats
 bats tests/integration_tests.bats
+bats tests/regression_guards.bats
 
 # CI dry-run
 ./rns_management_tool.sh --check
 
+# Post-install verification
+./scripts/verify_install.sh          # Colored output
+./scripts/verify_install.sh --json   # Machine-readable
+
 # PowerShell syntax check
 pwsh -NoProfile -Command "& { Get-Content rns_management_tool.ps1 | Out-Null }"
+
+# Pre-commit hook setup (enforces linter + syntax on every commit)
+git config core.hooksPath .githooks
 ```
 
 ### Commit Message Format
@@ -262,6 +280,8 @@ docs: update CLAUDE.md with security rules
 ---
 
 ## Known Issues & Workarounds
+
+See [PERSISTENT_ISSUES.md](PERSISTENT_ISSUES.md) for detailed root causes, fixes, and regression guards.
 
 | Issue | Platform | Status |
 |-------|----------|--------|
@@ -353,13 +373,14 @@ shellcheck -x -S warning rns_management_tool.sh
 
 ## Project Metrics
 
-- **Bash:** 326 lines (main) + 4,685 lines (10 lib/ modules) = ~5,011 lines
+- **Bash:** 330 lines (main) + 4,850 lines (11 lib/ modules) = ~5,180 lines
 - **PowerShell:** 144 lines (main) + 2,562 lines (9 pwsh/ modules) = ~2,706 lines
-- **Tests:** ~4,462 lines across 14 test files (787+ assertions)
-- **Functions:** 134+ across all bash modules
-- **Markdown:** 6 documentation files (including SECURITY_REVIEW.md)
+- **Tests:** ~5,200 lines across 15 test files (850+ assertions)
+- **Functions:** 140+ across all bash modules
+- **Scripts:** lint.sh, verify_install.sh, pre-commit hook
+- **Markdown:** 7 documentation files (including SECURITY_REVIEW.md, PERSISTENT_ISSUES.md)
 - **Security Rating:** A (formal review 2026-02-21 — see SECURITY_REVIEW.md)
-- **CI Jobs:** 6 (shellcheck, check-mode, smoke-test, bats, powershell, pester)
+- **CI Jobs:** 7 (shellcheck, custom-lint, check-mode, smoke-test, bats, powershell, pester)
 
 ---
 

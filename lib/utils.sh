@@ -461,20 +461,7 @@ check_meshtasticd_webserver_config() {
     return 0
 }
 
-# Validate RNS destination hash format (hex string, 20-64 chars)
-# Usage: validate_rns_hash "$hash" || return 1
-validate_rns_hash() {
-    local hash="$1"
-    if [ -z "$hash" ]; then
-        print_error "No destination hash provided"
-        return 1
-    fi
-    if [[ ! "$hash" =~ ^[0-9a-fA-F]{20,64}$ ]]; then
-        print_error "Invalid destination hash format (expected 20-64 hex characters)"
-        return 1
-    fi
-    return 0
-}
+# validate_rns_hash moved to lib/validation.sh (centralized validation module)
 
 # Safe call wrapper (adapted from meshforge _safe_call pattern)
 safe_call() {

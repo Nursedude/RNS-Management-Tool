@@ -190,69 +190,44 @@ import_configuration() {
     echo -n "Archive path: "
     read -r IMPORT_FILE
 
-    # Sanitize input path: reject empty or paths with null bytes
-    if [[ -z "$IMPORT_FILE" ]] || [[ "$IMPORT_FILE" == *$'\0'* ]]; then
-        print_error "Invalid file path"
-        return 1
-    fi
-    # Resolve to absolute path without following symlinks
-    IMPORT_FILE=$(realpath -s "$IMPORT_FILE" 2>/dev/null) || {
-        print_error "Cannot resolve path: $IMPORT_FILE"
-        return 1
-    }
+    # RNS004: Path and format validation (centralized in lib/validation.sh)
+    validate_archive_path "$IMPORT_FILE" || return 1
+    # Resolve to absolute path (validate_archive_path already checked existence)
+    IMPORT_FILE=$(realpath -s "$IMPORT_FILE" 2>/dev/null)
 
-    if [ ! -f "$IMPORT_FILE" ]; then
-        print_error "File not found: $IMPORT_FILE"
-    elif [[ ! "$IMPORT_FILE" =~ \.tar\.gz$ ]]; then
-        print_error "Invalid file format. Expected .tar.gz archive"
-    else
-        # RNS004: Archive validation before extraction
-        print_info "Validating archive structure..."
+    # RNS004: Archive contents validation (traversal + symlink checks)
+    print_info "Validating archive structure..."
+    validate_archive_contents "$IMPORT_FILE" || return 1
 
-        # Check for path traversal attempts (../) and absolute paths
-        if tar -tzf "$IMPORT_FILE" 2>/dev/null | grep -qE '(^/|\.\./)'; then
-            print_error "Security: Archive contains invalid paths (absolute or traversal)"
-            log_message "SECURITY: Rejected archive with invalid paths: $IMPORT_FILE"
-            return 1
-        fi
+    # Verify archive contains expected Reticulum config files
+    local archive_contents
+    archive_contents=$(tar -tzf "$IMPORT_FILE" 2>/dev/null)
 
-        # Check for symlink entries (potential symlink attack — adapted from meshforge)
-        if tar -tvf "$IMPORT_FILE" 2>/dev/null | grep -qE '^l'; then
-            print_error "Security: Archive contains symbolic links (potential symlink attack)"
-            log_message "SECURITY: Rejected archive with symlinks: $IMPORT_FILE"
-            return 1
-        fi
-
-        # Verify archive contains expected Reticulum config files
-        local archive_contents
-        archive_contents=$(tar -tzf "$IMPORT_FILE" 2>/dev/null)
-
-        if ! echo "$archive_contents" | grep -qE '^\.(reticulum|nomadnetwork|lxmf)/'; then
-            print_warning "Archive does not appear to contain Reticulum configuration"
-            echo "Expected directories: .reticulum/, .nomadnetwork/, .lxmf/"
-            if ! confirm_action "Continue anyway?"; then
-                print_info "Import cancelled"
-                return 0
-            fi
-        fi
-
-        print_success "Archive validation passed"
-        echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
-
-        if confirm_action "Continue?"; then
-            print_info "Creating backup of current configuration..."
-            create_backup
-
-            print_info "Importing configuration..."
-            if tar -xzf "$IMPORT_FILE" --no-same-owner -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
-                print_success "Configuration imported successfully"
-                log_message "Imported configuration from: $IMPORT_FILE"
-            else
-                print_error "Failed to import configuration"
-            fi
-        else
+    if ! echo "$archive_contents" | grep -qE '^\.(reticulum|nomadnetwork|lxmf)/'; then
+        print_warning "Archive does not appear to contain Reticulum configuration"
+        echo "Expected directories: .reticulum/, .nomadnetwork/, .lxmf/"
+        if ! confirm_action "Continue anyway?"; then
             print_info "Import cancelled"
+            return 0
         fi
+    fi
+
+    print_success "Archive validation passed"
+    echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
+
+    if confirm_action "Continue?"; then
+        print_info "Creating backup of current configuration..."
+        create_backup
+
+        print_info "Importing configuration..."
+        if tar -xzf "$IMPORT_FILE" --no-same-owner -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
+            print_success "Configuration imported successfully"
+            log_message "Imported configuration from: $IMPORT_FILE"
+        else
+            print_error "Failed to import configuration"
+        fi
+    else
+        print_info "Import cancelled"
     fi
 }
 

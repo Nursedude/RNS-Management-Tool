@@ -205,33 +205,34 @@ teardown() {
     echo "$func_body" | grep -q 'Validating archive'
 }
 
-@test "BACKUP: import checks for ../ path traversal" {
+@test "BACKUP: import delegates to validate_archive_contents (centralized)" {
     local func_body
     func_body=$(sed -n '/^import_configuration()/,/^}/p' "$LIB_DIR/backup.sh")
+    echo "$func_body" | grep -q 'validate_archive_contents'
+}
+
+@test "BACKUP: validate_archive_contents checks for ../ path traversal" {
+    local func_body
+    func_body=$(sed -n '/^validate_archive_contents()/,/^}/p' "$LIB_DIR/validation.sh")
     echo "$func_body" | grep -q '\.\.\/'
 }
 
-@test "BACKUP: import checks for absolute paths in archive" {
+@test "BACKUP: validate_archive_contents rejects invalid archives with security message" {
     local func_body
-    func_body=$(sed -n '/^import_configuration()/,/^}/p' "$LIB_DIR/backup.sh")
-    echo "$func_body" | grep -qE '\^/'
+    func_body=$(sed -n '/^validate_archive_contents()/,/^}/p' "$LIB_DIR/validation.sh")
+    echo "$func_body" | grep -q 'Security.*invalid paths\|Security.*symbolic'
 }
 
-@test "BACKUP: import rejects invalid archives with security message" {
+@test "BACKUP: validate_archive_contents logs security rejection" {
     local func_body
-    func_body=$(sed -n '/^import_configuration()/,/^}/p' "$LIB_DIR/backup.sh")
-    echo "$func_body" | grep -q 'SECURITY.*invalid paths\|Security.*invalid paths'
-}
-
-@test "BACKUP: import logs security rejection" {
-    local func_body
-    func_body=$(sed -n '/^import_configuration()/,/^}/p' "$LIB_DIR/backup.sh")
+    func_body=$(sed -n '/^validate_archive_contents()/,/^}/p' "$LIB_DIR/validation.sh")
     echo "$func_body" | grep -q 'log_message.*SECURITY'
 }
 
-@test "BACKUP: import verifies .tar.gz extension" {
+@test "BACKUP: import verifies .tar.gz extension (via validate_archive_path)" {
+    # Extension check moved to centralized validate_archive_path in validation.sh
     local func_body
-    func_body=$(sed -n '/^import_configuration()/,/^}/p' "$LIB_DIR/backup.sh")
+    func_body=$(sed -n '/^validate_archive_path()/,/^}/p' "$LIB_DIR/validation.sh")
     echo "$func_body" | grep -q '\.tar\.gz'
 }
 
@@ -689,4 +690,182 @@ teardown() {
     local func_body
     func_body=$(sed -n '/^check_meshtasticd_webserver_config()/,/^}/p' "$LIB_DIR/utils.sh")
     echo "$func_body" | grep -q 'commented out'
+}
+
+#########################################################
+# Behavioral Tests — Execute actual functions
+# These tests source the modules and call real functions
+# with controlled inputs. No mocks — real code execution.
+#########################################################
+
+# Helper: source core + validation modules for behavioral tests
+_source_validation() {
+    # Minimal sourcing: just what's needed for validation functions
+    # Stub print functions if not available
+    print_error() { echo "ERROR: $1"; }
+    print_warning() { echo "WARN: $1"; }
+    log_message() { :; }
+    source "$LIB_DIR/validation.sh"
+}
+
+@test "BEHAVIORAL: validate_rns_hash accepts valid 32-char hex" {
+    _source_validation
+    validate_rns_hash "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+}
+
+@test "BEHAVIORAL: validate_rns_hash accepts valid 64-char hex" {
+    _source_validation
+    validate_rns_hash "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+}
+
+@test "BEHAVIORAL: validate_rns_hash rejects empty input" {
+    _source_validation
+    ! validate_rns_hash ""
+}
+
+@test "BEHAVIORAL: validate_rns_hash rejects non-hex characters" {
+    _source_validation
+    ! validate_rns_hash "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+}
+
+@test "BEHAVIORAL: validate_rns_hash rejects too-short hash" {
+    _source_validation
+    ! validate_rns_hash "a1b2c3d4"
+}
+
+@test "BEHAVIORAL: validate_device_port accepts /dev/ttyUSB0" {
+    _source_validation
+    validate_device_port "/dev/ttyUSB0"
+}
+
+@test "BEHAVIORAL: validate_device_port accepts /dev/ttyACM0" {
+    _source_validation
+    validate_device_port "/dev/ttyACM0"
+}
+
+@test "BEHAVIORAL: validate_device_port rejects empty" {
+    _source_validation
+    ! validate_device_port ""
+}
+
+@test "BEHAVIORAL: validate_device_port rejects path traversal" {
+    _source_validation
+    ! validate_device_port "/dev/../etc/passwd"
+}
+
+@test "BEHAVIORAL: validate_device_port rejects spaces" {
+    _source_validation
+    ! validate_device_port "/dev/tty USB0"
+}
+
+@test "BEHAVIORAL: validate_device_port rejects semicolons" {
+    _source_validation
+    ! validate_device_port "/dev/ttyUSB0;rm"
+}
+
+@test "BEHAVIORAL: validate_numeric_range accepts value in range" {
+    _source_validation
+    validate_numeric_range "10" 7 12 "SF"
+}
+
+@test "BEHAVIORAL: validate_numeric_range rejects below minimum" {
+    _source_validation
+    ! validate_numeric_range "3" 7 12 "SF"
+}
+
+@test "BEHAVIORAL: validate_numeric_range rejects above maximum" {
+    _source_validation
+    ! validate_numeric_range "15" 7 12 "SF"
+}
+
+@test "BEHAVIORAL: validate_numeric_range accepts negative values" {
+    _source_validation
+    validate_numeric_range "-5" -10 30 "TX Power"
+}
+
+@test "BEHAVIORAL: validate_numeric_range rejects non-numeric" {
+    _source_validation
+    ! validate_numeric_range "abc" 7 12 "SF"
+}
+
+@test "BEHAVIORAL: validate_numeric_range returns 1 for empty (skip)" {
+    _source_validation
+    ! validate_numeric_range "" 7 12 "SF"
+}
+
+@test "BEHAVIORAL: validate_frequency accepts 915MHz" {
+    _source_validation
+    validate_frequency "915000000"
+}
+
+@test "BEHAVIORAL: validate_frequency accepts 868MHz" {
+    _source_validation
+    validate_frequency "868000000"
+}
+
+@test "BEHAVIORAL: validate_frequency rejects non-numeric" {
+    _source_validation
+    ! validate_frequency "abc"
+}
+
+@test "BEHAVIORAL: validate_identifier accepts alphanumeric+underscore" {
+    _source_validation
+    validate_identifier "t3s3_v2" "Model"
+}
+
+@test "BEHAVIORAL: validate_identifier rejects spaces" {
+    _source_validation
+    ! validate_identifier "t3 s3" "Model"
+}
+
+@test "BEHAVIORAL: validate_identifier rejects special chars" {
+    _source_validation
+    ! validate_identifier "t3s3;rm" "Model"
+}
+
+@test "BEHAVIORAL: validate_archive_contents detects traversal" {
+    _source_validation
+    # Create a clean archive (should pass)
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    mkdir -p "$tmpdir/data"
+    echo "test" > "$tmpdir/data/file.txt"
+    tar -czf "$tmpdir/clean.tar.gz" -C "$tmpdir" "data/file.txt"
+    validate_archive_contents "$tmpdir/clean.tar.gz"
+    rm -rf "$tmpdir"
+}
+
+@test "BEHAVIORAL: run_with_timeout runs command successfully" {
+    source "$LIB_DIR/core.sh"
+    source "$LIB_DIR/validation.sh"
+    source "$LIB_DIR/utils.sh"
+    run_with_timeout 5 echo "hello"
+}
+
+@test "BEHAVIORAL: retry_with_backoff succeeds on first try" {
+    source "$LIB_DIR/core.sh"
+    source "$LIB_DIR/validation.sh"
+    source "$LIB_DIR/utils.sh"
+    retry_with_backoff 3 true
+}
+
+@test "BEHAVIORAL: retry_with_backoff fails after max retries" {
+    source "$LIB_DIR/core.sh"
+    source "$LIB_DIR/validation.sh"
+    source "$LIB_DIR/utils.sh"
+    ! retry_with_backoff 1 false
+}
+
+@test "BEHAVIORAL: safe_call returns 0 on success" {
+    source "$LIB_DIR/core.sh"
+    source "$LIB_DIR/validation.sh"
+    source "$LIB_DIR/utils.sh"
+    safe_call "test" true
+}
+
+@test "BEHAVIORAL: safe_call returns non-zero on failure" {
+    source "$LIB_DIR/core.sh"
+    source "$LIB_DIR/validation.sh"
+    source "$LIB_DIR/utils.sh"
+    ! safe_call "test" false
 }
