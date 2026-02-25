@@ -1,0 +1,74 @@
+#!/bin/bash
+#########################################################
+# Pre-commit hook — Enforces linter and syntax on commit
+# Adapted from meshforge pre-commit hook pattern
+#
+# Setup: git config core.hooksPath .githooks
+#########################################################
+
+set -o pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ERRORS=0
+
+echo "Running pre-commit checks..."
+
+# 1. Syntax check on staged .sh files
+STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.sh$')
+if [ -n "$STAGED_SH" ]; then
+    echo "  [1/3] Bash syntax check..."
+    while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        if ! bash -n "$file" 2>/dev/null; then
+            echo "    FAIL: $file has syntax errors"
+            ((ERRORS++))
+        fi
+    done <<< "$STAGED_SH"
+    [ "$ERRORS" -eq 0 ] && echo "    OK: All staged .sh files parse cleanly"
+else
+    echo "  [1/3] No staged .sh files — skipping syntax check"
+fi
+
+# 2. Custom linter on staged files
+if [ -f "$SCRIPT_DIR/scripts/lint.sh" ] && [ -n "$STAGED_SH" ]; then
+    echo "  [2/3] Custom linter (RNS001-RNS006)..."
+    if ! bash "$SCRIPT_DIR/scripts/lint.sh" --staged; then
+        echo "    FAIL: Linter found errors"
+        ((ERRORS++))
+    else
+        echo "    OK: Linter passed"
+    fi
+else
+    echo "  [2/3] No staged .sh files — skipping linter"
+fi
+
+# 3. ShellCheck on staged files (optional — runs if installed)
+if command -v shellcheck &>/dev/null && [ -n "$STAGED_SH" ]; then
+    echo "  [3/3] ShellCheck..."
+    SC_ERRORS=0
+    while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        if ! shellcheck -x -S warning "$file" 2>/dev/null; then
+            echo "    WARN: ShellCheck warnings in $file"
+            ((SC_ERRORS++))
+        fi
+    done <<< "$STAGED_SH"
+    if [ "$SC_ERRORS" -gt 0 ]; then
+        echo "    INFO: $SC_ERRORS file(s) with ShellCheck warnings (non-blocking)"
+    else
+        echo "    OK: ShellCheck passed"
+    fi
+else
+    echo "  [3/3] ShellCheck not installed — skipping (install with: apt install shellcheck)"
+fi
+
+# Result
+if [ "$ERRORS" -gt 0 ]; then
+    echo ""
+    echo "Pre-commit: $ERRORS error(s) found. Commit blocked."
+    echo "Fix the issues above, then re-stage and commit."
+    exit 1
+fi
+
+echo "Pre-commit: All checks passed."
+exit 0

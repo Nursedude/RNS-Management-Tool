@@ -64,8 +64,8 @@ lint_file() {
         # RNS002: Device port validation — check for rnodeconf calls without prior validation
         # (Informational: just flag direct rnodeconf calls with variable args)
         if [[ "$line" =~ rnodeconf[[:space:]]+\"\$ ]] && [[ "$filepath" != *"test"* ]]; then
-            # Check if this file has the validation regex nearby
-            if ! grep -q 'tty\[A-Za-z0-9\]' "$filepath" 2>/dev/null; then
+            # Check if this file has the validation regex or centralized validator
+            if ! grep -qE 'tty\[A-Za-z0-9\]|validate_device_port' "$filepath" 2>/dev/null; then
                 report "W" "$filepath" "$lineno" "RNS002" \
                     "rnodeconf called with variable — ensure device port is validated"
             fi
@@ -76,7 +76,7 @@ lint_file() {
             # Look backwards in the file for path traversal check
             local context
             context=$(head -n "$lineno" "$filepath" | tail -n 20)
-            if ! echo "$context" | grep -q '\.\./\|traversal\|invalid paths' 2>/dev/null; then
+            if ! echo "$context" | grep -q '\.\./\|traversal\|invalid paths\|validate_archive_contents' 2>/dev/null; then
                 report "W" "$filepath" "$lineno" "RNS004" \
                     "tar extraction without visible path traversal validation nearby"
             fi
@@ -100,7 +100,7 @@ lint_file() {
         if [[ "$line" =~ CMD_ARGS\+=.*--(sf|cr|txp|freq|bw) ]] && [[ "$filepath" != *"test"* ]]; then
             local context
             context=$(head -n "$lineno" "$filepath" | tail -n 12)
-            if ! echo "$context" | grep -qE '\-ge.*\-le|\-lt.*\-gt|\^[0-9]+\$|\^\-\??\[0-9\]' 2>/dev/null; then
+            if ! echo "$context" | grep -qE '\-ge.*\-le|\-lt.*\-gt|\^[0-9]+\$|\^\-\??\[0-9\]|validate_numeric_range|validate_frequency' 2>/dev/null; then
                 report "W" "$filepath" "$lineno" "RNS003" \
                     "Radio parameter added to CMD_ARGS without visible range validation nearby"
             fi

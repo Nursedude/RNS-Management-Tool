@@ -11,11 +11,8 @@ rnode_get_device_port() {
     echo -n "Device port: "
     read -r DEVICE_PORT
 
-    # RNS002: Device port validation
-    if [[ ! "$DEVICE_PORT" =~ ^/dev/tty[A-Za-z0-9]+$ ]]; then
-        print_error "Invalid device port format. Expected: /dev/ttyUSB0 or /dev/ttyACM0"
-        return 1
-    fi
+    # RNS002: Device port validation (centralized in lib/validation.sh)
+    validate_device_port "$DEVICE_PORT" || return 1
 
     if [ ! -e "$DEVICE_PORT" ]; then
         print_error "Device not found: $DEVICE_PORT"
@@ -100,60 +97,40 @@ rnode_configure_radio() {
     # Build command with optional parameters using arrays (safer than eval)
     declare -a CMD_ARGS=("$device_port")
 
-    # RNS003: Numeric range validation for all parameters
-    # Frequency (validate numeric input)
+    # RNS003: Numeric range validation for all parameters (centralized in lib/validation.sh)
+    # Frequency
     echo -n "Frequency in Hz (e.g., 915000000 for 915MHz): "
     read -r FREQ
-    if [ -n "$FREQ" ]; then
-        if [[ "$FREQ" =~ ^[0-9]+$ ]]; then
-            CMD_ARGS+=("--freq" "$FREQ")
-        else
-            print_warning "Invalid frequency - must be numeric. Skipping."
-        fi
+    if [ -n "$FREQ" ] && validate_frequency "$FREQ"; then
+        CMD_ARGS+=("--freq" "$FREQ")
     fi
 
-    # Bandwidth (validate numeric input)
+    # Bandwidth
     echo -n "Bandwidth in kHz (e.g., 125, 250, 500): "
     read -r BW
-    if [ -n "$BW" ]; then
-        if [[ "$BW" =~ ^[0-9]+$ ]]; then
-            CMD_ARGS+=("--bw" "$BW")
-        else
-            print_warning "Invalid bandwidth - must be numeric. Skipping."
-        fi
+    if validate_numeric_range "$BW" 0 999999 "Bandwidth"; then
+        CMD_ARGS+=("--bw" "$BW")
     fi
 
-    # Spreading Factor (validate range 7-12)
+    # Spreading Factor (7-12)
     echo -n "Spreading Factor (7-12): "
     read -r SF
-    if [ -n "$SF" ]; then
-        if [[ "$SF" =~ ^[0-9]+$ ]] && [ "$SF" -ge 7 ] && [ "$SF" -le 12 ]; then
-            CMD_ARGS+=("--sf" "$SF")
-        else
-            print_warning "Invalid spreading factor - must be 7-12. Skipping."
-        fi
+    if validate_numeric_range "$SF" 7 12 "Spreading Factor"; then
+        CMD_ARGS+=("--sf" "$SF")
     fi
 
-    # Coding Rate (validate range 5-8)
+    # Coding Rate (5-8)
     echo -n "Coding Rate (5-8): "
     read -r CR
-    if [ -n "$CR" ]; then
-        if [[ "$CR" =~ ^[0-9]+$ ]] && [ "$CR" -ge 5 ] && [ "$CR" -le 8 ]; then
-            CMD_ARGS+=("--cr" "$CR")
-        else
-            print_warning "Invalid coding rate - must be 5-8. Skipping."
-        fi
+    if validate_numeric_range "$CR" 5 8 "Coding Rate"; then
+        CMD_ARGS+=("--cr" "$CR")
     fi
 
-    # TX Power (validate reasonable dBm range)
+    # TX Power (-10 to 30 dBm)
     echo -n "TX Power in dBm (e.g., 17): "
     read -r TXP
-    if [ -n "$TXP" ]; then
-        if [[ "$TXP" =~ ^-?[0-9]+$ ]] && [ "$TXP" -ge -10 ] && [ "$TXP" -le 30 ]; then
-            CMD_ARGS+=("--txp" "$TXP")
-        else
-            print_warning "Invalid TX power - must be between -10 and 30 dBm. Skipping."
-        fi
+    if validate_numeric_range "$TXP" -10 30 "TX Power"; then
+        CMD_ARGS+=("--txp" "$TXP")
     fi
 
     echo ""
@@ -182,22 +159,13 @@ rnode_set_model() {
     # Build command with array (safer than eval)
     declare -a CMD_ARGS=("$device_port")
 
-    # Validate model (alphanumeric and underscores only)
-    if [ -n "$MODEL" ]; then
-        if [[ "$MODEL" =~ ^[a-zA-Z0-9_]+$ ]]; then
-            CMD_ARGS+=("--model" "$MODEL")
-        else
-            print_warning "Invalid model name. Skipping."
-        fi
+    # Validate model and platform (centralized in lib/validation.sh)
+    if validate_identifier "$MODEL" "Model"; then
+        CMD_ARGS+=("--model" "$MODEL")
     fi
 
-    # Validate platform (alphanumeric only)
-    if [ -n "$PLATFORM" ]; then
-        if [[ "$PLATFORM" =~ ^[a-zA-Z0-9]+$ ]]; then
-            CMD_ARGS+=("--platform" "$PLATFORM")
-        else
-            print_warning "Invalid platform name. Skipping."
-        fi
+    if validate_identifier "$PLATFORM" "Platform"; then
+        CMD_ARGS+=("--platform" "$PLATFORM")
     fi
 
     echo ""

@@ -27,6 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Core: terminal detection, colors, home resolution, globals
 source "$SCRIPT_DIR/lib/core.sh"
 
+# Validation: centralized input validation (RNS002, RNS003, RNS004)
+source "$SCRIPT_DIR/lib/validation.sh"
+
 # Utilities: timeout, retry, logging, caching, service checks
 source "$SCRIPT_DIR/lib/utils.sh"
 
