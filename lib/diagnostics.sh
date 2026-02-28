@@ -117,9 +117,36 @@ diag_check_configuration() {
 diag_check_services() {
     echo -e "${BLUE}▶ Step 4/6: Service Health${NC}"
 
-    if check_service_status "rnsd"; then
-        print_success "rnsd daemon is running"
+    # rnsd status with detection method tracking (meshforge ServiceStatus pattern)
+    local rnsd_detection_method="none"
+    local rnsd_running=false
 
+    if command -v systemctl &>/dev/null && systemctl --user is-active rnsd.service &>/dev/null 2>&1; then
+        rnsd_detection_method="systemctl"
+        rnsd_running=true
+    elif pgrep -x "rnsd" > /dev/null 2>&1; then
+        rnsd_detection_method="pgrep"
+        rnsd_running=true
+    fi
+
+    # Liveness verification via port check (reuses zombie detection logic)
+    local port_bound=false
+    if command -v ss &>/dev/null; then
+        ss -ulnp 2>/dev/null | grep -q ':37428 ' && port_bound=true
+    elif command -v netstat &>/dev/null; then
+        netstat -ulnp 2>/dev/null | grep -q ':37428 ' && port_bound=true
+    fi
+
+    if [ "$rnsd_running" = true ]; then
+        if [ "$port_bound" = true ]; then
+            print_success "rnsd daemon is running (via $rnsd_detection_method, port 37428 bound)"
+        else
+            print_warning "rnsd process detected (via $rnsd_detection_method) but port 37428 not bound"
+            echo -e "  ${YELLOW}This may indicate a zombie process — try restarting rnsd${NC}"
+            ((_DIAG_TOTAL_WARNINGS++))
+        fi
+
+        # Uptime display
         local rnsd_pid
         rnsd_pid=$(pgrep -x "rnsd" 2>/dev/null | head -1)
         if [ -n "$rnsd_pid" ] && [ -d "/proc/$rnsd_pid" ]; then
@@ -212,6 +239,40 @@ diag_check_network() {
         fi
     else
         echo -e "  ${CYAN}[i] No USB serial devices (RNODE) detected${NC}"
+    fi
+
+    # SPI device detection for RNODE HAT configurations (meshforge hardware detection)
+    echo ""
+    local spi_available=false
+    if ls /dev/spidev* &>/dev/null 2>&1; then
+        spi_available=true
+        local spi_count
+        spi_count=$(ls /dev/spidev* 2>/dev/null | wc -l)
+        print_success "$spi_count SPI device(s) detected"
+        ls /dev/spidev* 2>/dev/null | while read -r dev; do
+            echo "  $dev"
+        done
+    fi
+
+    if [ "$IS_RASPBERRY_PI" = true ]; then
+        local boot_config=""
+        for cfg in /boot/config.txt /boot/firmware/config.txt; do
+            [ -r "$cfg" ] && boot_config="$cfg" && break
+        done
+
+        if [ -n "$boot_config" ]; then
+            if grep -q 'dtparam=spi=on' "$boot_config" 2>/dev/null; then
+                [ "$spi_available" = false ] && print_info "SPI enabled in $boot_config but no /dev/spidev* found"
+            else
+                echo -e "  ${CYAN}[i] SPI not enabled in $boot_config${NC}"
+                echo -e "  ${CYAN}    Enable with: sudo raspi-config > Interface Options > SPI${NC}"
+            fi
+
+            # Check for RNODE-relevant dtoverlays
+            if grep -qE 'dtoverlay.*(spi|sx127|rfm|lora)' "$boot_config" 2>/dev/null; then
+                print_success "LoRa-related dtoverlay found in $boot_config"
+            fi
+        fi
     fi
 
     # RNS interface status (if rnstatus available and rnsd running)

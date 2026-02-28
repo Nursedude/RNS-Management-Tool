@@ -18,8 +18,9 @@ menu_item() {
 
 clear_screen() {
     # ANSI escape sequence clear (adapted from meshforge PR #800)
-    # Eliminates visible flash caused by subprocess clear command
-    printf '\033[H\033[2J'
+    # \033[H = cursor home, \033[2J = clear visible, \033[3J = clear scrollback
+    # Prevents stale menu output from bleeding through when user scrolls up
+    printf '\033[H\033[2J\033[3J'
 }
 
 print_header() {
@@ -92,6 +93,24 @@ get_status_line() {
     local tc
     tc=$(count_rns_tools)
     parts+=("tools:${tc}/8")
+
+    # meshtasticd indicator (meshforge status_bar.py enhanced status pattern)
+    if command -v meshtasticd &>/dev/null; then
+        local mtd_state
+        mtd_state=$(get_cached_meshtasticd_status)
+        if [ "$mtd_state" = "running" ]; then
+            parts+=("mtd:${GREEN}*${NC}")
+        else
+            parts+=("mtd:${YELLOW}-${NC}")
+        fi
+    fi
+
+    # USB serial device indicator (meshforge hardware detection pattern)
+    local usb_count
+    usb_count=$(find /dev -maxdepth 1 \( -name 'ttyUSB*' -o -name 'ttyACM*' \) 2>/dev/null | wc -l)
+    if [ "$usb_count" -gt 0 ]; then
+        parts+=("USB:${GREEN}${usb_count}${NC}")
+    fi
 
     # SSH indicator (meshforge hardware detection pattern)
     if [ "$IS_SSH" = true ]; then

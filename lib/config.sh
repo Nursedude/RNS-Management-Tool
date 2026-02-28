@@ -220,6 +220,10 @@ edit_config_file() {
         print_warning "Could not create backup"
     fi
 
+    # Advisory: editing config while rnsd runs may need a restart
+    # (meshforge service pre-flight advisory pattern)
+    advise_service "rnsd" "stopped" "rnsd is running. Config changes take effect on restart." || return
+
     # Launch editor
     "$editor" "$target_path"
 

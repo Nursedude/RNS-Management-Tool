@@ -230,6 +230,10 @@ show_services_status_box() {
 handle_network_tools() {
     local tool_choice="$1"
 
+    # Pre-flight: network tools require rnsd to be running
+    # (meshforge service pre-flight expansion pattern)
+    require_service "rnsd" "Network tools require rnsd to be running" || return 1
+
     case $tool_choice in
         5)
             print_section "Network Statistics"

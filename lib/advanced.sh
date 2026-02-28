@@ -66,7 +66,11 @@ emergency_quick_mode() {
                 ;;
             3)
                 if [ "$HAS_RNSTATUS" = true ]; then
-                    rnstatus 2>&1
+                    if check_service_status "rnsd"; then
+                        rnstatus 2>&1
+                    else
+                        print_warning "rnsd is not running — start it first (option 1)"
+                    fi
                 else
                     print_warning "rnstatus not available"
                 fi
@@ -74,7 +78,11 @@ emergency_quick_mode() {
                 ;;
             4)
                 if [ "$HAS_RNPATH" = true ]; then
-                    rnpath -t 2>&1
+                    if check_service_status "rnsd"; then
+                        rnpath -t 2>&1
+                    else
+                        print_warning "rnsd is not running — start it first (option 1)"
+                    fi
                 else
                     print_warning "rnpath not available"
                 fi
@@ -82,10 +90,14 @@ emergency_quick_mode() {
                 ;;
             5)
                 if [ "$HAS_RNPROBE" = true ]; then
-                    echo -n "Destination hash: "
-                    read -r QM_DEST
-                    if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
-                        rnprobe "$QM_DEST" 2>&1
+                    if check_service_status "rnsd"; then
+                        echo -n "Destination hash: "
+                        read -r QM_DEST
+                        if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
+                            rnprobe "$QM_DEST" 2>&1
+                        fi
+                    else
+                        print_warning "rnsd is not running — start it first (option 1)"
                     fi
                 else
                     print_warning "rnprobe not available"
@@ -304,6 +316,41 @@ run_startup_health_check() {
         UPDATE_LOG="${TMPDIR:-/tmp}/rns_management_$(date +%Y%m%d_%H%M%S).log"
         print_info "Falling back to: $UPDATE_LOG"
         ((warnings++))
+    fi
+
+    # 7. Port conflict detection (meshforge StartupChecker pattern)
+    # Check if rnsd's shared instance port is already in use by another process
+    if [ "$HAS_RNSD" = true ] && ! check_service_status "rnsd"; then
+        local port_conflict=false
+        local conflict_proc=""
+        if command -v ss &>/dev/null; then
+            conflict_proc=$(ss -ulnp 2>/dev/null | grep ':37428 ' | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1)
+            [ -n "$conflict_proc" ] && port_conflict=true
+        elif command -v netstat &>/dev/null; then
+            conflict_proc=$(netstat -ulnp 2>/dev/null | grep ':37428 ' | awk '{print $NF}' | head -1)
+            [ -n "$conflict_proc" ] && port_conflict=true
+        fi
+
+        if [ "$port_conflict" = true ]; then
+            print_warning "UDP port 37428 already in use by: $conflict_proc"
+            print_info "This port is needed by rnsd. Another instance may be running."
+            log_warn "Port conflict: UDP 37428 in use by $conflict_proc"
+            ((warnings++))
+        fi
+    fi
+
+    # 8. meshtasticd port conflict (informational)
+    if command -v meshtasticd &>/dev/null && ! check_service_status "meshtasticd"; then
+        local mtd_port_conflict=false
+        if command -v ss &>/dev/null; then
+            if ss -tlnp 2>/dev/null | grep -qE ':443 |:9443 '; then
+                mtd_port_conflict=true
+            fi
+        fi
+        if [ "$mtd_port_conflict" = true ]; then
+            print_info "Ports 443/9443 in use (may affect meshtasticd HTTP API when started)"
+            log_debug "meshtasticd ports 443/9443 already bound at startup"
+        fi
     fi
 
     if [ $warnings -gt 0 ]; then

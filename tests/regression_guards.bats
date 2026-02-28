@@ -215,3 +215,115 @@ setup() {
 @test "CI: regression_guards.bats included in CI" {
     grep -q 'regression_guards.bats' "$SCRIPT_DIR/.github/workflows/lint.yml"
 }
+
+#########################################################
+# MeshForge improvements (session 15)
+#########################################################
+
+# Phase 1: Scrollback clear + retry jitter
+
+@test "UI: clear_screen clears scrollback buffer (033[3J)" {
+    grep -q '\\033\[3J' "$LIB_DIR/ui.sh"
+}
+
+@test "RETRY: retry_with_backoff includes jitter" {
+    local func_body
+    func_body=$(sed -n '/^retry_with_backoff()/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q 'jitter\|RANDOM'
+}
+
+# Phase 2: Zombie detection, enhanced safe_call, service pre-flight
+
+@test "SERVICE: check_service_status rnsd case checks UDP port 37428" {
+    local func_body
+    func_body=$(sed -n '/^check_service_status()/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q '37428'
+}
+
+@test "SERVICE: zombie detection has ss fallback to netstat" {
+    local func_body
+    func_body=$(sed -n '/^check_service_status()/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q 'netstat'
+}
+
+@test "SAFE_CALL: safe_call captures stderr to temp file" {
+    local func_body
+    func_body=$(sed -n '/^safe_call()/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q 'stderr_file'
+}
+
+@test "SAFE_CALL: safe_call matches known error patterns for hints" {
+    local func_body
+    func_body=$(sed -n '/^safe_call()/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q 'ImportError\|Permission denied\|Connection refused'
+}
+
+@test "SAFE_CALL: safe_call cleans up temp file on success" {
+    local func_body
+    func_body=$(sed -n '/^safe_call()/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q 'rm -f.*stderr_file'
+}
+
+@test "PREFLIGHT: require_service defined in utils.sh" {
+    grep -q 'require_service()' "$LIB_DIR/utils.sh"
+}
+
+@test "PREFLIGHT: advise_service defined in utils.sh" {
+    grep -q 'advise_service()' "$LIB_DIR/utils.sh"
+}
+
+@test "PREFLIGHT: handle_network_tools calls require_service" {
+    grep -q 'require_service' "$LIB_DIR/services.sh"
+}
+
+@test "PREFLIGHT: edit_config_file calls advise_service" {
+    grep -q 'advise_service' "$LIB_DIR/config.sh"
+}
+
+# Phase 3: Enhanced status line, diagnostics
+
+@test "STATUS: get_status_line includes mtd indicator" {
+    grep -q 'mtd:' "$LIB_DIR/ui.sh"
+}
+
+@test "STATUS: get_status_line includes USB device indicator" {
+    grep -q 'USB:' "$LIB_DIR/ui.sh"
+}
+
+@test "DIAG: diag_check_services shows detection method" {
+    grep -qE 'detection_method|via.*systemctl|via.*pgrep' "$LIB_DIR/diagnostics.sh"
+}
+
+@test "DIAG: diag_check_services checks port 37428" {
+    grep -q '37428' "$LIB_DIR/diagnostics.sh"
+}
+
+@test "DIAG: diag_check_services warns on zombie process" {
+    grep -q 'zombie' "$LIB_DIR/diagnostics.sh"
+}
+
+@test "DIAG: diag_check_network checks for SPI devices" {
+    grep -q 'spidev' "$LIB_DIR/diagnostics.sh"
+}
+
+@test "DIAG: diag_check_network checks boot config for SPI on Pi" {
+    grep -q 'dtparam=spi' "$LIB_DIR/diagnostics.sh"
+}
+
+# Phase 4: Startup conflict detection, quick mode pre-checks
+
+@test "STARTUP: run_startup_health_check checks port 37428" {
+    grep -q '37428' "$LIB_DIR/advanced.sh"
+}
+
+@test "STARTUP: port conflict detection uses ss with netstat fallback" {
+    local func_body
+    func_body=$(sed -n '/^run_startup_health_check()/,/^}/p' "$LIB_DIR/advanced.sh")
+    echo "$func_body" | grep -q 'netstat'
+}
+
+@test "QUICKMODE: emergency_quick_mode checks rnsd before network tools" {
+    local func_body
+    func_body=$(sed -n '/^emergency_quick_mode()/,/^}/p' "$LIB_DIR/advanced.sh")
+    echo "$func_body" | grep -q 'check_service_status.*rnsd'
+}
