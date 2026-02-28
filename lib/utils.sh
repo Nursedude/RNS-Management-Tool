@@ -33,9 +33,12 @@ retry_with_backoff() {
         fi
 
         if [ $attempt -lt "$max_retries" ]; then
-            print_warning "Attempt $attempt/$max_retries failed, retrying in ${delay}s..."
+            # Add jitter (0-1s) to prevent thundering herd (meshforge ReconnectConfig pattern)
+            local jitter=$(( RANDOM % 2 ))
+            local total_delay=$((delay + jitter))
+            print_warning "Attempt $attempt/$max_retries failed, retrying in ${total_delay}s..."
             log_warn "Retry $attempt/$max_retries for: $*"
-            sleep "$delay"
+            sleep "$total_delay"
             delay=$((delay * 2))
         fi
         ((attempt++))
@@ -343,10 +346,32 @@ check_service_status() {
         rnsd)
             # Prefer systemctl (single source of truth), fall back to exact pgrep
             # Never use pgrep -f — it matches editors, grep, and the script itself
+            local rnsd_detected=false
             if command -v systemctl &>/dev/null && systemctl --user is-active rnsd.service &>/dev/null 2>&1; then
+                rnsd_detected=true
+            elif pgrep -x "rnsd" > /dev/null 2>&1; then
+                rnsd_detected=true
+            fi
+
+            if [ "$rnsd_detected" = true ]; then
+                # Zombie detection (meshforge service_check.py pattern):
+                # Verify UDP port 37428 is bound — catches systemd "active" with
+                # unresponsive process that failed to bind its socket
+                if command -v ss &>/dev/null; then
+                    if ! ss -ulnp 2>/dev/null | grep -q ':37428 '; then
+                        log_warn "rnsd detected but UDP port 37428 not bound (zombie?)"
+                        return 1
+                    fi
+                elif command -v netstat &>/dev/null; then
+                    if ! netstat -ulnp 2>/dev/null | grep -q ':37428 '; then
+                        log_warn "rnsd detected but UDP port 37428 not bound (zombie?)"
+                        return 1
+                    fi
+                fi
+                # If neither ss nor netstat available, trust process detection
                 return 0
             fi
-            pgrep -x "rnsd" > /dev/null 2>&1
+            return 1
             ;;
         meshtasticd)
             if command -v systemctl &>/dev/null && systemctl is-active --quiet meshtasticd 2>/dev/null; then
@@ -370,6 +395,53 @@ check_service_status() {
 # Convenience wrapper (backward-compatible)
 is_rnsd_running() {
     check_service_status "rnsd"
+}
+
+# Service pre-flight check: blocking mode (meshforge advisory/blocking pattern)
+# Usage: require_service "rnsd" "Network tools require rnsd to be running" || return 1
+require_service() {
+    local service="$1"
+    local message="${2:-$service must be running for this operation}"
+
+    if ! check_service_status "$service"; then
+        print_error "$message"
+        echo ""
+        case "$service" in
+            rnsd)
+                echo -e "  ${CYAN}Start with:${NC} rnsd --daemon"
+                echo -e "  ${CYAN}Or from menu:${NC} Services > Start rnsd daemon"
+                ;;
+            meshtasticd)
+                echo -e "  ${CYAN}Start with:${NC} sudo systemctl start meshtasticd"
+                ;;
+        esac
+        return 1
+    fi
+    return 0
+}
+
+# Service pre-flight check: advisory mode (warn but continue)
+# Usage: advise_service "rnsd" "stopped" "Editing config while rnsd runs may cause issues"
+advise_service() {
+    local service="$1"
+    local desired_state="$2"  # "running" or "stopped"
+    local message="${3:-Consider checking $service state before proceeding}"
+
+    local is_running=false
+    check_service_status "$service" && is_running=true
+
+    if [ "$desired_state" = "stopped" ] && [ "$is_running" = true ]; then
+        print_warning "$message"
+        if ! confirm_action "Continue anyway?" "y"; then
+            return 1
+        fi
+    elif [ "$desired_state" = "running" ] && [ "$is_running" = false ]; then
+        print_warning "$message"
+        if ! confirm_action "Continue anyway?" "y"; then
+            return 1
+        fi
+    fi
+    return 0
 }
 
 # meshtasticd HTTP API health check (simplified from meshforge meshtastic_http.py)
@@ -464,16 +536,29 @@ check_meshtasticd_webserver_config() {
 # validate_rns_hash moved to lib/validation.sh (centralized validation module)
 
 # Safe call wrapper (adapted from meshforge _safe_call pattern)
+# Enhanced: captures stderr for error pattern matching + fix hints
 safe_call() {
     local label="$1"
     shift
 
     local rc=0
-    "$@" || rc=$?
+    local stderr_file
+    stderr_file=$(mktemp "${TMPDIR:-/tmp}/rns_mgmt_XXXXXX.tmp")
+
+    "$@" 2>"$stderr_file" || rc=$?
 
     if [ $rc -eq 0 ]; then
+        rm -f "$stderr_file"
         return 0
     fi
+
+    # Capture last meaningful stderr line for context
+    local last_err=""
+    if [ -s "$stderr_file" ]; then
+        last_err=$(tail -1 "$stderr_file" | head -c 200)
+        log_error "safe_call: '$label' stderr: $(cat "$stderr_file")"
+    fi
+    rm -f "$stderr_file"
 
     log_error "safe_call: '$label' failed with exit code $rc"
 
@@ -492,6 +577,21 @@ safe_call() {
             ;;
         *)
             print_error "$label failed (exit code: $rc)"
+            # Match known error patterns from stderr for fix hints
+            # (meshforge _safe_call exception-specific handling pattern)
+            if [ -n "$last_err" ]; then
+                if [[ "$last_err" == *"ModuleNotFoundError"* ]] || [[ "$last_err" == *"ImportError"* ]]; then
+                    show_error_help "python" ""
+                elif [[ "$last_err" == *"Permission denied"* ]] || [[ "$last_err" == *"EACCES"* ]]; then
+                    show_error_help "permission" ""
+                elif [[ "$last_err" == *"Connection refused"* ]] || [[ "$last_err" == *"Network unreachable"* ]]; then
+                    show_error_help "network" ""
+                elif [[ "$last_err" == *"externally-managed"* ]]; then
+                    show_error_help "pip" ""
+                else
+                    print_info "Last error: $last_err"
+                fi
+            fi
             ;;
     esac
 
