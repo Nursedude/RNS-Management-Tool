@@ -163,10 +163,8 @@ main() {
     local _max_consecutive_failures=3
 
     while true; do
-        show_main_menu
-
         # Guard against read failures (EOF, terminal disconnect)
-        if [ $? -ne 0 ] && [ -z "$MENU_CHOICE" ]; then
+        if ! show_main_menu && [ -z "$MENU_CHOICE" ]; then
             ((_consecutive_failures++))
             if [ "$_consecutive_failures" -ge "$_max_consecutive_failures" ]; then
                 log_error "Menu read failed $_consecutive_failures consecutive times — exiting"
