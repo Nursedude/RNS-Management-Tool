@@ -247,10 +247,13 @@ log_error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >> "$UPDATE_LOG"
 }
 
-# Cleanup handler (adapted from meshforge set -e pattern)
-# Ensures temp files are cleaned and log is flushed on exit/interrupt
+# Cleanup handler (adapted from meshforge set -e pattern + cf3fb86 terminal restoration)
+# Ensures temp files are cleaned, terminal is restored, and log is flushed on exit/interrupt
 cleanup_on_exit() {
     local exit_code=$?
+    # Restore terminal state (meshforge TUI stability fix — prevents dirty terminal)
+    tput cnorm 2>/dev/null   # Show cursor (in case hidden during progress)
+    stty echo 2>/dev/null    # Re-enable echo (in case disabled during password input)
     # Remove any temp files created during session
     rm -f "${TMPDIR:-/tmp}"/rns_mgmt_*.tmp 2>/dev/null
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then
@@ -262,7 +265,7 @@ cleanup_on_exit() {
     fi
 }
 trap cleanup_on_exit EXIT
-trap 'echo ""; print_warning "Interrupted by user"; exit 130' INT TERM
+trap 'tput cnorm 2>/dev/null; stty echo 2>/dev/null; echo ""; print_warning "Interrupted by user"; exit 130' INT TERM
 
 # Enhanced error display with troubleshooting suggestions
 show_error_help() {
@@ -498,8 +501,10 @@ check_meshtasticd_http_api() {
                 return 0
                 ;;
         esac
+        log_debug "meshtasticd HTTP probe failed: ${base_url} (http_code=${http_code:-none})"
     done
 
+    log_debug "meshtasticd HTTP API not reachable on any port"
     return 1
 }
 

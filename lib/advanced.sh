@@ -65,11 +65,10 @@ emergency_quick_mode() {
                 pause_for_input
                 ;;
             3)
+                # Use require_service for consistent pre-flight (meshforge f8946f4 pattern)
                 if [ "$HAS_RNSTATUS" = true ]; then
-                    if check_service_status "rnsd"; then
+                    if require_service "rnsd" "Network status requires rnsd"; then
                         rnstatus 2>&1
-                    else
-                        print_warning "rnsd is not running — start it first (option 1)"
                     fi
                 else
                     print_warning "rnstatus not available"
@@ -78,10 +77,8 @@ emergency_quick_mode() {
                 ;;
             4)
                 if [ "$HAS_RNPATH" = true ]; then
-                    if check_service_status "rnsd"; then
+                    if require_service "rnsd" "Path table requires rnsd"; then
                         rnpath -t 2>&1
-                    else
-                        print_warning "rnsd is not running — start it first (option 1)"
                     fi
                 else
                     print_warning "rnpath not available"
@@ -90,14 +87,12 @@ emergency_quick_mode() {
                 ;;
             5)
                 if [ "$HAS_RNPROBE" = true ]; then
-                    if check_service_status "rnsd"; then
+                    if require_service "rnsd" "Probe requires rnsd"; then
                         echo -n "Destination hash: "
                         read -r QM_DEST
                         if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
                             rnprobe "$QM_DEST" 2>&1
                         fi
-                    else
-                        print_warning "rnsd is not running — start it first (option 1)"
                     fi
                 else
                     print_warning "rnprobe not available"
@@ -106,16 +101,18 @@ emergency_quick_mode() {
                 ;;
             6)
                 if [ "$HAS_RNCP" = true ]; then
-                    echo -n "File to send: "
-                    read -r QM_FILE
-                    if [ -n "$QM_FILE" ] && [ -f "$QM_FILE" ]; then
-                        echo -n "Destination hash: "
-                        read -r QM_DEST
-                        if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
-                            rncp "$QM_FILE" "$QM_DEST" 2>&1
+                    if require_service "rnsd" "File transfer requires rnsd"; then
+                        echo -n "File to send: "
+                        read -r QM_FILE
+                        if [ -n "$QM_FILE" ] && [ -f "$QM_FILE" ]; then
+                            echo -n "Destination hash: "
+                            read -r QM_DEST
+                            if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
+                                rncp "$QM_FILE" "$QM_DEST" 2>&1
+                            fi
+                        elif [ -n "$QM_FILE" ]; then
+                            print_error "File not found: $QM_FILE"
                         fi
-                    elif [ -n "$QM_FILE" ]; then
-                        print_error "File not found: $QM_FILE"
                     fi
                 else
                     print_warning "rncp not available"
@@ -349,7 +346,7 @@ run_startup_health_check() {
         fi
         if [ "$mtd_port_conflict" = true ]; then
             print_info "Ports 443/9443 in use (may affect meshtasticd HTTP API when started)"
-            log_debug "meshtasticd ports 443/9443 already bound at startup"
+            log_warn "meshtasticd ports 443/9443 already bound at startup"
         fi
     fi
 

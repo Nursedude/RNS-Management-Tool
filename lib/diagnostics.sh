@@ -8,9 +8,51 @@
 _DIAG_TOTAL_ISSUES=0
 _DIAG_TOTAL_WARNINGS=0
 
-# Step 1: Check environment and prerequisites
+# Step 1: System resources — disk space and memory
+# (adapted from meshforge improved diagnostics; reuses patterns from lib/install.sh)
+diag_check_system_resources() {
+    echo -e "${BLUE}▶ Step 1/7: System Resources${NC}"
+
+    # Disk space check
+    if command -v df &> /dev/null; then
+        local avail_mb
+        avail_mb=$(df -m "$REAL_HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+        if [ -n "$avail_mb" ]; then
+            if [ "$avail_mb" -lt 100 ]; then
+                print_error "Disk space critically low: ${avail_mb}MB available"
+                ((_DIAG_TOTAL_ISSUES++))
+            elif [ "$avail_mb" -lt 500 ]; then
+                print_warning "Disk space low: ${avail_mb}MB available (recommend 500MB+)"
+                ((_DIAG_TOTAL_WARNINGS++))
+            else
+                print_success "Disk space: ${avail_mb}MB available"
+            fi
+        fi
+    fi
+
+    # Memory check
+    if [ -f /proc/meminfo ]; then
+        local mem_total_kb mem_avail_kb
+        mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+        mem_avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
+        if [ -n "$mem_total_kb" ] && [ -n "$mem_avail_kb" ] && [ "$mem_total_kb" -gt 0 ]; then
+            local mem_total_mb=$((mem_total_kb / 1024))
+            local mem_avail_mb=$((mem_avail_kb / 1024))
+            local mem_pct=$((mem_avail_kb * 100 / mem_total_kb))
+            if [ "$mem_pct" -lt 10 ]; then
+                print_warning "Memory low: ${mem_avail_mb}MB/${mem_total_mb}MB free (${mem_pct}%)"
+                ((_DIAG_TOTAL_WARNINGS++))
+            else
+                print_success "Memory: ${mem_avail_mb}MB/${mem_total_mb}MB free (${mem_pct}%)"
+            fi
+        fi
+    fi
+    echo ""
+}
+
+# Step 2: Check environment and prerequisites
 diag_check_environment() {
-    echo -e "${BLUE}▶ Step 1/6: Environment & Prerequisites${NC}"
+    echo -e "${BLUE}▶ Step 2/7: Environment & Prerequisites${NC}"
 
     echo "  Platform: $OS_TYPE ($ARCHITECTURE)"
     [ "$IS_RASPBERRY_PI" = true ] && echo "  Raspberry Pi: $PI_MODEL"
@@ -41,9 +83,9 @@ diag_check_environment() {
     echo ""
 }
 
-# Step 2: Check RNS tool availability
+# Step 3: Check RNS tool availability
 diag_check_rns_tools() {
-    echo -e "${BLUE}▶ Step 2/6: RNS Tool Availability${NC}"
+    echo -e "${BLUE}▶ Step 3/7: RNS Tool Availability${NC}"
 
     local tool_list=(
         "rnsd:$HAS_RNSD:daemon"
@@ -79,9 +121,9 @@ diag_check_rns_tools() {
     echo ""
 }
 
-# Step 3: Validate Reticulum configuration
+# Step 4: Validate Reticulum configuration
 diag_check_configuration() {
-    echo -e "${BLUE}▶ Step 3/6: Configuration Validation${NC}"
+    echo -e "${BLUE}▶ Step 4/7: Configuration Validation${NC}"
 
     local config_file="$REAL_HOME/.reticulum/config"
     if [ -f "$config_file" ]; then
@@ -113,9 +155,9 @@ diag_check_configuration() {
     echo ""
 }
 
-# Step 4: Check service health (rnsd + meshtasticd)
+# Step 5: Check service health (rnsd + meshtasticd)
 diag_check_services() {
-    echo -e "${BLUE}▶ Step 4/6: Service Health${NC}"
+    echo -e "${BLUE}▶ Step 5/7: Service Health${NC}"
 
     # rnsd status with detection method tracking (meshforge ServiceStatus pattern)
     local rnsd_detection_method="none"
@@ -205,9 +247,9 @@ diag_check_services() {
     echo ""
 }
 
-# Step 5: Check network interfaces and USB devices
+# Step 6: Check network interfaces and USB devices
 diag_check_network() {
-    echo -e "${BLUE}▶ Step 5/6: Network & Interfaces${NC}"
+    echo -e "${BLUE}▶ Step 6/7: Network & Interfaces${NC}"
 
     if command -v ip &> /dev/null; then
         local net_ifaces
@@ -286,9 +328,9 @@ diag_check_network() {
     echo ""
 }
 
-# Step 6: Print summary and recommendations
+# Step 7: Print summary and recommendations
 diag_report_summary() {
-    echo -e "${BLUE}▶ Step 6/6: Summary & Recommendations${NC}"
+    echo -e "${BLUE}▶ Step 7/7: Summary & Recommendations${NC}"
     echo ""
 
     if [ "$_DIAG_TOTAL_ISSUES" -eq 0 ] && [ "$_DIAG_TOTAL_WARNINGS" -eq 0 ]; then
@@ -333,8 +375,9 @@ run_diagnostics() {
     _DIAG_TOTAL_ISSUES=0
     _DIAG_TOTAL_WARNINGS=0
 
-    echo -e "${BOLD}Running 6-step diagnostic...${NC}\n"
+    echo -e "${BOLD}Running 7-step diagnostic...${NC}\n"
 
+    diag_check_system_resources
     diag_check_environment
     diag_check_rns_tools
     diag_check_configuration

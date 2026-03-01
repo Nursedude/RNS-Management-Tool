@@ -318,8 +318,9 @@ view_logs_menu() {
         echo -e "${BOLD}Log Viewer:${NC}\n"
         echo "   1) View recent management tool log"
         echo "   2) View rnsd daemon logs (systemd)"
-        echo "   3) Search logs for keyword"
-        echo "   4) List all management logs"
+        echo "   3) View meshtasticd logs (systemd)"
+        echo "   4) Search logs for keyword"
+        echo "   5) List all management logs"
         echo ""
         echo "   0) Back"
         echo ""
@@ -360,6 +361,21 @@ view_logs_menu() {
                 pause_for_input
                 ;;
             3)
+                # meshtasticd logs (meshforge 259f22e — expanded log viewer)
+                print_section "meshtasticd Logs"
+                if ! command -v meshtasticd &>/dev/null; then
+                    print_info "meshtasticd is not installed"
+                elif command -v journalctl &>/dev/null; then
+                    print_info "Showing recent meshtasticd log entries..."
+                    echo ""
+                    sudo journalctl -u meshtasticd --no-pager -n 30 2>/dev/null || \
+                        print_warning "No systemd logs found for meshtasticd"
+                else
+                    print_warning "journalctl not available"
+                fi
+                pause_for_input
+                ;;
+            4)
                 print_section "Search Logs"
                 echo -n "Enter search term: "
                 read -r SEARCH_TERM
@@ -374,17 +390,20 @@ view_logs_menu() {
                 fi
                 pause_for_input
                 ;;
-            4)
+            5)
+                # Enhanced log listing with line counts (meshforge 259f22e pattern)
                 print_section "All Management Logs"
                 echo -e "${BOLD}Log files:${NC}\n"
                 local found_any=false
-                # Show current + rotated logs
+                # Show current + rotated logs with sizes and line counts
                 for logfile in "$UPDATE_LOG" "${UPDATE_LOG}.1" "${UPDATE_LOG}.2" "${UPDATE_LOG}.3"; do
                     if [ -f "$logfile" ]; then
                         found_any=true
-                        local sz
+                        local sz lc mod_time
                         sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
-                        echo "  $(basename "$logfile") (${sz} bytes)"
+                        lc=$(wc -l < "$logfile" 2>/dev/null || echo "?")
+                        mod_time=$(stat -c%y "$logfile" 2>/dev/null | cut -d. -f1 || echo "?")
+                        echo "  $(basename "$logfile") (${sz} bytes, ${lc} lines, modified: ${mod_time})"
                     fi
                 done
                 # Show any legacy timestamped logs
@@ -396,9 +415,10 @@ view_logs_menu() {
                     echo -e "  ${YELLOW}Legacy timestamped logs:${NC}"
                     while IFS= read -r logfile; do
                         [ -z "$logfile" ] && continue
-                        local sz
+                        local sz lc
                         sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
-                        echo "  $(basename "$logfile") (${sz} bytes)"
+                        lc=$(wc -l < "$logfile" 2>/dev/null || echo "?")
+                        echo "  $(basename "$logfile") (${sz} bytes, ${lc} lines)"
                     done <<< "$legacy_logs"
                 fi
                 if [ "$found_any" = false ]; then

@@ -15,7 +15,10 @@ stop_services() {
     # Stop rnsd if running (improved detection from meshforge service_menu_mixin.py)
     if is_rnsd_running; then
         print_info "Stopping rnsd daemon..."
-        rnsd --daemon stop 2>/dev/null || pkill -x rnsd 2>/dev/null
+        if ! rnsd --daemon stop 2>/dev/null; then
+            log_warn "rnsd --daemon stop failed, trying pkill"
+            pkill -x rnsd 2>/dev/null || log_warn "pkill -x rnsd also failed"
+        fi
 
         # Poll with timeout instead of hardcoded sleep (meshforge pattern)
         local wait_count=0
@@ -83,10 +86,12 @@ start_services() {
                 fi
             else
                 print_error "rnsd failed to start after ${max_wait}s"
+                log_error "rnsd failed to start within ${max_wait}s"
                 show_error_help "service" ""
             fi
         else
             print_error "Failed to start rnsd"
+            log_error "rnsd start command failed"
             show_error_help "service" ""
         fi
     fi
