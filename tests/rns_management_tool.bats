@@ -320,13 +320,14 @@ teardown() {
     grep -q 'Identity Management (rnid)\|Identity management (rnid)' $COMBINED_SOURCE
 }
 
-@test "6-step diagnostics implemented" {
-    grep -q 'Step 1/6' $COMBINED_SOURCE &&
-    grep -q 'Step 2/6' $COMBINED_SOURCE &&
-    grep -q 'Step 3/6' $COMBINED_SOURCE &&
-    grep -q 'Step 4/6' $COMBINED_SOURCE &&
-    grep -q 'Step 5/6' $COMBINED_SOURCE &&
-    grep -q 'Step 6/6' $COMBINED_SOURCE
+@test "7-step diagnostics implemented" {
+    grep -q 'Step 1/7' $COMBINED_SOURCE &&
+    grep -q 'Step 2/7' $COMBINED_SOURCE &&
+    grep -q 'Step 3/7' $COMBINED_SOURCE &&
+    grep -q 'Step 4/7' $COMBINED_SOURCE &&
+    grep -q 'Step 5/7' $COMBINED_SOURCE &&
+    grep -q 'Step 6/7' $COMBINED_SOURCE &&
+    grep -q 'Step 7/7' $COMBINED_SOURCE
 }
 
 @test "Diagnostics provides actionable remediation suggestions" {

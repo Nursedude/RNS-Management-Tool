@@ -5,7 +5,7 @@
 # Enforces project-specific security and coding standards
 #
 # Adapted from meshforge scripts/lint.py (MF001-MF010)
-# Checks RNS001-RNS006 rules from CLAUDE.md
+# Checks RNS001-RNS008 rules from CLAUDE.md
 #
 # Usage:
 #   ./scripts/lint.sh              # Lint all bash source files
@@ -123,6 +123,24 @@ lint_file() {
            [[ "$line" != *"console"* ]] && [[ "$filepath" != *"test"* ]]; then
             report "W" "$filepath" "$lineno" "RNS006" \
                 "rnodeconf call without timeout wrapper — use run_with_timeout"
+        fi
+
+        # RNS007: Bare cd without error handling (adapted from meshforge reliability patterns)
+        # Flags cd commands that don't check for failure
+        if [[ "$stripped" =~ ^cd[[:space:]] ]] && \
+           [[ "$line" != *"||"* ]] && [[ "$line" != *"&&"* ]] && \
+           [[ "$line" != *'$('* ]] && [[ "$filepath" != *"test"* ]]; then
+            report "W" "$filepath" "$lineno" "RNS007" \
+                "cd without error handling — use 'cd ... || return 1'"
+        fi
+
+        # RNS008: Direct pgrep calls outside centralized service detection
+        # (adapted from meshforge MF008 — raw systemctl calls should use check_service)
+        if [[ "$line" =~ pgrep[[:space:]] ]] && \
+           [[ "$filepath" != *"utils.sh"* ]] && [[ "$filepath" != *"test"* ]] && \
+           [[ "$filepath" != *"diagnostics.sh"* ]] && [[ "$filepath" != *"lint.sh"* ]]; then
+            report "W" "$filepath" "$lineno" "RNS008" \
+                "Direct pgrep call — prefer check_service_status() from lib/utils.sh"
         fi
 
     done < "$filepath"

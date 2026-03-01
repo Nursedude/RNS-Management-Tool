@@ -158,9 +158,24 @@ main() {
     # First-run wizard (only triggers when no config exists)
     first_run_wizard
 
-    # Main menu loop
+    # Main menu loop with retry on read failures (meshforge cf3fb86 TUI stability pattern)
+    local _consecutive_failures=0
+    local _max_consecutive_failures=3
+
     while true; do
-        show_main_menu
+        # Guard against read failures (EOF, terminal disconnect)
+        if ! show_main_menu && [ -z "$MENU_CHOICE" ]; then
+            ((_consecutive_failures++))
+            if [ "$_consecutive_failures" -ge "$_max_consecutive_failures" ]; then
+                log_error "Menu read failed $_consecutive_failures consecutive times — exiting"
+                print_error "Terminal read failed repeatedly. Exiting gracefully."
+                exit 1
+            fi
+            log_warn "Menu read failed (attempt $_consecutive_failures/$_max_consecutive_failures)"
+            sleep 1
+            continue
+        fi
+        _consecutive_failures=0
 
         case $MENU_CHOICE in
             1)
@@ -261,6 +276,37 @@ if [ "$(uname)" != "Linux" ]; then
     echo "For Windows, please use rns_management_tool.ps1"
     exit 1
 fi
+
+# CLI flags (adapted from meshforge launcher_tui/main.py argparse addition)
+case "${1:-}" in
+    --help|-h)
+        echo "RNS Management Tool v${SCRIPT_VERSION}"
+        echo "Complete Reticulum Network Stack Manager"
+        echo ""
+        echo "Usage: $(basename "$0") [OPTION]"
+        echo ""
+        echo "Options:"
+        echo "  --help, -h       Show this help message and exit"
+        echo "  --version        Show version and exit"
+        echo "  --debug          Enable debug-level logging"
+        echo "  --check          Run validation checks (CI mode)"
+        echo ""
+        echo "Without options, launches the interactive TUI."
+        echo ""
+        echo "Documentation: https://github.com/Nursedude/RNS-Management-Tool"
+        exit 0
+        ;;
+    --version)
+        echo "RNS Management Tool v${SCRIPT_VERSION}"
+        exit 0
+        ;;
+    --debug)
+        CURRENT_LOG_LEVEL=$LOG_LEVEL_DEBUG
+        log_message "Debug logging enabled via --debug flag"
+        main
+        exit $?
+        ;;
+esac
 
 # --check: Dry-run validation mode for CI
 # Validates syntax, function definitions, and environment without launching TUI
