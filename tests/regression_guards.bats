@@ -327,3 +327,91 @@ setup() {
     func_body=$(sed -n '/^emergency_quick_mode()/,/^}/p' "$LIB_DIR/advanced.sh")
     echo "$func_body" | grep -q 'check_service_status.*rnsd'
 }
+
+#########################################################
+# MeshForge cross-pollination — Session 1 (R3, R7, R8, R9)
+#########################################################
+
+# R9: --rnode CLI flag
+
+@test "CLI: --rnode flag handled in main script" {
+    grep -q '\-\-rnode' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "CLI: --rnode calls configure_rnode_interactive" {
+    # The --rnode case block must call configure_rnode_interactive
+    local rnode_block
+    rnode_block=$(sed -n '/--rnode)/,/;;/p' "$SCRIPT_DIR/rns_management_tool.sh")
+    echo "$rnode_block" | grep -q 'configure_rnode_interactive'
+}
+
+@test "CLI: --rnode listed in --help output" {
+    # Verify --rnode appears in the help text section (between --help and exit 0)
+    local help_block
+    help_block=$(sed -n '/--help, -h/,/exit 0/p' "$SCRIPT_DIR/rns_management_tool.sh")
+    echo "$help_block" | grep -q '\-\-rnode'
+}
+
+# R7: No curl-pipe-bash in PowerShell WSL integration
+
+@test "PWSH: no curl pipe to bash in install.ps1" {
+    ! grep -q '| bash' "$PWSH_DIR/install.ps1"
+}
+
+@test "PWSH: no curl pipe to bash in rnode.ps1" {
+    ! grep -q '| bash' "$PWSH_DIR/rnode.ps1"
+}
+
+@test "PWSH: install.ps1 downloads to temp file before executing" {
+    grep -q 'mktemp' "$PWSH_DIR/install.ps1"
+}
+
+@test "PWSH: rnode.ps1 downloads to temp file before executing" {
+    grep -q 'mktemp' "$PWSH_DIR/rnode.ps1"
+}
+
+# R8: No duplicate Export/Import in advanced.ps1
+
+@test "PWSH: no Export-Configuration function in advanced.ps1" {
+    ! grep -qP '^\s*function Export-Configuration\b' "$PWSH_DIR/advanced.ps1"
+}
+
+@test "PWSH: no Import-Configuration function in advanced.ps1" {
+    ! grep -qP '^\s*function Import-Configuration\b' "$PWSH_DIR/advanced.ps1"
+}
+
+@test "PWSH: advanced menu calls Export-RnsConfiguration from backup.ps1" {
+    grep -q 'Export-RnsConfiguration' "$PWSH_DIR/advanced.ps1"
+}
+
+@test "PWSH: advanced menu calls Import-RnsConfiguration from backup.ps1" {
+    grep -q 'Import-RnsConfiguration' "$PWSH_DIR/advanced.ps1"
+}
+
+# R3: Restrictive umask for backup operations
+
+@test "BACKUP: create_backup sets restrictive umask" {
+    grep -q 'umask 077' "$LIB_DIR/backup.sh"
+}
+
+@test "BACKUP: create_backup restores original umask" {
+    local func_body
+    func_body=$(sed -n '/^create_backup()/,/^}/p' "$LIB_DIR/backup.sh")
+    echo "$func_body" | grep -q 'umask "$old_umask"'
+}
+
+@test "BACKUP: export_configuration sets restrictive umask" {
+    local func_body
+    func_body=$(sed -n '/^export_configuration()/,/^}/p' "$LIB_DIR/backup.sh")
+    echo "$func_body" | grep -q 'umask 077'
+}
+
+# R1: NodeSource download validation
+
+@test "INSTALL: NodeSource download has size validation" {
+    grep -q 'script_size' "$LIB_DIR/install.sh"
+}
+
+@test "INSTALL: NodeSource download logs SHA256" {
+    grep -q 'sha256sum' "$LIB_DIR/install.sh"
+}

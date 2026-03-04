@@ -289,6 +289,7 @@ case "${1:-}" in
         echo "  --help, -h       Show this help message and exit"
         echo "  --version        Show version and exit"
         echo "  --debug          Enable debug-level logging"
+        echo "  --rnode          Launch RNODE configuration directly"
         echo "  --check          Run validation checks (CI mode)"
         echo ""
         echo "Without options, launches the interactive TUI."
@@ -304,6 +305,13 @@ case "${1:-}" in
         CURRENT_LOG_LEVEL=$LOG_LEVEL_DEBUG
         log_message "Debug logging enabled via --debug flag"
         main
+        exit $?
+        ;;
+    --rnode)
+        detect_environment
+        detect_available_tools
+        log_message "=== RNODE Direct Mode ==="
+        configure_rnode_interactive
         exit $?
         ;;
 esac

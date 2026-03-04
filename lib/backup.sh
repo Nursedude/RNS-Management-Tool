@@ -160,6 +160,11 @@ export_configuration() {
     echo ""
 
     if [ -d "$REAL_HOME/.reticulum" ] || [ -d "$REAL_HOME/.nomadnetwork" ] || [ -d "$REAL_HOME/.lxmf" ]; then
+        # Restrict permissions on export archive (identity keys, config credentials)
+        local old_umask
+        old_umask=$(umask)
+        umask 077
+
         print_info "Creating export archive..."
 
         # Create temporary directory for export (trap ensures cleanup on any exit path)
@@ -179,6 +184,7 @@ export_configuration() {
         fi
 
         rm -rf "$TEMP_EXPORT"
+        umask "$old_umask"
     else
         print_warning "No configuration files found to export"
     fi
@@ -249,6 +255,11 @@ create_backup() {
         return 0
     fi
 
+    # Restrict permissions on backup files (identity keys, config credentials)
+    local old_umask
+    old_umask=$(umask)
+    umask 077
+
     # Generate fresh timestamp per backup (avoids stale BACKUP_DIR from source time)
     BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$BACKUP_DIR"
@@ -286,6 +297,9 @@ create_backup() {
             print_error "Failed to backup LXMF config"
         fi
     fi
+
+    # Restore original umask
+    umask "$old_umask"
 
     if [ "$backed_up" = true ]; then
         print_success "Backup saved to: $BACKUP_DIR"

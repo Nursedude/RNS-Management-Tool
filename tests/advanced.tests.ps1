@@ -22,13 +22,13 @@ BeforeAll {
 # ─────────────────────────────────────────────────────────────
 Describe "Function Existence" {
 
-    It "advanced.ps1 has exactly 8 functions" {
+    It "advanced.ps1 has exactly 6 functions" {
         $functionCount = ([regex]::Matches(
             $Script:AdvancedSource,
             '^\s*function\s+',
             [System.Text.RegularExpressions.RegexOptions]::Multiline
         )).Count
-        $functionCount | Should -Be 8
+        $functionCount | Should -Be 6
     }
 }
 
@@ -83,88 +83,30 @@ Describe "Factory Reset Safety: Reset-ToFactory" {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Import-Configuration (RNS004 path traversal)
+# Export/Import consolidated in pwsh/backup.ps1 (R8)
+# Tests for Export-RnsConfiguration and Import-RnsConfiguration
+# are in tests/backup.tests.ps1
 # ─────────────────────────────────────────────────────────────
-Describe "Import-Configuration: RNS004 Path Traversal Prevention" {
+
+Describe "Advanced Menu calls consolidated backup functions" {
 
     BeforeAll {
         $fn = $Script:AdvancedAst.FindAll({
             param($node)
             $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-            $node.Name -eq 'Import-Configuration'
+            $node.Name -eq 'Show-AdvancedMenu'
         }, $true) | Select-Object -First 1
-        $Script:ImportBlock = $fn.Extent.Text
+        $Script:AdvMenuBlock = $fn.Extent.Text
     }
 
-    It "Validates .zip extension" {
-        $Script:ImportBlock.Contains('.zip') | Should -BeTrue
-        $Script:ImportBlock.Contains('-notmatch') | Should -BeTrue
+    It "Calls Export-RnsConfiguration (not Export-Configuration)" {
+        $Script:AdvMenuBlock.Contains('Export-RnsConfiguration') | Should -BeTrue
+        $Script:AdvMenuBlock.Contains('Export-Configuration') | Should -BeFalse
     }
 
-    It "Uses ZipFile.OpenRead for archive validation" {
-        $Script:ImportBlock.Contains('ZipFile') | Should -BeTrue
-        $Script:ImportBlock.Contains('OpenRead') | Should -BeTrue
-    }
-
-    It "Checks for '..' path traversal in entries" {
-        $Script:ImportBlock.Contains('hasInvalidPaths') | Should -BeTrue
-        $Script:ImportBlock.Contains('entry.FullName') | Should -BeTrue
-    }
-
-    It "Checks for absolute paths starting with / and \" {
-        $Script:ImportBlock.Contains("StartsWith('/')") | Should -BeTrue
-        $Script:ImportBlock.Contains("StartsWith('\')") | Should -BeTrue
-    }
-
-    It "Disposes zip handle after validation" {
-        $Script:ImportBlock.Contains('$zip.Dispose()') | Should -BeTrue
-    }
-
-    It "Logs security violations" {
-        $Script:ImportBlock.Contains('SECURITY') | Should -BeTrue
-        $Script:ImportBlock.Contains('invalid paths') | Should -BeTrue
-    }
-
-    It "Validates archive before extraction" {
-        $validationIdx = $Script:ImportBlock.IndexOf('ZipFile')
-        $expandIdx = $Script:ImportBlock.IndexOf('Expand-Archive')
-        $validationIdx | Should -BeLessThan $expandIdx
-    }
-
-    It "Creates backup before import" {
-        $backupIdx = $Script:ImportBlock.IndexOf('New-Backup')
-        $expandIdx = $Script:ImportBlock.IndexOf('Expand-Archive')
-        $backupIdx | Should -BeGreaterThan 0
-        $expandIdx | Should -BeGreaterThan $backupIdx
-    }
-
-    It "Cleans up temp import directory" {
-        $Script:ImportBlock.Contains('tempImport') | Should -BeTrue
-        $Script:ImportBlock.Contains('Remove-Item') | Should -BeTrue
-    }
-}
-
-# ─────────────────────────────────────────────────────────────
-# Export-Configuration
-# ─────────────────────────────────────────────────────────────
-Describe "Export-Configuration" {
-
-    BeforeAll {
-        $fn = $Script:AdvancedAst.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-            $node.Name -eq 'Export-Configuration'
-        }, $true) | Select-Object -First 1
-        $Script:ExportBlock = $fn.Extent.Text
-    }
-
-    It "Uses Compress-Archive for zip creation" {
-        $Script:ExportBlock.Contains('Compress-Archive') | Should -BeTrue
-    }
-
-    It "Cleans up temp directory after export" {
-        $Script:ExportBlock.Contains('tempExport') | Should -BeTrue
-        $Script:ExportBlock.Contains('Remove-Item') | Should -BeTrue
+    It "Calls Import-RnsConfiguration (not Import-Configuration)" {
+        $Script:AdvMenuBlock.Contains('Import-RnsConfiguration') | Should -BeTrue
+        $Script:AdvMenuBlock.Contains('Import-Configuration') | Should -BeFalse
     }
 }
 
