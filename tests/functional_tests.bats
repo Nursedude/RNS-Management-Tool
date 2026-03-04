@@ -30,6 +30,7 @@ setup() {
 
     # Source remaining modules
     source "$LIB_DIR/ui.sh"
+    source "$LIB_DIR/validation.sh"
     source "$LIB_DIR/utils.sh"
     source "$LIB_DIR/install.sh" 2>/dev/null || true
 }

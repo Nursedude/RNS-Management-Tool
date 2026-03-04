@@ -108,8 +108,8 @@ teardown() {
 # Version Tests
 #########################################################
 
-@test "Version is set to 0.3.5-beta" {
-    grep -q 'SCRIPT_VERSION="0.3.5-beta"' $COMBINED_SOURCE
+@test "Version is set to 0.4.0-beta" {
+    grep -q 'SCRIPT_VERSION="0.4.0-beta"' $COMBINED_SOURCE
 }
 
 #########################################################

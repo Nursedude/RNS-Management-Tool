@@ -191,7 +191,8 @@ diag_check_configuration() {
 
         # Count enabled interfaces
         local enabled_ifaces
-        enabled_ifaces=$(grep -cE '^\s+enabled\s*=\s*(True|Yes|true|yes)' "$config_file" 2>/dev/null || echo 0)
+        enabled_ifaces=$(grep -cE '^\s+enabled\s*=\s*(True|Yes|true|yes)' "$config_file" 2>/dev/null) || true
+        enabled_ifaces="${enabled_ifaces:-0}"
         if [ "$enabled_ifaces" -eq 0 ]; then
             print_warning "No enabled interfaces found in config"
             echo -e "  ${YELLOW}Fix: Enable at least one interface in ~/.reticulum/config${NC}"
