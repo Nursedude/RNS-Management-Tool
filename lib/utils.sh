@@ -235,8 +235,9 @@ log_message() {
 }
 
 log_debug() {
-    [ "$CURRENT_LOG_LEVEL" -le "$LOG_LEVEL_DEBUG" ] && \
+    if [ "$CURRENT_LOG_LEVEL" -le "$LOG_LEVEL_DEBUG" ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DEBUG] $1" >> "$UPDATE_LOG"
+    fi
 }
 
 log_warn() {
@@ -252,8 +253,8 @@ log_error() {
 cleanup_on_exit() {
     local exit_code=$?
     # Restore terminal state (meshforge TUI stability fix — prevents dirty terminal)
-    tput cnorm 2>/dev/null   # Show cursor (in case hidden during progress)
-    stty echo 2>/dev/null    # Re-enable echo (in case disabled during password input)
+    tput cnorm 2>/dev/null || true   # Show cursor (in case hidden during progress)
+    stty echo 2>/dev/null || true   # Re-enable echo (in case disabled during password input)
     # Remove any temp files created during session
     rm -f "${TMPDIR:-/tmp}"/rns_mgmt_*.tmp 2>/dev/null
     if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 130 ]; then

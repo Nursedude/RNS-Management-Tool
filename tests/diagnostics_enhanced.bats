@@ -53,7 +53,7 @@ teardown() {
 }
 
 @test "DIAG: run_diagnostics returns 1 for warnings only" {
-    diag_check_system_resources() { ((_DIAG_TOTAL_WARNINGS++)); }
+    diag_check_system_resources() { ((_DIAG_TOTAL_WARNINGS++)) || true; }
     diag_check_environment() { true; }
     diag_check_rns_tools() { true; }
     diag_check_configuration() { true; }
@@ -61,13 +61,13 @@ teardown() {
     diag_check_network() { true; }
     diag_report_summary() { true; }
 
-    run_diagnostics
-    local rc=$?
+    local rc=0
+    run_diagnostics || rc=$?
     [ "$rc" -eq 1 ]
 }
 
 @test "DIAG: run_diagnostics returns 2 for issues" {
-    diag_check_system_resources() { ((_DIAG_TOTAL_ISSUES++)); }
+    diag_check_system_resources() { ((_DIAG_TOTAL_ISSUES++)) || true; }
     diag_check_environment() { true; }
     diag_check_rns_tools() { true; }
     diag_check_configuration() { true; }
@@ -75,8 +75,8 @@ teardown() {
     diag_check_network() { true; }
     diag_report_summary() { true; }
 
-    run_diagnostics
-    local rc=$?
+    local rc=0
+    run_diagnostics || rc=$?
     [ "$rc" -eq 2 ]
 }
 

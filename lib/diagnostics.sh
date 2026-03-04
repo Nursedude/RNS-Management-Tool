@@ -20,10 +20,10 @@ diag_check_system_resources() {
         if [ -n "$avail_mb" ]; then
             if [ "$avail_mb" -lt 100 ]; then
                 print_error "Disk space critically low: ${avail_mb}MB available"
-                ((_DIAG_TOTAL_ISSUES++))
+                ((_DIAG_TOTAL_ISSUES++)) || true
             elif [ "$avail_mb" -lt 500 ]; then
                 print_warning "Disk space low: ${avail_mb}MB available (recommend 500MB+)"
-                ((_DIAG_TOTAL_WARNINGS++))
+                ((_DIAG_TOTAL_WARNINGS++)) || true
             else
                 print_success "Disk space: ${avail_mb}MB available"
             fi
@@ -41,7 +41,7 @@ diag_check_system_resources() {
             local mem_pct=$((mem_avail_kb * 100 / mem_total_kb))
             if [ "$mem_pct" -lt 10 ]; then
                 print_warning "Memory low: ${mem_avail_mb}MB/${mem_total_mb}MB free (${mem_pct}%)"
-                ((_DIAG_TOTAL_WARNINGS++))
+                ((_DIAG_TOTAL_WARNINGS++)) || true
             else
                 print_success "Memory: ${mem_avail_mb}MB/${mem_total_mb}MB free (${mem_pct}%)"
             fi
@@ -59,7 +59,7 @@ diag_check_system_resources() {
             nproc_thresh=$((nproc_val * 200))
             if [ "$load_int" -gt "$nproc_thresh" ]; then
                 print_warning "CPU load high: $load_1m (${nproc_val} cores)"
-                ((_DIAG_TOTAL_WARNINGS++))
+                ((_DIAG_TOTAL_WARNINGS++)) || true
             else
                 print_success "CPU load: $load_1m (${nproc_val} cores)"
             fi
@@ -74,10 +74,10 @@ diag_check_system_resources() {
             temp_c=$((temp_mc / 1000))
             if [ "$temp_c" -ge 80 ]; then
                 print_error "CPU temperature critical: ${temp_c}°C (throttling likely)"
-                ((_DIAG_TOTAL_ISSUES++))
+                ((_DIAG_TOTAL_ISSUES++)) || true
             elif [ "$temp_c" -ge 70 ]; then
                 print_warning "CPU temperature high: ${temp_c}°C"
-                ((_DIAG_TOTAL_WARNINGS++))
+                ((_DIAG_TOTAL_WARNINGS++)) || true
             else
                 print_success "CPU temperature: ${temp_c}°C"
             fi
@@ -102,7 +102,7 @@ diag_check_environment() {
     else
         print_error "Python 3 not found"
         echo -e "  ${YELLOW}Fix: sudo apt install python3 python3-pip${NC}"
-        ((_DIAG_TOTAL_ISSUES++))
+        ((_DIAG_TOTAL_ISSUES++)) || true
     fi
 
     if [ "$HAS_PIP" = true ]; then
@@ -110,7 +110,7 @@ diag_check_environment() {
     else
         print_error "pip not found"
         echo -e "  ${YELLOW}Fix: sudo apt install python3-pip${NC}"
-        ((_DIAG_TOTAL_ISSUES++))
+        ((_DIAG_TOTAL_ISSUES++)) || true
     fi
 
     if [ "$PEP668_DETECTED" = true ]; then
@@ -152,7 +152,7 @@ diag_check_rns_tools() {
     if [ "$tool_missing" -gt 0 ]; then
         echo ""
         echo -e "  ${CYAN}[i] Install missing tools: pip3 install rns${NC}"
-        ((_DIAG_TOTAL_WARNINGS++))
+        ((_DIAG_TOTAL_WARNINGS++)) || true
     fi
     echo ""
 }
@@ -170,23 +170,23 @@ diag_check_configuration() {
         if [ "$config_size" -lt 10 ]; then
             print_error "Config file appears empty ($config_size bytes)"
             echo -e "  ${YELLOW}Fix: Apply a config template from Advanced > Apply Configuration Template${NC}"
-            ((_DIAG_TOTAL_ISSUES++))
+            ((_DIAG_TOTAL_ISSUES++)) || true
         fi
 
         if grep -q "interface_enabled = false" "$config_file" 2>/dev/null; then
             print_warning "Some interfaces are disabled in config"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         fi
 
         # Validate config structure — check required sections
         if ! grep -q '^\[reticulum\]' "$config_file" 2>/dev/null; then
             print_warning "Config missing [reticulum] section"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         fi
 
         if ! grep -q '^\[interfaces\]' "$config_file" 2>/dev/null; then
             print_warning "Config missing [interfaces] section"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         fi
 
         # Count enabled interfaces
@@ -196,7 +196,7 @@ diag_check_configuration() {
         if [ "$enabled_ifaces" -eq 0 ]; then
             print_warning "No enabled interfaces found in config"
             echo -e "  ${YELLOW}Fix: Enable at least one interface in ~/.reticulum/config${NC}"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         else
             print_success "$enabled_ifaces interface(s) enabled in config"
         fi
@@ -208,7 +208,7 @@ diag_check_configuration() {
             if [ -n "$rnode_port" ] && [ ! -e "$rnode_port" ]; then
                 print_warning "Config references $rnode_port but device not found"
                 echo -e "  ${YELLOW}Check RNODE connection or update port in config${NC}"
-                ((_DIAG_TOTAL_WARNINGS++))
+                ((_DIAG_TOTAL_WARNINGS++)) || true
             fi
         fi
 
@@ -220,7 +220,7 @@ diag_check_configuration() {
     else
         print_warning "No configuration found"
         echo -e "  ${YELLOW}Fix: Run first-time setup or start rnsd to create default config${NC}"
-        ((_DIAG_TOTAL_WARNINGS++))
+        ((_DIAG_TOTAL_WARNINGS++)) || true
     fi
     echo ""
 }
@@ -255,7 +255,7 @@ diag_check_services() {
         else
             print_warning "rnsd process detected (via $rnsd_detection_method) but port 37428 not bound"
             echo -e "  ${YELLOW}This may indicate a zombie process — try restarting rnsd${NC}"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         fi
 
         # Uptime display
@@ -280,7 +280,7 @@ diag_check_services() {
     else
         print_warning "rnsd daemon is not running"
         echo -e "  ${YELLOW}Fix: Start from Services menu or run: rnsd --daemon${NC}"
-        ((_DIAG_TOTAL_WARNINGS++))
+        ((_DIAG_TOTAL_WARNINGS++)) || true
     fi
 
     if command -v systemctl &>/dev/null; then
@@ -306,12 +306,12 @@ diag_check_services() {
                 local config_hint
                 config_hint=$(check_meshtasticd_webserver_config)
                 echo -e "  ${YELLOW}${config_hint}${NC}"
-                ((_DIAG_TOTAL_WARNINGS++))
+                ((_DIAG_TOTAL_WARNINGS++)) || true
             fi
         else
             print_warning "meshtasticd installed but not running"
             echo -e "  ${YELLOW}Fix: sudo systemctl start meshtasticd${NC}"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         fi
     fi
     echo ""
@@ -331,7 +331,7 @@ diag_check_network() {
             done
         else
             print_warning "No active network interfaces found"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         fi
     fi
 
@@ -347,7 +347,7 @@ diag_check_network() {
         if ! groups 2>/dev/null | grep -q "dialout"; then
             print_warning "User not in dialout group"
             echo -e "  ${YELLOW}Fix: sudo usermod -aG dialout \$USER && logout${NC}"
-            ((_DIAG_TOTAL_WARNINGS++))
+            ((_DIAG_TOTAL_WARNINGS++)) || true
         fi
     else
         echo -e "  ${CYAN}[i] No USB serial devices (RNODE) detected${NC}"
