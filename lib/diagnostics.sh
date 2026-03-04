@@ -47,6 +47,42 @@ diag_check_system_resources() {
             fi
         fi
     fi
+
+    # CPU load check
+    if [ -f /proc/loadavg ]; then
+        local load_1m nproc_val
+        load_1m=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+        nproc_val=$(nproc 2>/dev/null || echo 1)
+        if [ -n "$load_1m" ] && [ -n "$nproc_val" ]; then
+            local load_int nproc_thresh
+            load_int=$(echo "$load_1m" | awk '{printf "%d", $1 * 100}')
+            nproc_thresh=$((nproc_val * 200))
+            if [ "$load_int" -gt "$nproc_thresh" ]; then
+                print_warning "CPU load high: $load_1m (${nproc_val} cores)"
+                ((_DIAG_TOTAL_WARNINGS++))
+            else
+                print_success "CPU load: $load_1m (${nproc_val} cores)"
+            fi
+        fi
+    fi
+
+    # Temperature check (Raspberry Pi / thermal_zone)
+    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+        local temp_mc temp_c
+        temp_mc=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        if [ -n "$temp_mc" ] && [ "$temp_mc" -gt 0 ] 2>/dev/null; then
+            temp_c=$((temp_mc / 1000))
+            if [ "$temp_c" -ge 80 ]; then
+                print_error "CPU temperature critical: ${temp_c}°C (throttling likely)"
+                ((_DIAG_TOTAL_ISSUES++))
+            elif [ "$temp_c" -ge 70 ]; then
+                print_warning "CPU temperature high: ${temp_c}°C"
+                ((_DIAG_TOTAL_WARNINGS++))
+            else
+                print_success "CPU temperature: ${temp_c}°C"
+            fi
+        fi
+    fi
     echo ""
 }
 
@@ -140,6 +176,39 @@ diag_check_configuration() {
         if grep -q "interface_enabled = false" "$config_file" 2>/dev/null; then
             print_warning "Some interfaces are disabled in config"
             ((_DIAG_TOTAL_WARNINGS++))
+        fi
+
+        # Validate config structure — check required sections
+        if ! grep -q '^\[reticulum\]' "$config_file" 2>/dev/null; then
+            print_warning "Config missing [reticulum] section"
+            ((_DIAG_TOTAL_WARNINGS++))
+        fi
+
+        if ! grep -q '^\[interfaces\]' "$config_file" 2>/dev/null; then
+            print_warning "Config missing [interfaces] section"
+            ((_DIAG_TOTAL_WARNINGS++))
+        fi
+
+        # Count enabled interfaces
+        local enabled_ifaces
+        enabled_ifaces=$(grep -cE '^\s+enabled\s*=\s*(True|Yes|true|yes)' "$config_file" 2>/dev/null || echo 0)
+        if [ "$enabled_ifaces" -eq 0 ]; then
+            print_warning "No enabled interfaces found in config"
+            echo -e "  ${YELLOW}Fix: Enable at least one interface in ~/.reticulum/config${NC}"
+            ((_DIAG_TOTAL_WARNINGS++))
+        else
+            print_success "$enabled_ifaces interface(s) enabled in config"
+        fi
+
+        # Check for RNODE port references to missing devices
+        if grep -qE 'port\s*=\s*/dev/tty' "$config_file" 2>/dev/null; then
+            local rnode_port
+            rnode_port=$(grep -E 'port\s*=\s*/dev/tty' "$config_file" 2>/dev/null | head -1 | awk -F'=' '{print $2}' | tr -d '[:space:]')
+            if [ -n "$rnode_port" ] && [ ! -e "$rnode_port" ]; then
+                print_warning "Config references $rnode_port but device not found"
+                echo -e "  ${YELLOW}Check RNODE connection or update port in config${NC}"
+                ((_DIAG_TOTAL_WARNINGS++))
+            fi
         fi
 
         if [ -d "$REAL_HOME/.reticulum/storage/identities" ]; then
@@ -384,4 +453,13 @@ run_diagnostics() {
     diag_check_services
     diag_check_network
     diag_report_summary
+
+    # Return value for scripted use:
+    # 0 = all healthy, 1 = warnings only, 2 = issues found
+    if [ "$_DIAG_TOTAL_ISSUES" -gt 0 ]; then
+        return 2
+    elif [ "$_DIAG_TOTAL_WARNINGS" -gt 0 ]; then
+        return 1
+    fi
+    return 0
 }

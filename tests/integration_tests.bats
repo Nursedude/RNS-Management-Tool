@@ -869,3 +869,59 @@ _source_validation() {
     source "$LIB_DIR/utils.sh"
     ! safe_call "test" false
 }
+
+#########################################################
+# Configuration Management Tests (Session 14)
+#########################################################
+
+@test "CONFIG: apply_config_template creates backup before overwrite" {
+    local func_body
+    func_body=$(sed -n '/^apply_config_template/,/^}/p' "$LIB_DIR/config.sh")
+    # Must backup before cp (template application)
+    echo "$func_body" | grep -q 'backup'
+    echo "$func_body" | grep -q 'cp.*config_file.*backup'
+}
+
+@test "CONFIG: view_config_files handles missing config gracefully" {
+    local func_body
+    func_body=$(sed -n '/^view_config_files/,/^}/p' "$LIB_DIR/config.sh")
+    echo "$func_body" | grep -q 'No configuration files found'
+}
+
+@test "CONFIG: template directory exists with 4 templates" {
+    [ -d "$SCRIPT_DIR/config_templates" ]
+    local count
+    count=$(find "$SCRIPT_DIR/config_templates" -name '*.conf' -type f | wc -l)
+    [ "$count" -eq 4 ]
+}
+
+@test "CONFIG: config templates contain [reticulum] section" {
+    for tmpl in "$SCRIPT_DIR"/config_templates/*.conf; do
+        grep -q '^\[reticulum\]' "$tmpl"
+    done
+}
+
+@test "CONFIG: config templates contain [interfaces] section" {
+    for tmpl in "$SCRIPT_DIR"/config_templates/*.conf; do
+        grep -q '^\[interfaces\]' "$tmpl"
+    done
+}
+
+@test "NETWORK: handle_network_tools requires rnsd via require_service" {
+    local func_body
+    func_body=$(sed -n '/^handle_network_tools/,/^}/p' "$LIB_DIR/services.sh")
+    echo "$func_body" | grep -q 'require_service'
+}
+
+@test "NETWORK: handle_remote_command validates destination hash" {
+    local func_body
+    func_body=$(sed -n '/^handle_remote_command/,/^}/p' "$LIB_DIR/services.sh")
+    echo "$func_body" | grep -q 'validate_rns_hash'
+}
+
+@test "RECOVERY: safe_call captures stderr to temp file" {
+    local func_body
+    func_body=$(sed -n '/^safe_call/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q 'mktemp'
+    echo "$func_body" | grep -q 'stderr_file'
+}

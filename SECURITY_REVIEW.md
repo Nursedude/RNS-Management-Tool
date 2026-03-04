@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All six project security rules (RNS001-RNS006) are properly enforced throughout the codebase. No critical code vulnerabilities were found in the Bash codebase. One moderate security issue was found in PowerShell (curl-pipe-bash in WSL integration). One critical documentation issue was found and fixed (LICENSE file was GPLv3 but docs said MIT — now corrected to GPLv3). Two high-priority code quality issues were identified (RNODE function duplication in Bash, and duplicate Export/Import functions in PowerShell). Nine total recommendations are provided.
+The RNS Management Tool demonstrates **production-quality security practices** for a shell-based management tool. All ten project security rules (RNS001-RNS010) are properly enforced throughout the codebase. No critical code vulnerabilities were found in the Bash codebase. One moderate security issue was found in PowerShell (curl-pipe-bash in WSL integration) — **now resolved** (v0.4.0-beta). One critical documentation issue was found and fixed (LICENSE file was GPLv3 but docs said MIT — now corrected to GPLv3). Two high-priority code quality issues were identified (RNODE function duplication in Bash, and duplicate Export/Import functions in PowerShell) — **both now resolved** (v0.4.0-beta). Nine total recommendations were provided; the top 4 (R5, R7, R8, R9) are now resolved.
 
 **Overall Rating: A**
 
@@ -94,6 +94,24 @@ The RNS Management Tool demonstrates **production-quality security practices** f
   - `PIP_TIMEOUT=300` (5 min) for pip operations
 - `retry_with_backoff()` (`lib/utils.sh:24-46`) with exponential backoff (2s, 4s, 8s...)
 - Service polling with bounded waits (`lib/services.sh:23-26`)
+
+### RNS009: Temp Files Must Use mktemp — PASS (Added v0.4.0-beta)
+
+**Requirement:** No hardcoded `/tmp` paths; use `mktemp` or `${TMPDIR:-/tmp}`.
+
+**Findings:**
+- Enforced by custom linter rule RNS009 in `scripts/lint.sh`
+- All `lib/*.sh` modules pass RNS009 lint check
+- WSL commands in PowerShell modules updated to use `${TMPDIR:-/tmp}` pattern
+
+### RNS010: No Sensitive Data in Log Output — PASS (Added v0.4.0-beta)
+
+**Requirement:** Prevent `log_message`/`log_debug`/`log_warn`/`log_error` calls from containing sensitive keywords (password, secret, token, credential, private_key).
+
+**Findings:**
+- Enforced by custom linter rule RNS010 in `scripts/lint.sh`
+- All `lib/*.sh` modules pass RNS010 lint check
+- Protects against accidental plaintext logging of secrets
 
 ---
 
@@ -310,15 +328,13 @@ The meshchat `pgrep -f` exception is necessary but could be more explicitly docu
 
 **Priority:** Cosmetic — existing comment on line 322 provides context, but a line-level comment would aid future reviewers.
 
-### R5: Remove RNODE Function Duplication (High)
+### R5: Remove RNODE Function Duplication (High) — RESOLVED
 
 **Files:** `lib/install.sh:308-628` and `lib/rnode.sh:9-329`
 
-13 RNODE functions (~320 lines) are byte-for-byte duplicated across both files. Since both files are sourced by the main script, the `install.sh` definitions silently overwrite `rnode.sh` definitions. This is a maintenance hazard — a bug fix in one file won't propagate to the other.
+13 RNODE functions (~320 lines) were byte-for-byte duplicated across both files. Since both files are sourced by the main script, the `install.sh` definitions silently overwrite `rnode.sh` definitions.
 
-**Recommendation:** Delete the 13 duplicated functions from `lib/install.sh`, keeping `lib/rnode.sh` as the single source of truth. This removes ~320 lines of dead weight and eliminates a class of potential consistency bugs.
-
-**Priority:** High — this is the most impactful code quality improvement available.
+**Resolution:** Duplicated functions removed from `lib/install.sh`. `lib/rnode.sh` is now the single source of truth. Resolved in v0.4.0-beta (Session 14).
 
 ### R6: Expand BATS Test Coverage (Medium)
 
@@ -326,37 +342,29 @@ Installation functions (`install_meshchat()`, `install_sideband()`, `install_ret
 
 **Priority:** Medium — current coverage is strong for validation and hardware safety, but installation/service paths are untested.
 
-### R7: Fix Curl-Pipe-Bash in PowerShell WSL Integration (Moderate)
+### R7: Fix Curl-Pipe-Bash in PowerShell WSL Integration (Moderate) — RESOLVED
 
 **Files:** `pwsh/install.ps1:184`, `pwsh/rnode.ps1:305`
 
-Both locations use `curl -fsSL ... | bash -s -- --rnode` to download and execute the management script through WSL. This has two problems: (a) curl-pipe-bash is vulnerable to partial download execution, and (b) the `--rnode` flag does not exist in the bash script — only `--check` is implemented.
+Both locations used `curl -fsSL ... | bash -s -- --rnode` to download and execute the management script through WSL.
 
-**Recommendation:** Either download to a temp file before execution (with checksum), or replace with a WSL command that clones the repo and runs the script properly. Fix or remove the non-existent `--rnode` flag.
+**Resolution:** Downloads now use temp file with `mktemp ${TMPDIR:-/tmp}` pattern. The `--rnode` flag was implemented in `rns_management_tool.sh`. Resolved in v0.4.0-beta (Sessions 14-15).
 
-**Priority:** Moderate — affects WSL RNODE integration path only, but is a real security and correctness bug.
-
-### R8: Consolidate PowerShell Export/Import Functions (Medium)
+### R8: Consolidate PowerShell Export/Import Functions (Medium) — RESOLVED
 
 **Files:** `pwsh/advanced.ps1:57,109` and `pwsh/backup.ps1:165,210`
 
-Two independent implementations of configuration export/import exist:
-- `Export-Configuration` / `Import-Configuration` in advanced.ps1
-- `Export-RnsConfiguration` / `Import-RnsConfiguration` in backup.ps1
+Two independent implementations of configuration export/import existed.
 
-**Recommendation:** Remove from `pwsh/advanced.ps1` and have the advanced menu call the `pwsh/backup.ps1` versions.
+**Resolution:** Duplicate functions removed from `pwsh/advanced.ps1`. Advanced menu now calls `pwsh/backup.ps1` versions. Resolved in v0.4.0-beta (Session 14).
 
-**Priority:** Medium — code quality; two independent implementations may diverge over time.
-
-### R9: Implement `--rnode` Flag or Remove References (Moderate)
+### R9: Implement `--rnode` Flag or Remove References (Moderate) — RESOLVED
 
 **Files:** `pwsh/install.ps1:184`, `pwsh/rnode.ps1:305`, `rns_management_tool.sh`
 
-The PowerShell WSL integration passes `--rnode` to the bash script, but this flag is not handled. The script only recognizes `--check`. This is a **bug** that causes the RNODE WSL fallback to simply launch the full TUI instead of going directly to RNODE configuration.
+The PowerShell WSL integration passed `--rnode` to the bash script, but this flag was not handled.
 
-**Recommendation:** Either implement `--rnode` flag handling in `rns_management_tool.sh` (to jump directly to RNODE config), or remove the flag from the PowerShell WSL calls.
-
-**Priority:** Moderate — functional bug in the Windows-to-WSL RNODE path.
+**Resolution:** `--rnode` flag implemented in `rns_management_tool.sh` to jump directly to RNODE configuration. Resolved in v0.4.0-beta (Session 14).
 
 ---
 

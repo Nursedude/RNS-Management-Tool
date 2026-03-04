@@ -415,3 +415,53 @@ setup() {
 @test "INSTALL: NodeSource download logs SHA256" {
     grep -q 'sha256sum' "$LIB_DIR/install.sh"
 }
+
+#########################################################
+# Linter Rules RNS009-RNS010
+#########################################################
+
+@test "LINTER: scripts/lint.sh defines RNS009 rule" {
+    grep -q 'RNS009' "$SCRIPT_DIR/scripts/lint.sh"
+}
+
+@test "LINTER: scripts/lint.sh defines RNS010 rule" {
+    grep -q 'RNS010' "$SCRIPT_DIR/scripts/lint.sh"
+}
+
+@test "RNS009: no hardcoded /tmp paths in lib/ modules (use mktemp)" {
+    # Scan all lib/ modules for hardcoded /tmp/ that aren't using ${TMPDIR:-/tmp}
+    local violations=0
+    for module in "$LIB_DIR"/*.sh; do
+        while IFS= read -r line; do
+            local stripped="${line#"${line%%[![:space:]]*}"}"
+            [[ "$stripped" == "#"* ]] && continue
+            if [[ "$line" =~ /tmp/[a-zA-Z_\$] ]] && \
+               [[ "$line" != *'${TMPDIR:-/tmp}'* ]] && \
+               [[ "$line" != *'TMPDIR'* ]] && \
+               [[ "$line" != *"grep"* ]] && [[ "$line" != *"echo"* ]] && \
+               [[ "$line" != *"mktemp"* ]]; then
+                ((violations++))
+            fi
+        done < "$module"
+    done
+    [ "$violations" -eq 0 ]
+}
+
+@test "RNS010: no sensitive keywords in log calls in lib/ modules" {
+    local violations=0
+    for module in "$LIB_DIR"/*.sh; do
+        while IFS= read -r line; do
+            local stripped="${line#"${line%%[![:space:]]*}"}"
+            [[ "$stripped" == "#"* ]] && continue
+            if [[ "$line" =~ log_(message|debug|warn|error) ]] && \
+               [[ "$line" =~ (password|secret|token|credential|private_key) ]]; then
+                ((violations++))
+            fi
+        done < "$module"
+    done
+    [ "$violations" -eq 0 ]
+}
+
+@test "LINTER: linter passes cleanly on all lib/ modules" {
+    bash "$SCRIPT_DIR/scripts/lint.sh" "$LIB_DIR"/*.sh
+}

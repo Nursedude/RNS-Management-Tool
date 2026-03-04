@@ -5,7 +5,7 @@
 # Enforces project-specific security and coding standards
 #
 # Adapted from meshforge scripts/lint.py (MF001-MF010)
-# Checks RNS001-RNS008 rules from CLAUDE.md
+# Checks RNS001-RNS010 rules from CLAUDE.md
 #
 # Usage:
 #   ./scripts/lint.sh              # Lint all bash source files
@@ -141,6 +141,29 @@ lint_file() {
            [[ "$filepath" != *"diagnostics.sh"* ]] && [[ "$filepath" != *"lint.sh"* ]]; then
             report "W" "$filepath" "$lineno" "RNS008" \
                 "Direct pgrep call — prefer check_service_status() from lib/utils.sh"
+        fi
+
+        # RNS009: Temp files must use mktemp (not hardcoded /tmp paths)
+        # Catches predictable filenames that create race conditions and fail on non-standard TMPDIR
+        if [[ "$line" =~ /tmp/[a-zA-Z_\$] ]] && [[ "$filepath" != *"test"* ]]; then
+            if [[ "$line" != *'${TMPDIR:-/tmp}'* ]] && \
+               [[ "$line" != *'TMPDIR'* ]] && \
+               [[ "$line" != *"grep"* ]] && [[ "$line" != *"echo"* ]] && \
+               [[ "$line" != *"report"* ]] && [[ "$line" != *"mktemp"* ]]; then
+                report "W" "$filepath" "$lineno" "RNS009" \
+                    "Hardcoded /tmp path — use mktemp or \${TMPDIR:-/tmp} for portability"
+            fi
+        fi
+
+        # RNS010: Prevent sensitive data in log output
+        # Catches log_message/log_debug/log_warn/log_error calls containing sensitive keywords
+        if [[ "$line" =~ log_(message|debug|warn|error) ]] && [[ "$filepath" != *"test"* ]] && \
+           [[ "$filepath" != *"lint.sh"* ]]; then
+            if [[ "$line" =~ (password|secret|token|credential|private_key) ]] && \
+               [[ "$line" != *"#"* ]]; then
+                report "W" "$filepath" "$lineno" "RNS010" \
+                    "Log call may contain sensitive data — avoid logging secrets"
+            fi
         fi
 
     done < "$filepath"

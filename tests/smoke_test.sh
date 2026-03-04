@@ -151,6 +151,10 @@ EXPECTED_FUNCTIONS=(
     emergency_quick_mode
     # Log rotation
     rotate_log
+    # Service health
+    get_service_health
+    # Deployment profiles
+    apply_deployment_profile
     # Entry
     main
 )

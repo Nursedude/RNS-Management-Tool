@@ -70,19 +70,28 @@ show_main_menu() {
     print_box_line "${CYAN}${BOLD}Quick Status${NC}"
     print_box_divider
 
-    # Check rnsd status (cached, avoids pgrep on every redraw)
+    # Check rnsd status with granular health states (cached, avoids pgrep on every redraw)
     local rnsd_state rnsd_uptime
     rnsd_state=$(get_cached_rnsd_status)
-    if [ "$rnsd_state" = "running" ]; then
-        rnsd_uptime=$(get_rnsd_uptime)
-        if [ -n "$rnsd_uptime" ]; then
-            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${rnsd_uptime})"
-        else
-            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
-        fi
-    else
-        print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
-    fi
+    case "$rnsd_state" in
+        "$SVC_STATE_RUNNING")
+            rnsd_uptime=$(get_rnsd_uptime)
+            if [ -n "$rnsd_uptime" ]; then
+                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${rnsd_uptime})"
+            else
+                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
+            fi
+            ;;
+        "$SVC_STATE_STARTING")
+            print_box_line "${YELLOW}●${NC} rnsd daemon: ${YELLOW}Starting...${NC}"
+            ;;
+        "$SVC_STATE_ZOMBIE")
+            print_box_line "${RED}●${NC} rnsd daemon: ${RED}Zombie${NC}"
+            ;;
+        *)
+            print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
+            ;;
+    esac
 
     # Check RNS installed (cached version query)
     local rns_ver

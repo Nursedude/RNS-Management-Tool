@@ -8,7 +8,7 @@ RNS Management Tool transforms any Raspberry Pi or Linux/Windows machine into a 
 
 **Key Tagline:** "Complete Reticulum Ecosystem Management - One Tool, All Platforms"
 
-**Version:** 0.3.5-beta | **License:** GPLv3 | **Languages:** Bash 65%, PowerShell 30%, Markdown 5%
+**Version:** 0.4.0-beta | **License:** GPLv3 | **Languages:** Bash 65%, PowerShell 30%, Markdown 5%
 
 ---
 
@@ -105,8 +105,11 @@ graph TB
 │   ├── smoke_test.sh               # 183 assertions across 8 sections
 │   ├── rns_management_tool.bats    # 63 BATS tests
 │   ├── hardware_validation.bats    # 92 BATS tests (RNODE hardware safety)
-│   ├── integration_tests.bats      # 140+ BATS tests (service, backup, platform, behavioral)
-│   ├── regression_guards.bats      # 30+ BATS tests (architectural invariant prevention)
+│   ├── integration_tests.bats      # 145 BATS tests (service, backup, platform, behavioral)
+│   ├── regression_guards.bats      # 74 BATS tests (architectural invariant prevention)
+│   ├── functional_tests.bats       # 42 BATS tests (functional behavior)
+│   ├── service_health_tests.bats   # 24 BATS tests (granular health states)
+│   ├── diagnostics_enhanced.bats   # 15 BATS tests (enhanced diagnostics)
 │   ├── run_bats_compat.sh          # Lightweight BATS-compatible test runner
 │   ├── rnode.tests.ps1             # 57 Pester tests
 │   ├── services.tests.ps1          # 61 Pester tests
@@ -114,7 +117,8 @@ graph TB
 │   └── *.tests.ps1                 # 7 more Pester suites (343 total across 9 files)
 │
 ├── scripts/                        # Development and verification scripts
-│   ├── lint.sh                     # Custom linter (RNS001-RNS006)
+│   ├── lint.sh                     # Custom linter (RNS001-RNS010)
+│   ├── dead_code_check.sh          # Dead code detection (development tool)
 │   └── verify_install.sh           # Post-install verification (colored/quiet/JSON)
 │
 ├── .githooks/                      # Git hooks (setup: git config core.hooksPath .githooks)
@@ -145,6 +149,10 @@ The project enforces strict security practices:
 | RNS004 | Path traversal prevention in import/export | Path validation |
 | RNS005 | Confirmation for destructive actions | UI prompts |
 | RNS006 | Subprocess timeout protection | Timeout wrappers |
+| RNS007 | No hardcoded `/tmp` paths (use `mktemp`/`${TMPDIR:-/tmp}`) | Linter (RNS009) |
+| RNS008 | Config templates must have `[reticulum]` section | Linter |
+| RNS009 | Temp files must use `mktemp` | Linter (`scripts/lint.sh`) |
+| RNS010 | No sensitive data in log output | Linter (`scripts/lint.sh`) |
 
 ### Security Examples
 
@@ -211,7 +219,7 @@ Main Menu
 │   │   └── Identity & Boot (rnid/autostart)
 │   ├── 8) Backup/Restore Configuration
 │   └── 9) Advanced Options
-│       ├── Configuration (view/edit/templates)
+│       ├── Configuration (view/edit/templates/deployment profiles)
 │       └── Maintenance (packages/reinstall/cache/logs/reset)
 │
 └── Quick & Help ──────────────────
@@ -373,11 +381,11 @@ shellcheck -x -S warning rns_management_tool.sh
 
 ## Project Metrics
 
-- **Bash:** 330 lines (main) + 4,850 lines (11 lib/ modules) = ~5,180 lines
-- **PowerShell:** 144 lines (main) + 2,562 lines (9 pwsh/ modules) = ~2,706 lines
-- **Tests:** ~5,200 lines across 15 test files (850+ assertions)
-- **Functions:** 140+ across all bash modules
-- **Scripts:** lint.sh, verify_install.sh, pre-commit hook
+- **Bash:** 439 lines (main) + 5,171 lines (11 lib/ modules) = ~5,610 lines
+- **PowerShell:** 144 lines (main) + 2,413 lines (9 pwsh/ modules) = ~2,557 lines
+- **Tests:** ~5,825 lines across 18 test files (970+ assertions)
+- **Functions:** 131+ across all bash modules
+- **Scripts:** lint.sh (RNS001-RNS010), dead_code_check.sh, verify_install.sh, pre-commit hook
 - **Markdown:** 7 documentation files (including SECURITY_REVIEW.md, PERSISTENT_ISSUES.md)
 - **Security Rating:** A (formal review 2026-02-21 — see SECURITY_REVIEW.md)
 - **CI Jobs:** 7 (shellcheck, custom-lint, check-mode, smoke-test, bats, powershell, pester)

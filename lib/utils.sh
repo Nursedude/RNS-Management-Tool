@@ -342,9 +342,11 @@ show_error_help() {
 # Centralized service status check (adapted from meshforge service_check.py)
 # Single source of truth for all service detection - avoids scattered pgrep calls
 # Usage: check_service_status <service_name>
-# Returns: 0 if running, 1 if stopped
+# Returns: 0 if running (any active state), 1 if stopped
+# Side effect: Sets _LAST_SERVICE_STATE to granular health state string
 check_service_status() {
     local service="$1"
+    _LAST_SERVICE_STATE="$SVC_STATE_STOPPED"
     case "$service" in
         rnsd)
             # Prefer systemctl (single source of truth), fall back to exact pgrep
@@ -357,42 +359,98 @@ check_service_status() {
             fi
 
             if [ "$rnsd_detected" = true ]; then
-                # Zombie detection (meshforge service_check.py pattern):
-                # Verify UDP port 37428 is bound — catches systemd "active" with
-                # unresponsive process that failed to bind its socket
+                # Check port binding for zombie/health classification
+                local port_bound=false
                 if command -v ss &>/dev/null; then
-                    if ! ss -ulnp 2>/dev/null | grep -q ':37428 '; then
-                        log_warn "rnsd detected but UDP port 37428 not bound (zombie?)"
-                        return 1
-                    fi
+                    ss -ulnp 2>/dev/null | grep -q ':37428 ' && port_bound=true
                 elif command -v netstat &>/dev/null; then
-                    if ! netstat -ulnp 2>/dev/null | grep -q ':37428 '; then
-                        log_warn "rnsd detected but UDP port 37428 not bound (zombie?)"
+                    netstat -ulnp 2>/dev/null | grep -q ':37428 ' && port_bound=true
+                else
+                    # If neither ss nor netstat available, trust process detection
+                    port_bound=true
+                fi
+
+                # Get uptime for state classification
+                local uptime_secs=999
+                local rnsd_pid
+                rnsd_pid=$(pgrep -x "rnsd" 2>/dev/null | head -1)
+                if [ -n "$rnsd_pid" ] && [ -d "/proc/$rnsd_pid" ]; then
+                    local elapsed
+                    elapsed=$(ps -o etimes= -p "$rnsd_pid" 2>/dev/null | tr -d ' ')
+                    [ -n "$elapsed" ] && uptime_secs="$elapsed"
+                fi
+
+                # Classify health state based on port binding + uptime
+                if [ "$port_bound" = true ]; then
+                    if [ "$uptime_secs" -le 10 ]; then
+                        _LAST_SERVICE_STATE="$SVC_STATE_STARTING"
+                    else
+                        _LAST_SERVICE_STATE="$SVC_STATE_RUNNING"
+                    fi
+                    return 0
+                else
+                    # Port not bound — zombie or still starting
+                    if [ "$uptime_secs" -gt 30 ]; then
+                        _LAST_SERVICE_STATE="$SVC_STATE_ZOMBIE"
+                        log_warn "rnsd detected but UDP port 37428 not bound (zombie, uptime ${uptime_secs}s)"
+                    else
+                        _LAST_SERVICE_STATE="$SVC_STATE_STARTING"
+                    fi
+                    # Zombie returns 1 (not healthy), starting returns 0
+                    if [ "$_LAST_SERVICE_STATE" = "$SVC_STATE_ZOMBIE" ]; then
                         return 1
                     fi
+                    return 0
                 fi
-                # If neither ss nor netstat available, trust process detection
+            fi
+            _LAST_SERVICE_STATE="$SVC_STATE_STOPPED"
+            return 1
+            ;;
+        meshtasticd)
+            local mtd_detected=false
+            if command -v systemctl &>/dev/null && systemctl is-active --quiet meshtasticd 2>/dev/null; then
+                mtd_detected=true
+            elif pgrep -x "meshtasticd" > /dev/null 2>&1; then
+                mtd_detected=true
+            fi
+            if [ "$mtd_detected" = true ]; then
+                _LAST_SERVICE_STATE="$SVC_STATE_RUNNING"
+                return 0
+            fi
+            _LAST_SERVICE_STATE="$SVC_STATE_STOPPED"
+            return 1
+            ;;
+        nomadnet)
+            if pgrep -x "nomadnet" > /dev/null 2>&1; then
+                _LAST_SERVICE_STATE="$SVC_STATE_RUNNING"
                 return 0
             fi
             return 1
             ;;
-        meshtasticd)
-            if command -v systemctl &>/dev/null && systemctl is-active --quiet meshtasticd 2>/dev/null; then
-                return 0
-            fi
-            pgrep -x "meshtasticd" > /dev/null 2>&1
-            ;;
-        nomadnet)
-            pgrep -x "nomadnet" > /dev/null 2>&1
-            ;;
         meshchat)
             # Match node process running meshchat, not any process mentioning the string
-            pgrep -f "node.*reticulum-meshchat" > /dev/null 2>&1
+            if pgrep -f "node.*reticulum-meshchat" > /dev/null 2>&1; then
+                _LAST_SERVICE_STATE="$SVC_STATE_RUNNING"
+                return 0
+            fi
+            return 1
             ;;
         *)
-            pgrep -x "$service" > /dev/null 2>&1
+            if pgrep -x "$service" > /dev/null 2>&1; then
+                _LAST_SERVICE_STATE="$SVC_STATE_RUNNING"
+                return 0
+            fi
+            return 1
             ;;
     esac
+}
+
+# Get granular health state for a service
+# Usage: state=$(get_service_health "rnsd")
+get_service_health() {
+    local service="$1"
+    check_service_status "$service"
+    echo "$_LAST_SERVICE_STATE"
 }
 
 # Convenience wrapper (backward-compatible)
@@ -604,18 +662,15 @@ safe_call() {
 }
 
 # Cached status queries (adapted from meshforge status_bar.py)
+# Now caches granular health states instead of simple running/stopped
 get_cached_rnsd_status() {
     local now
     now=$(date +%s)
     local age=$(( now - _CACHE_RNSD_TIME ))
     if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_RNSD_STATUS" ]; then
-        if is_rnsd_running; then
-            _CACHE_RNSD_STATUS="running"
-            _CACHE_RNSD_PID=$(pgrep -x "rnsd" 2>/dev/null | head -1)
-        else
-            _CACHE_RNSD_STATUS="stopped"
-            _CACHE_RNSD_PID=""
-        fi
+        check_service_status "rnsd"
+        _CACHE_RNSD_STATUS="$_LAST_SERVICE_STATE"
+        _CACHE_RNSD_PID=$(pgrep -x "rnsd" 2>/dev/null | head -1)
         _CACHE_RNSD_TIME=$now
     fi
     echo "$_CACHE_RNSD_STATUS"
@@ -670,15 +725,19 @@ get_cached_lxmf_version() {
 
 # Cached meshtasticd status (avoids hitting systemctl+curl on every menu redraw)
 # Adapted from meshforge service_check.py caching pattern
+# Now caches granular health states
 get_cached_meshtasticd_status() {
     local now
     now=$(date +%s)
     local age=$(( now - _CACHE_MTD_TIME ))
     if [ $age -ge $STATUS_CACHE_TTL ] || [ -z "$_CACHE_MTD_STATUS" ]; then
-        if check_service_status "meshtasticd"; then
-            _CACHE_MTD_STATUS="running"
-        else
-            _CACHE_MTD_STATUS="stopped"
+        check_service_status "meshtasticd"
+        _CACHE_MTD_STATUS="$_LAST_SERVICE_STATE"
+        # If running, check HTTP API reachability for finer-grained state
+        if [ "$_CACHE_MTD_STATUS" = "$SVC_STATE_RUNNING" ]; then
+            if ! check_meshtasticd_http_api; then
+                _CACHE_MTD_STATUS="$SVC_STATE_UNREACHABLE"
+            fi
         fi
         _CACHE_MTD_TIME=$now
     fi
@@ -687,6 +746,7 @@ get_cached_meshtasticd_status() {
 
 # Invalidate all status caches (call after install/service changes)
 invalidate_status_cache() {
+    _LAST_SERVICE_STATE=""
     _CACHE_RNSD_STATUS=""
     _CACHE_RNSD_TIME=0
     _CACHE_RNSD_PID=""

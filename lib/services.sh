@@ -105,17 +105,29 @@ show_service_status() {
 
     echo -e "${BOLD}Reticulum Network Status:${NC}\n"
 
-    # Check rnsd (using improved detection)
-    if is_rnsd_running; then
-        print_success "rnsd daemon: Running"
-        if command -v rnstatus &> /dev/null; then
-            echo ""
-            rnstatus 2>&1 | head -n 20
-        fi
-    else
-        print_warning "rnsd daemon: Not running"
-        echo -e "  ${CYAN}Start with:${NC} rnsd --daemon"
-    fi
+    # Check rnsd with granular health state
+    local rnsd_health
+    rnsd_health=$(get_service_health "rnsd")
+    case "$rnsd_health" in
+        "$SVC_STATE_RUNNING")
+            print_success "rnsd daemon: Running"
+            if command -v rnstatus &> /dev/null; then
+                echo ""
+                rnstatus 2>&1 | head -n 20
+            fi
+            ;;
+        "$SVC_STATE_STARTING")
+            echo -e "  ${YELLOW}●${NC} rnsd daemon: ${YELLOW}Starting...${NC}"
+            ;;
+        "$SVC_STATE_ZOMBIE")
+            print_error "rnsd daemon: Zombie (process exists but port not bound)"
+            echo -e "  ${YELLOW}Fix: Restart rnsd from Services menu${NC}"
+            ;;
+        *)
+            print_warning "rnsd daemon: Not running"
+            echo -e "  ${CYAN}Start with:${NC} rnsd --daemon"
+            ;;
+    esac
 
     # meshtasticd status with HTTP API check (ported from meshforge)
     if command -v meshtasticd &>/dev/null; then
@@ -196,35 +208,49 @@ show_services_status_box() {
 
     local svc_rnsd_state svc_uptime
     svc_rnsd_state=$(get_cached_rnsd_status)
-    if [ "$svc_rnsd_state" = "running" ]; then
-        svc_uptime=$(get_rnsd_uptime)
-        if [ -n "$svc_uptime" ]; then
-            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${svc_uptime})"
-        else
-            print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
-        fi
-        # Boot persistence warning (meshforge pattern)
-        if command -v systemctl &>/dev/null; then
-            if ! systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
-                print_box_line "  ${YELLOW}! not enabled at boot${NC}"
-            fi
-        fi
-    else
-        print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
-    fi
-
-    # Check for meshtasticd with HTTP API status (ported from meshforge)
-    if command -v meshtasticd &>/dev/null; then
-        if check_service_status "meshtasticd"; then
-            print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
-            if check_meshtasticd_http_api; then
-                print_box_line "  ${GREEN}●${NC} HTTP API: ${GREEN}${MESHTASTICD_HTTP_URL}${NC}"
+    case "$svc_rnsd_state" in
+        "$SVC_STATE_RUNNING")
+            svc_uptime=$(get_rnsd_uptime)
+            if [ -n "$svc_uptime" ]; then
+                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC} (up ${svc_uptime})"
             else
-                print_box_line "  ${YELLOW}!${NC} HTTP API: ${YELLOW}Not reachable${NC}"
+                print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
             fi
-        else
-            print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
-        fi
+            # Boot persistence warning (meshforge pattern)
+            if command -v systemctl &>/dev/null; then
+                if ! systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
+                    print_box_line "  ${YELLOW}! not enabled at boot${NC}"
+                fi
+            fi
+            ;;
+        "$SVC_STATE_STARTING")
+            print_box_line "${YELLOW}●${NC} rnsd daemon: ${YELLOW}Starting...${NC}"
+            ;;
+        "$SVC_STATE_ZOMBIE")
+            print_box_line "${RED}●${NC} rnsd daemon: ${RED}Zombie${NC} (restart needed)"
+            ;;
+        *)
+            print_box_line "${RED}○${NC} rnsd daemon: ${YELLOW}Stopped${NC}"
+            ;;
+    esac
+
+    # Check for meshtasticd with granular health states (ported from meshforge)
+    if command -v meshtasticd &>/dev/null; then
+        local mtd_state
+        mtd_state=$(get_cached_meshtasticd_status)
+        case "$mtd_state" in
+            "$SVC_STATE_RUNNING")
+                print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
+                print_box_line "  ${GREEN}●${NC} HTTP API: ${GREEN}${MESHTASTICD_HTTP_URL}${NC}"
+                ;;
+            "$SVC_STATE_UNREACHABLE")
+                print_box_line "${GREEN}●${NC} meshtasticd: ${GREEN}Running${NC}"
+                print_box_line "  ${YELLOW}!${NC} HTTP API: ${YELLOW}Not reachable${NC}"
+                ;;
+            *)
+                print_box_line "${YELLOW}○${NC} meshtasticd: Stopped"
+                ;;
+        esac
     fi
 
     print_box_bottom

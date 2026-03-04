@@ -4,10 +4,10 @@ Development history and current status. Each session builds on the previous.
 
 ---
 
-## Current Status (as of Session 13)
+## Current Status (as of Session 15)
 
-**Version:** 0.3.5-beta
-**Architecture:** Modular (main script 326 lines + 10 lib/ modules + 9 pwsh/ modules)
+**Version:** 0.4.0-beta
+**Architecture:** Modular (main script 439 lines + 11 lib/ modules + 9 pwsh/ modules)
 **Security Rating:** A (formal review completed 2026-02-21 — see SECURITY_REVIEW.md)
 
 ### Test Coverage
@@ -17,22 +17,15 @@ Development history and current status. Each session builds on the previous.
 | smoke_test.sh | 183 |
 | rns_management_tool.bats | 63 |
 | hardware_validation.bats | 92 |
-| integration_tests.bats | 106 |
-| Pester (9 .tests.ps1 files) | 343 |
-| **Total** | **787+** |
+| integration_tests.bats | 145 |
+| regression_guards.bats | 74 |
+| functional_tests.bats | 42 |
+| service_health_tests.bats | 24 |
+| diagnostics_enhanced.bats | 15 |
+| Pester (9 .tests.ps1 files) | 334 |
+| **Total** | **972+** |
 
 ### Next Steps
-
-**P1 — Fix RNODE Code Duplication (from Security Review R5)**
-- Remove 13 duplicated RNODE functions (~320 lines) from `lib/install.sh`
-- Keep `lib/rnode.sh` as single source of truth
-
-**P1 — Fix Curl-Pipe-Bash in PowerShell WSL (from Security Review R7/R9)**
-- `pwsh/install.ps1:184` and `pwsh/rnode.ps1:305` pipe remote script to bash
-- `--rnode` flag doesn't exist in bash script — functional bug
-
-**P1 — Consolidate PS Export/Import (from Security Review R8)**
-- Duplicate implementations in `pwsh/advanced.ps1` and `pwsh/backup.ps1`
 
 **P2 — RNS Interface Management from TUI**
 - Add/remove/edit interfaces in `~/.reticulum/config` from the TUI
@@ -51,6 +44,32 @@ Development history and current status. Each session builds on the previous.
 ---
 
 ## Session History
+
+### Session 15: Deployment Profiles, Dead Code, P1 Fixes (2026-03-04)
+
+- Implemented 3 deployment profiles (Relay Node, Mobile Station, Base Station) in `lib/config.sh`
+- Added deployment profile menu entry in `lib/advanced.sh`
+- Created `scripts/dead_code_check.sh` development tool for detecting unused functions
+- Fixed remaining P1.2 WSL `${TMPDIR:-/tmp}` issue in `pwsh/install.ps1` and `pwsh/rnode.ps1`
+- All prior P1 issues from Security Review now resolved:
+  - R5: RNODE duplication — cleaned up (resolved in Session 14)
+  - R7/R9: curl-pipe-bash — downloads to temp file, `--rnode` flag implemented, TMPDIR fixed
+  - R8: PS Export/Import duplication — consolidated (resolved in Session 14)
+- Updated all documentation (CLAUDE.md, SESSION_NOTES.md, CHANGELOG.md, SECURITY_REVIEW.md, README.md)
+- Version bumped to 0.4.0-beta
+
+### Session 14: Enhanced Health States, Diagnostics, Linter, Tests (2026-03-04)
+
+- Added 6 granular service health states (running, degraded, starting, zombie, stopped, unreachable) in `lib/core.sh`
+- Rewrote `check_service_status()` in `lib/utils.sh` with process + port + uptime classification
+- Added `get_service_health()` helper and updated cache functions for granular state strings
+- Updated display functions in `lib/services.sh` and main menu with case-based state rendering
+- Enhanced diagnostics engine: return codes (0/1/2), config section validation, CPU/temperature checks
+- Added RNS009 (temp files must use mktemp) and RNS010 (no sensitive data in logs) to `scripts/lint.sh`
+- Created `tests/service_health_tests.bats` (24 tests) and `tests/diagnostics_enhanced.bats` (15 tests)
+- Added 5 regression guard tests and 8 integration tests
+- Updated CI workflow to run new test suites
+- Total test count increased from 787+ to 972+
 
 ### Session 13: Security & Code Review (2026-02-21)
 
