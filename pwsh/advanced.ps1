@@ -54,159 +54,8 @@ function Clear-Cache {
     pause
 }
 
-function Export-Configuration {
-    Show-Section "Export Configuration"
-
-    $exportFile = Join-Path $env:USERPROFILE "reticulum_config_export_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
-
-    Write-ColorOutput "This will create a portable backup of your configuration" "Info"
-    Write-Host ""
-
-    $reticulumDir = Join-Path $env:USERPROFILE ".reticulum"
-    $nomadDir = Join-Path $env:USERPROFILE ".nomadnetwork"
-    $lxmfDir = Join-Path $env:USERPROFILE ".lxmf"
-
-    $hasConfig = $false
-    if ((Test-Path $reticulumDir) -or (Test-Path $nomadDir) -or (Test-Path $lxmfDir)) {
-        $hasConfig = $true
-    }
-
-    if (-not $hasConfig) {
-        Write-ColorOutput "No configuration files found to export" "Warning"
-        pause
-        return
-    }
-
-    Write-ColorOutput "Creating export archive..." "Progress"
-
-    # Create temporary directory
-    $tempExport = Join-Path $env:TEMP "rns_export_$(Get-Date -Format 'yyyyMMddHHmmss')"
-    New-Item -ItemType Directory -Path $tempExport -Force | Out-Null
-
-    # Copy configs
-    if (Test-Path $reticulumDir) {
-        Copy-Item -Path $reticulumDir -Destination $tempExport -Recurse -Force
-    }
-    if (Test-Path $nomadDir) {
-        Copy-Item -Path $nomadDir -Destination $tempExport -Recurse -Force
-    }
-    if (Test-Path $lxmfDir) {
-        Copy-Item -Path $lxmfDir -Destination $tempExport -Recurse -Force
-    }
-
-    # Create zip archive
-    Compress-Archive -Path "$tempExport\*" -DestinationPath $exportFile -Force
-
-    # Cleanup
-    Remove-Item -Path $tempExport -Recurse -Force
-
-    Write-ColorOutput "Configuration exported to: $exportFile" "Success"
-    "Exported configuration to: $exportFile" | Out-File -FilePath $Script:LogFile -Append
-
-    pause
-}
-
-function Import-Configuration {
-    Show-Section "Import Configuration"
-
-    Write-Host "Enter the path to the export archive (.zip):" -ForegroundColor Cyan
-    $importFile = Read-Host "Archive path"
-
-    if (-not (Test-Path $importFile)) {
-        Write-ColorOutput "File not found: $importFile" "Error"
-        pause
-        return
-    }
-
-    if ($importFile -notmatch '\.zip$') {
-        Write-ColorOutput "Invalid file format. Expected .zip archive" "Error"
-        pause
-        return
-    }
-
-    # RNS004: Archive validation before extraction
-    Write-ColorOutput "Validating archive structure..." "Info"
-
-    try {
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $zip = [System.IO.Compression.ZipFile]::OpenRead($importFile)
-
-        $hasInvalidPaths = $false
-        $hasReticulumConfig = $false
-
-        foreach ($entry in $zip.Entries) {
-            if ($entry.FullName -match '\.\.' -or $entry.FullName.StartsWith('/') -or $entry.FullName.StartsWith('\')) {
-                $hasInvalidPaths = $true
-                break
-            }
-            if ($entry.FullName -match '^\.reticulum|^\.nomadnetwork|^\.lxmf') {
-                $hasReticulumConfig = $true
-            }
-        }
-
-        $zip.Dispose()
-
-        if ($hasInvalidPaths) {
-            Write-ColorOutput "Security: Archive contains invalid paths (traversal attempt)" "Error"
-            "SECURITY: Rejected archive with invalid paths: $importFile" | Out-File -FilePath $Script:LogFile -Append
-            pause
-            return
-        }
-
-        if (-not $hasReticulumConfig) {
-            Write-ColorOutput "Archive does not appear to contain Reticulum configuration" "Warning"
-            Write-Host "Expected directories: .reticulum/, .nomadnetwork/, .lxmf/"
-            $continueAnyway = Read-Host "Continue anyway? (y/N)"
-            if ($continueAnyway -ne 'y' -and $continueAnyway -ne 'Y') {
-                Write-ColorOutput "Import cancelled" "Info"
-                pause
-                return
-            }
-        }
-
-        Write-ColorOutput "Archive validation passed" "Success"
-    }
-    catch {
-        Write-ColorOutput "Failed to validate archive: $_" "Error"
-        pause
-        return
-    }
-
-    Write-Host ""
-    Write-ColorOutput "WARNING: This will overwrite your current configuration!" "Warning"
-    $confirm = Read-Host "Continue? (y/N)"
-
-    if ($confirm -ne 'y' -and $confirm -ne 'Y') {
-        Write-ColorOutput "Import cancelled" "Info"
-        pause
-        return
-    }
-
-    Write-ColorOutput "Creating backup of current configuration..." "Progress"
-    New-Backup
-
-    Write-ColorOutput "Importing configuration..." "Progress"
-
-    try {
-        $tempImport = Join-Path $env:TEMP "rns_import_$(Get-Date -Format 'yyyyMMddHHmmss')"
-        Expand-Archive -Path $importFile -DestinationPath $tempImport -Force
-
-        Get-ChildItem -Path $tempImport -Directory | ForEach-Object {
-            $dest = Join-Path $env:USERPROFILE $_.Name
-            Copy-Item -Path $_.FullName -Destination $dest -Recurse -Force
-        }
-
-        Remove-Item -Path $tempImport -Recurse -Force
-
-        Write-ColorOutput "Configuration imported successfully" "Success"
-        "Imported configuration from: $importFile" | Out-File -FilePath $Script:LogFile -Append
-    }
-    catch {
-        Write-ColorOutput "Failed to import configuration: $_" "Error"
-    }
-
-    pause
-}
+# Export/Import consolidated in pwsh/backup.ps1 (Export-RnsConfiguration, Import-RnsConfiguration)
+# Removed duplicate Export-Configuration and Import-Configuration functions (SECURITY_REVIEW R8)
 
 function Reset-ToFactory {
     [CmdletBinding(SupportsShouldProcess)]
@@ -335,8 +184,8 @@ function Show-AdvancedMenu {
             "1" { Update-PythonPackage }
             "2" { Install-Ecosystem }
             "3" { Clear-Cache }
-            "4" { Export-Configuration }
-            "5" { Import-Configuration }
+            "4" { Export-RnsConfiguration }
+            "5" { Import-RnsConfiguration }
             "6" { Reset-ToFactory }
             "7" { Show-Log }
             "8" { Test-ToolUpdate }

@@ -203,8 +203,25 @@ install_nodejs_modern() {
     local nodesource_script
     nodesource_script=$(mktemp "${TMPDIR:-/tmp}/nodesource_setup_XXXXXX.sh")
     if retry_with_backoff 3 run_with_timeout "$NETWORK_TIMEOUT" curl -fsSL -o "$nodesource_script" https://deb.nodesource.com/setup_22.x && \
-       [ -s "$nodesource_script" ] && \
-       sudo -E bash "$nodesource_script" 2>&1 | tee -a "$UPDATE_LOG"; then
+       [ -s "$nodesource_script" ]; then
+        # Validate downloaded script is a reasonable size (not truncated or suspiciously large)
+        local script_size
+        script_size=$(wc -c < "$nodesource_script" 2>/dev/null || echo 0)
+        if [ "$script_size" -lt 100 ] || [ "$script_size" -gt 512000 ]; then
+            print_error "NodeSource setup script has unexpected size (${script_size} bytes) — aborting"
+            log_message "NodeSource script rejected: ${script_size} bytes (expected 100-512000)"
+            rm -f "$nodesource_script"
+            return 1
+        fi
+        log_message "NodeSource script: ${script_size} bytes, SHA256=$(sha256sum "$nodesource_script" 2>/dev/null | awk '{print $1}')"
+    else
+        rm -f "$nodesource_script"
+        print_error "Failed to download NodeSource setup script"
+        log_message "NodeSource download failed"
+        return 1
+    fi
+
+    if sudo -E bash "$nodesource_script" 2>&1 | tee -a "$UPDATE_LOG"; then
         rm -f "$nodesource_script"
         print_success "NodeSource repository configured"
 
