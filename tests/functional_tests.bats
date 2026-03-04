@@ -30,6 +30,7 @@ setup() {
 
     # Source remaining modules
     source "$LIB_DIR/ui.sh"
+    source "$LIB_DIR/validation.sh"
     source "$LIB_DIR/utils.sh"
     source "$LIB_DIR/install.sh" 2>/dev/null || true
 }
@@ -47,11 +48,11 @@ teardown() {
     validate_rns_hash "abcdef1234567890abcdef1234567890"
 }
 
-@test "FUNC: validate_rns_hash accepts valid 20-char hex (minimum)" {
+@test "FUNC: validate_rns_hash accepts valid 20-char hex - minimum" {
     validate_rns_hash "abcdef1234567890abcd"
 }
 
-@test "FUNC: validate_rns_hash accepts valid 64-char hex (maximum)" {
+@test "FUNC: validate_rns_hash accepts valid 64-char hex - maximum" {
     validate_rns_hash "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
 }
 
@@ -152,9 +153,8 @@ teardown() {
 
 @test "FUNC: safe_call handles missing command gracefully" {
     # safe_call should not crash, even for missing commands
-    safe_call "test" nonexistent_command_xyz_12345 2>/dev/null
-    # We just verify it didn't crash (exit is non-zero but that's expected)
-    true
+    # Guard with || true since safe_call returns 127 (command not found)
+    safe_call "test" nonexistent_command_xyz_12345 2>/dev/null || true
 }
 
 #########################################################

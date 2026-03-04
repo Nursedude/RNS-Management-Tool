@@ -9,13 +9,13 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 
 This is the **only MeshForge ecosystem tool with native Windows support**. Users don't need MeshForge installed to use this tool, but if they do, they can extend its functionality through MeshForge's gateway. Upstream MeshForge updates are frequent - environment patterns, security rules, and best practices flow downstream into this tool regularly.
 
-![Version](https://img.shields.io/badge/version-0.3.5--beta-orange)
+![Version](https://img.shields.io/badge/version-0.4.0--beta-orange)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
 ![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![MeshForge](https://img.shields.io/badge/MeshForge-ecosystem-blueviolet)
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
 ![ShellCheck](https://img.shields.io/badge/shellcheck-passing-green)
-![Tests](https://img.shields.io/badge/tests-787%2B%20passing-green)
+![Tests](https://img.shields.io/badge/tests-972%2B%20passing-green)
 
 > **Beta Software - Community Testing Needed**
 >
@@ -50,7 +50,7 @@ graph LR
 **Relationship to MeshForge:**
 - MeshForge is the Python-based NOC reference suite for LoRa mesh networks
 - RNS Management Tool extends the ecosystem with a shell-based TUI for Reticulum
-- Security rules (RNS001-RNS006), environment patterns, and architectural decisions flow from MeshForge upstream
+- Security rules (RNS001-RNS010), environment patterns, and architectural decisions flow from MeshForge upstream
 - This tool is standalone - no MeshForge installation required
 
 ---
@@ -120,6 +120,7 @@ graph TB
 | | USB device detection | ✅ | ⚠️ | Windows: COM port detection |
 | | Startup health check | ✅ | ✅ | Disk, memory, log validation |
 | **Config** | Config templates (4 presets) | ✅ | ❌ | minimal, LoRa, TCP, transport |
+| | Deployment profiles | ✅ | ❌ | Relay, Mobile, Base Station |
 | | Config editor from TUI | ✅ | ❌ | Launches $EDITOR with backup |
 | | First-run wizard | ✅ | ❌ | Auto-detects fresh setup |
 | **UI** | Quick Status Dashboard | ✅ | ✅ | |
@@ -301,8 +302,10 @@ flowchart LR
 | RNS004 | Path traversal prevention | Enforced |
 | RNS005 | Confirmation for destructive actions | Enforced |
 | RNS006 | Subprocess timeout protection | Enforced |
+| RNS009 | Temp files must use `mktemp` | Enforced |
+| RNS010 | No sensitive data in log output | Enforced |
 
-> **Security Review:** A formal security and code review was completed on 2026-02-21, rating the project **A** with no critical vulnerabilities. See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the full audit report.
+> **Security Review:** A formal security and code review was completed on 2026-02-21, rating the project **A** with no critical vulnerabilities. All P1 recommendations now resolved (v0.4.0-beta). See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the full audit report.
 
 ---
 
@@ -362,7 +365,10 @@ for f in lib/*.sh; do shellcheck -x -S warning "$f"; done
 ./tests/smoke_test.sh --verbose        # 183 assertions
 bats tests/rns_management_tool.bats    # 63 tests
 bats tests/hardware_validation.bats    # 92 tests
-bats tests/integration_tests.bats      # 106 tests
+bats tests/integration_tests.bats      # 145 tests
+bats tests/regression_guards.bats      # 74 tests
+bats tests/service_health_tests.bats   # 24 tests
+bats tests/diagnostics_enhanced.bats   # 15 tests
 
 # CI dry-run
 ./rns_management_tool.sh --check

@@ -75,7 +75,7 @@ resolve_real_home() {
 REAL_HOME="$(resolve_real_home)"
 
 # Global variables
-SCRIPT_VERSION="0.3.5-beta"
+SCRIPT_VERSION="0.4.0-beta"
 # BACKUP_DIR is set dynamically in create_backup() to avoid stale timestamps
 BACKUP_DIR=""
 UPDATE_LOG="$REAL_HOME/rns_management.log"
@@ -168,6 +168,15 @@ LOG_LEVEL_INFO=1
 LOG_LEVEL_WARN=2
 LOG_LEVEL_ERROR=3
 CURRENT_LOG_LEVEL=$LOG_LEVEL_INFO
+
+# Service health states (granular beyond running/stopped)
+SVC_STATE_RUNNING="running"         # Process alive, port bound, >10s uptime
+SVC_STATE_DEGRADED="degraded"       # Process alive but config/dependency issue
+SVC_STATE_STARTING="starting"       # Process exists, <10s uptime
+SVC_STATE_ZOMBIE="zombie"           # Process detected but port not bound, >30s uptime
+SVC_STATE_STOPPED="stopped"         # No process detected
+SVC_STATE_UNREACHABLE="unreachable" # meshtasticd HTTP API not responding
+_LAST_SERVICE_STATE=""              # Set by check_service_status() as side effect
 
 # Network Timeout Constants (RNS006: Subprocess timeout protection)
 NETWORK_TIMEOUT=300      # 5 minutes for network operations

@@ -140,6 +140,7 @@ advanced_menu() {
         echo "   1) View Configuration Files"
         echo "   2) Edit Configuration File"
         echo "   3) Apply Configuration Template"
+        echo "   d) Apply Deployment Profile"
         echo ""
         echo -e "  ${CYAN}─── Maintenance ───${NC}"
         echo "   4) Update System Packages"
@@ -163,6 +164,10 @@ advanced_menu() {
                 ;;
             3)
                 apply_config_template
+                pause_for_input
+                ;;
+            d|D)
+                apply_deployment_profile
                 pause_for_input
                 ;;
             4)

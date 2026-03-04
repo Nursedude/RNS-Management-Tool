@@ -38,7 +38,7 @@ jobs:
           done
 
   custom-lint:
-    name: Custom Linter (RNS001-RNS006)
+    name: Custom Linter (RNS001-RNS010)
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -93,6 +93,15 @@ jobs:
 
       - name: Run regression guard tests
         run: bats tests/regression_guards.bats
+
+      - name: Run functional tests
+        run: bats tests/functional_tests.bats
+
+      - name: Run service health tests
+        run: bats tests/service_health_tests.bats
+
+      - name: Run diagnostics enhanced tests
+        run: bats tests/diagnostics_enhanced.bats
 
   powershell:
     name: PowerShell Syntax

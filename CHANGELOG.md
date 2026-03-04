@@ -5,6 +5,37 @@ All notable changes to the RNS Management Tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-beta] - 2026-03-04
+
+### Added
+- **Granular Service Health States**: 6 states (running, degraded, starting, zombie, stopped, unreachable) with process + port + uptime classification
+- **Deployment Profiles**: 3 role-based profiles (Relay Node, Mobile Station, Base Station) for one-click configuration
+- **Enhanced Diagnostics**: CPU load checks, thermal monitoring (70C warn / 80C error), config section validation, return codes for scripted use
+- **RNS009 Linter Rule**: Enforces `mktemp` usage instead of hardcoded `/tmp` paths
+- **RNS010 Linter Rule**: Prevents sensitive data (passwords, tokens, keys) in log output
+- **Dead Code Detection**: `scripts/dead_code_check.sh` development tool for finding unused functions
+- **Service Health Tests**: 24 new BATS tests for granular health state classification
+- **Diagnostics Enhanced Tests**: 15 new BATS tests for diagnostic engine improvements
+- **Regression Guard Tests**: 5 new tests for RNS009/RNS010 compliance
+- **Integration Tests**: 8 new tests for config management and service workflows
+
+### Changed
+- `check_service_status()` now sets `_LAST_SERVICE_STATE` as side effect for granular state access
+- Cache functions store granular state strings instead of simple "running"/"stopped"
+- Main menu and service display use case-based rendering for all 6 health states
+- `run_diagnostics()` returns 0 (healthy), 1 (warnings), or 2 (issues) for scripted use
+- Custom linter expanded from RNS001-RNS008 to RNS001-RNS010
+- CI workflow runs 3 additional BATS test suites
+- Version bumped to 0.4.0-beta
+
+### Fixed
+- WSL commands in `pwsh/install.ps1` and `pwsh/rnode.ps1` now use `${TMPDIR:-/tmp}` instead of hardcoded `/tmp`
+
+### Security
+- RNS009: Temp file safety — no hardcoded `/tmp` paths in production code
+- RNS010: Log output safety — no sensitive data keywords in log function calls
+- All P1 issues from Security Review now resolved (R5 RNODE dedup, R7/R9 curl-pipe-bash, R8 PS dedup)
+
 ## [0.3.5-beta] - 2026-02-15
 
 ### Security

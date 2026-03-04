@@ -129,6 +129,124 @@ apply_config_template() {
 }
 
 #########################################################
+# Deployment Profiles
+#########################################################
+
+# Deployment profiles go beyond config templates — they apply a template AND
+# configure service settings (autostart, transport mode) for a specific role.
+apply_deployment_profile() {
+    print_section "Deployment Profiles"
+
+    echo -e "${BOLD}Deployment profiles configure your system for a specific role:${NC}\n"
+    echo "   1) Relay Node"
+    echo "      Stationary, always-on transport node. Routes traffic for the network."
+    echo "      Config: Transport enabled, autostart at boot"
+    echo ""
+    echo "   2) Mobile Station"
+    echo "      Portable device with LoRa radio. Manual start for field operations."
+    echo "      Config: LoRa RNODE, no transport, no autostart"
+    echo ""
+    echo "   3) Base Station"
+    echo "      Stationary LoRa gateway bridging radio and internet."
+    echo "      Config: Transport + LoRa + TCP, autostart at boot"
+    echo ""
+    echo "   0) Cancel"
+    echo ""
+    echo -n "Select profile: "
+    read -r PROFILE_CHOICE
+
+    local profile_name="" template_file="" enable_autostart=false
+    local template_dir="$SCRIPT_DIR/config_templates"
+
+    case $PROFILE_CHOICE in
+        1) profile_name="Relay Node"
+           template_file="$template_dir/transport_node.conf"
+           enable_autostart=true
+           ;;
+        2) profile_name="Mobile Station"
+           template_file="$template_dir/lora_rnode.conf"
+           enable_autostart=false
+           ;;
+        3) profile_name="Base Station"
+           template_file="$template_dir/transport_node.conf"
+           enable_autostart=true
+           ;;
+        0|"") return 0 ;;
+        *) print_error "Invalid option"; return 1 ;;
+    esac
+
+    if [ ! -f "$template_file" ]; then
+        print_error "Template file not found: $template_file"
+        return 1
+    fi
+
+    echo ""
+    echo -e "${BOLD}Profile: $profile_name${NC}"
+    echo "  Config template: $(basename "$template_file")"
+    echo "  Autostart: $([ "$enable_autostart" = true ] && echo "Yes" || echo "No")"
+    echo ""
+
+    echo -e "${YELLOW}WARNING: This will replace your current Reticulum config.${NC}"
+    echo -e "${GREEN}Your existing config will be backed up first.${NC}"
+    echo ""
+
+    if ! confirm_action "Apply '$profile_name' deployment profile?"; then
+        print_info "Cancelled — no changes made"
+        return 0
+    fi
+
+    # Step 1: Backup current config
+    local config_dir="$REAL_HOME/.reticulum"
+    local config_file="$config_dir/config"
+    if [ -f "$config_file" ]; then
+        local backup_name
+        backup_name="config.backup.$(date +%Y%m%d_%H%M%S)"
+        local backup_path="$config_dir/$backup_name"
+        if ! cp "$config_file" "$backup_path"; then
+            print_error "Backup failed — aborting (your config is unchanged)"
+            return 1
+        fi
+        print_success "Backed up current config to: ~/.reticulum/$backup_name"
+        log_message "Deployment profile backup: $backup_path"
+    fi
+
+    # Step 2: Apply template
+    mkdir -p "$config_dir"
+    if ! cp "$template_file" "$config_file"; then
+        print_error "Failed to apply template"
+        return 1
+    fi
+    print_success "Applied $(basename "$template_file") template"
+
+    # Step 3: Configure autostart
+    if [ "$enable_autostart" = true ]; then
+        if command -v systemctl &>/dev/null; then
+            setup_autostart
+        fi
+    else
+        if command -v systemctl &>/dev/null && \
+           systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
+            disable_autostart
+        fi
+    fi
+
+    log_message "Applied deployment profile: $profile_name (template: $(basename "$template_file"), autostart: $enable_autostart)"
+    print_success "Deployment profile '$profile_name' applied"
+    echo ""
+    print_info "Review your config before starting rnsd:"
+    echo -e "  ${CYAN}nano ~/.reticulum/config${NC}"
+
+    if [ "$enable_autostart" = true ]; then
+        echo ""
+        if confirm_action "Start rnsd now?" "y"; then
+            start_services
+        fi
+    fi
+
+    invalidate_status_cache
+}
+
+#########################################################
 # Configuration Editor
 #########################################################
 
