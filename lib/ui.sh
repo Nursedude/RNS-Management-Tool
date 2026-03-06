@@ -132,6 +132,89 @@ get_status_line() {
     echo -e "${parts[*]}"
 }
 
+# Paginated output display (adapted from meshforge quick_actions pagination)
+# Reads from stdin, shows page-by-page for long output.
+# Usage: rnstatus -a 2>&1 | show_paged_output "Network Statistics"
+show_paged_output() {
+    local title="$1"
+    local page_size
+    page_size=$(( $(tput lines 2>/dev/null || echo 40) - 4 ))
+    [ "$page_size" -lt 10 ] && page_size=10
+
+    # Slurp all input into an array
+    local -a lines=()
+    while IFS= read -r line; do
+        lines+=("$line")
+    done
+
+    local total=${#lines[@]}
+
+    # Short output: display directly
+    if [ "$total" -le "$page_size" ] || [ "$IS_INTERACTIVE" != true ]; then
+        [ -n "$title" ] && print_section "$title"
+        printf '%s\n' "${lines[@]}"
+        return
+    fi
+
+    # Long output: paginate
+    local page=0
+    local total_pages=$(( (total + page_size - 1) / page_size ))
+
+    while true; do
+        local start=$((page * page_size))
+        local end=$((start + page_size))
+        [ "$end" -gt "$total" ] && end=$total
+
+        if [ "$page" -eq 0 ] && [ -n "$title" ]; then
+            print_section "$title"
+        fi
+
+        for ((i=start; i<end; i++)); do
+            echo "${lines[$i]}"
+        done
+
+        if [ "$end" -ge "$total" ]; then
+            echo ""
+            echo -e "${CYAN}(end of output - $total lines)${NC}"
+            break
+        fi
+
+        echo ""
+        echo -e "${YELLOW}-- Page $((page+1))/$total_pages ($total lines) -- [Enter]=next [q]=quit [a]=all --${NC}"
+        read -r -n 1 page_action
+        echo ""
+
+        case "$page_action" in
+            q|Q) break ;;
+            a|A)
+                for ((i=end; i<total; i++)); do
+                    echo "${lines[$i]}"
+                done
+                echo ""
+                echo -e "${CYAN}(end of output - $total lines)${NC}"
+                break
+                ;;
+            *)  ((page++)) ;;
+        esac
+    done
+}
+
+# Menu read with idle timeout (adapted from meshforge TUI session management)
+# Exits gracefully after MENU_READ_TIMEOUT seconds of inactivity.
+# Usage: read_menu_choice VARIABLE_NAME
+read_menu_choice() {
+    local -n _result=$1
+    if ! read -r -t "$MENU_READ_TIMEOUT" _result; then
+        if [ $? -gt 128 ]; then
+            log_message "Session timed out after ${MENU_READ_TIMEOUT}s idle"
+            echo ""
+            print_info "Session timed out due to inactivity"
+            exit 0
+        fi
+        _result=""
+    fi
+}
+
 pause_for_input() {
     echo -e "\n${YELLOW}Press Enter to continue...${NC}"
     read -r

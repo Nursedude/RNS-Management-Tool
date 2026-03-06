@@ -146,7 +146,7 @@ show_main_menu() {
     echo "   0) Exit"
     echo ""
     echo -n "Select an option: "
-    read -r MENU_CHOICE
+    read_menu_choice MENU_CHOICE
 }
 
 #########################################################

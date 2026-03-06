@@ -65,14 +65,24 @@ start_services() {
 
     if confirm_action "Start the rnsd daemon?" "y"; then
         print_info "Starting rnsd daemon..."
-        if rnsd --daemon 2>&1 | tee -a "$UPDATE_LOG"; then
-            # Poll with timeout instead of hardcoded sleep (meshforge pattern)
+        if rnsd --daemon >> "$UPDATE_LOG" 2>&1; then
+            # Poll with spinner instead of silent sleep (meshforge progress pattern)
             local wait_count=0
             local max_wait=10
+            local -a spin_frames
+            if [ "$HAS_COLOR" = true ]; then
+                spin_frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+            else
+                spin_frames=("|" "/" "-" "\\")
+            fi
+            tput civis 2>/dev/null || true
             while ! is_rnsd_running && [ $wait_count -lt $max_wait ]; do
+                printf '\r  %s Waiting for rnsd to start... ' "${spin_frames[$((wait_count % ${#spin_frames[@]}))]}"
                 sleep 1
                 ((wait_count++))
             done
+            printf '\r%40s\r' ""
+            tput cnorm 2>/dev/null || true
 
             # Verify it's running
             if is_rnsd_running; then
@@ -113,7 +123,7 @@ show_service_status() {
             print_success "rnsd daemon: Running"
             if command -v rnstatus &> /dev/null; then
                 echo ""
-                rnstatus 2>&1 | head -n 20
+                rnstatus 2>&1 | show_paged_output ""
             fi
             ;;
         "$SVC_STATE_STARTING")
@@ -269,7 +279,7 @@ handle_network_tools() {
         5)
             print_section "Network Statistics"
             if [ "$HAS_RNSTATUS" = true ]; then
-                rnstatus -a 2>&1 | head -n 50
+                rnstatus -a 2>&1 | show_paged_output "Network Statistics"
             else
                 print_warning "rnstatus not available - install RNS first"
             fi
@@ -676,7 +686,7 @@ services_menu() {
         echo "   0) Back to Main Menu"
         echo ""
         echo -n "Select an option: "
-        read -r SVC_CHOICE
+        read_menu_choice SVC_CHOICE
 
         case $SVC_CHOICE in
             1)  start_services; pause_for_input ;;

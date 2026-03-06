@@ -343,3 +343,93 @@ teardown() {
 @test "FUNC: factory reset checks backup return value" {
     grep -A5 'create_backup' "$SCRIPT_DIR/lib/advanced.sh" | grep -q 'if ! create_backup'
 }
+
+#########################################################
+# MeshForge TUI integration — new functions
+#########################################################
+
+@test "FUNC: run_with_spinner function is defined" {
+    type run_with_spinner | grep -q 'function'
+}
+
+@test "FUNC: run_with_spinner passes through exit code of successful command" {
+    IS_INTERACTIVE=false
+    run_with_spinner "test" true
+}
+
+@test "FUNC: run_with_spinner passes through exit code of failing command" {
+    IS_INTERACTIVE=false
+    ! run_with_spinner "test" false
+}
+
+@test "FUNC: show_paged_output function is defined" {
+    type show_paged_output | grep -q 'function'
+}
+
+@test "FUNC: show_paged_output passes short input through directly" {
+    local output
+    output=$(echo "line1" | IS_INTERACTIVE=false show_paged_output "")
+    echo "$output" | grep -q 'line1'
+}
+
+@test "FUNC: show_paged_output handles empty input" {
+    local output
+    output=$(echo "" | IS_INTERACTIVE=false show_paged_output "")
+    [ $? -eq 0 ]
+}
+
+@test "FUNC: resolve_port_conflict function is defined" {
+    type resolve_port_conflict | grep -q 'function'
+}
+
+@test "FUNC: read_menu_choice function is defined" {
+    type read_menu_choice | grep -q 'function'
+}
+
+@test "FUNC: MENU_READ_TIMEOUT constant is defined" {
+    grep -q 'MENU_READ_TIMEOUT=' "$SCRIPT_DIR/lib/core.sh"
+}
+
+@test "FUNC: MENU_READ_TIMEOUT is set to 3600" {
+    grep -q 'MENU_READ_TIMEOUT=3600' "$SCRIPT_DIR/lib/core.sh"
+}
+
+@test "FUNC: main menu uses read_menu_choice" {
+    grep -q 'read_menu_choice MENU_CHOICE' "$SCRIPT_DIR/rns_management_tool.sh"
+}
+
+@test "FUNC: Quick Mode has 9 action options" {
+    grep -q '9) View interfaces' "$SCRIPT_DIR/lib/advanced.sh"
+}
+
+@test "FUNC: Quick Mode restart option calls stop_services and start_services" {
+    grep -A3 '7)' "$SCRIPT_DIR/lib/advanced.sh" | grep -q 'stop_services'
+    grep -A4 '7)' "$SCRIPT_DIR/lib/advanced.sh" | grep -q 'start_services'
+}
+
+@test "FUNC: Quick Mode view log uses tail" {
+    grep -A5 '8)' "$SCRIPT_DIR/lib/advanced.sh" | grep -q 'tail -n 20'
+}
+
+@test "FUNC: port conflict resolver uses SIGTERM before SIGKILL" {
+    local func_body
+    func_body=$(grep -A100 'resolve_port_conflict()' "$SCRIPT_DIR/lib/utils.sh")
+    echo "$func_body" | grep -q 'SIGTERM'
+    echo "$func_body" | grep -q 'SIGKILL'
+}
+
+@test "FUNC: port conflict resolver validates PID is numeric" {
+    grep -A50 'resolve_port_conflict()' "$SCRIPT_DIR/lib/utils.sh" | grep -q '\^\[0-9\]'
+}
+
+@test "FUNC: startup health check uses resolve_port_conflict" {
+    grep -q 'resolve_port_conflict' "$SCRIPT_DIR/lib/advanced.sh"
+}
+
+@test "FUNC: spinner has ASCII fallback when HAS_COLOR is false" {
+    grep -A5 'HAS_COLOR.*true.*then' "$SCRIPT_DIR/lib/utils.sh" | head -20 | grep -q '|.*/'
+}
+
+@test "FUNC: pagination respects IS_INTERACTIVE flag" {
+    grep -q 'IS_INTERACTIVE.*!=.*true' "$SCRIPT_DIR/lib/ui.sh"
+}

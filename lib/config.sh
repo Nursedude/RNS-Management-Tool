@@ -392,33 +392,20 @@ view_config_files() {
     case $CONFIG_CHOICE in
         1)
             if [ -f "$REAL_HOME/.reticulum/config" ]; then
-                print_section "Reticulum Configuration"
                 echo -e "${CYAN}File: ~/.reticulum/config${NC}\n"
-                local display_lines=$(($(tput lines 2>/dev/null || echo 40) - 5))
-                [ "$display_lines" -lt 20 ] && display_lines=20
-                head -n "$display_lines" "$REAL_HOME/.reticulum/config"
-                if [ "$(wc -l < "$REAL_HOME/.reticulum/config")" -gt "$display_lines" ]; then
-                    echo ""
-                    print_info "Showing first $display_lines lines. Use 'cat ~/.reticulum/config' for full file."
-                fi
+                show_paged_output "Reticulum Configuration" < "$REAL_HOME/.reticulum/config"
             fi
             ;;
         2)
             if [ -f "$REAL_HOME/.nomadnetwork/config" ]; then
-                print_section "NomadNet Configuration"
                 echo -e "${CYAN}File: ~/.nomadnetwork/config${NC}\n"
-                local display_lines=$(($(tput lines 2>/dev/null || echo 40) - 5))
-                [ "$display_lines" -lt 20 ] && display_lines=20
-                head -n "$display_lines" "$REAL_HOME/.nomadnetwork/config"
+                show_paged_output "NomadNet Configuration" < "$REAL_HOME/.nomadnetwork/config"
             fi
             ;;
         3)
             if [ -f "$REAL_HOME/.lxmf/config" ]; then
-                print_section "LXMF Configuration"
                 echo -e "${CYAN}File: ~/.lxmf/config${NC}\n"
-                local display_lines=$(($(tput lines 2>/dev/null || echo 40) - 5))
-                [ "$display_lines" -lt 20 ] && display_lines=20
-                head -n "$display_lines" "$REAL_HOME/.lxmf/config"
+                show_paged_output "LXMF Configuration" < "$REAL_HOME/.lxmf/config"
             fi
             ;;
         0|"")
@@ -443,21 +430,20 @@ view_logs_menu() {
         echo "   0) Back"
         echo ""
         echo -n "Select option: "
-        read -r LOG_CHOICE
+        read_menu_choice LOG_CHOICE
 
         case $LOG_CHOICE in
             1)
-                print_section "Recent Log Entries"
                 if [ -f "$UPDATE_LOG" ]; then
                     echo -e "${CYAN}File: $UPDATE_LOG${NC}\n"
-                    tail -n 50 "$UPDATE_LOG"
+                    tail -n 100 "$UPDATE_LOG" | show_paged_output "Recent Log Entries"
                 else
                     # Find most recent log
                     local latest_log
                     latest_log=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r | head -1)
                     if [ -n "$latest_log" ]; then
                         echo -e "${CYAN}File: $latest_log${NC}\n"
-                        tail -n 50 "$latest_log"
+                        tail -n 100 "$latest_log" | show_paged_output "Recent Log Entries"
                     else
                         print_warning "No log files found"
                     fi
