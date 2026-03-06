@@ -412,8 +412,8 @@ install_reticulum_ecosystem() {
 
     local success=true
 
-    # RNS first (core dependency) - with retry
-    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install rns --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    # RNS first (core dependency) - with retry and spinner
+    if retry_with_backoff 3 run_with_spinner "Installing RNS..." run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install rns --upgrade --break-system-packages; then
         next_step "success"
         # Verify RNS installation (meshforge post-install verify pattern)
         if python3 -c "import RNS; print(f'RNS {RNS.__version__}')" 2>/dev/null; then
@@ -429,8 +429,8 @@ install_reticulum_ecosystem() {
         success=false
     fi
 
-    # LXMF (depends on RNS) - with retry
-    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install lxmf --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+    # LXMF (depends on RNS) - with retry and spinner
+    if retry_with_backoff 3 run_with_spinner "Installing LXMF..." run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install lxmf --upgrade --break-system-packages; then
         next_step "success"
         # Verify LXMF installation
         if python3 -c "import LXMF; print(f'LXMF {LXMF.__version__}')" 2>/dev/null; then
@@ -448,7 +448,7 @@ install_reticulum_ecosystem() {
 
     # NomadNet (optional)
     if [ "$install_nomad" = true ]; then
-        if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install nomadnet --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        if retry_with_backoff 3 run_with_spinner "Installing NomadNet..." run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install nomadnet --upgrade --break-system-packages; then
             next_step "success"
             if python3 -c "import nomadnet" 2>/dev/null; then
                 next_step "success"

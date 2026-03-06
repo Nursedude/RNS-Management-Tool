@@ -178,6 +178,10 @@ SVC_STATE_STOPPED="stopped"         # No process detected
 SVC_STATE_UNREACHABLE="unreachable" # meshtasticd HTTP API not responding
 _LAST_SERVICE_STATE=""              # Set by check_service_status() as side effect
 
+# Menu idle timeout (adapted from meshforge TUI session management)
+# Prevents zombie SSH sessions; graceful exit after 1 hour idle
+MENU_READ_TIMEOUT=3600
+
 # Network Timeout Constants (RNS006: Subprocess timeout protection)
 NETWORK_TIMEOUT=300      # 5 minutes for network operations
 APT_TIMEOUT=600          # 10 minutes for apt operations (can be slow)

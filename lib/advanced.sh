@@ -44,11 +44,14 @@ emergency_quick_mode() {
         echo "   4) Path table (rnpath -t)"
         echo "   5) Probe destination"
         echo "   6) Send file (rncp)"
+        echo "   7) Restart rnsd daemon"
+        echo "   8) View recent log (last 20 lines)"
+        echo "   9) View interfaces"
         echo ""
         echo "   0) Back to Main Menu"
         echo ""
         echo -n "Action: "
-        read -r QM_CHOICE
+        read_menu_choice QM_CHOICE
 
         case $QM_CHOICE in
             1)
@@ -68,7 +71,7 @@ emergency_quick_mode() {
                 # Use require_service for consistent pre-flight (meshforge f8946f4 pattern)
                 if [ "$HAS_RNSTATUS" = true ]; then
                     if require_service "rnsd" "Network status requires rnsd"; then
-                        rnstatus 2>&1
+                        rnstatus 2>&1 | show_paged_output "Network Status"
                     fi
                 else
                     print_warning "rnstatus not available"
@@ -119,6 +122,32 @@ emergency_quick_mode() {
                 fi
                 pause_for_input
                 ;;
+            7)
+                print_info "Restarting rnsd..."
+                stop_services
+                start_services
+                invalidate_status_cache
+                pause_for_input
+                ;;
+            8)
+                if [ -f "$UPDATE_LOG" ]; then
+                    print_section "Recent Log"
+                    tail -n 20 "$UPDATE_LOG"
+                else
+                    print_warning "No log file found"
+                fi
+                pause_for_input
+                ;;
+            9)
+                if [ "$HAS_RNSTATUS" = true ]; then
+                    if require_service "rnsd" "View interfaces requires rnsd"; then
+                        rnstatus 2>&1 | show_paged_output "Interfaces"
+                    fi
+                else
+                    print_warning "rnstatus not available"
+                fi
+                pause_for_input
+                ;;
             0|"")
                 return
                 ;;
@@ -152,7 +181,7 @@ advanced_menu() {
         echo "   0) Back to Main Menu"
         echo ""
         echo -n "Select an option: "
-        read -r ADV_CHOICE
+        read_menu_choice ADV_CHOICE
 
         case $ADV_CHOICE in
             1)
@@ -334,10 +363,14 @@ run_startup_health_check() {
         fi
 
         if [ "$port_conflict" = true ]; then
-            print_warning "UDP port 37428 already in use by: $conflict_proc"
-            print_info "This port is needed by rnsd. Another instance may be running."
             log_warn "Port conflict: UDP 37428 in use by $conflict_proc"
-            ((warnings++))
+            if [ "$IS_INTERACTIVE" = true ]; then
+                resolve_port_conflict "37428" "rnsd" || ((warnings++))
+            else
+                print_warning "UDP port 37428 already in use by: $conflict_proc"
+                print_info "This port is needed by rnsd. Another instance may be running."
+                ((warnings++))
+            fi
         fi
     fi
 

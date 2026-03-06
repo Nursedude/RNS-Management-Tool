@@ -48,6 +48,162 @@ retry_with_backoff() {
     return 1
 }
 
+# Inline spinner for long-running subprocesses (adapted from meshforge progress gauge)
+# Usage: run_with_spinner "Installing RNS..." pip3 install rns
+# Runs command in background, shows animated spinner, returns command's exit code.
+# Output goes to $UPDATE_LOG. Do NOT use for commands needing interactive input (sudo prompts).
+run_with_spinner() {
+    local label="$1"
+    shift
+
+    # Non-interactive mode: run directly without spinner
+    if [ "$IS_INTERACTIVE" != true ] || [ ! -t 1 ]; then
+        "$@" >> "$UPDATE_LOG" 2>&1
+        return $?
+    fi
+
+    # Choose spinner characters based on terminal capability
+    local -a frames
+    if [ "$HAS_COLOR" = true ]; then
+        frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    else
+        frames=("|" "/" "-" "\\")
+    fi
+
+    # Run command in background, capturing output to log
+    "$@" >> "$UPDATE_LOG" 2>&1 &
+    local cmd_pid=$!
+
+    # Hide cursor during spinner
+    tput civis 2>/dev/null || true
+
+    local i=0
+    while kill -0 "$cmd_pid" 2>/dev/null; do
+        printf '\r  %s %s ' "${frames[$((i % ${#frames[@]}))]}" "$label"
+        sleep 0.1
+        ((i++))
+    done
+
+    # Get exit code from background command
+    wait "$cmd_pid"
+    local rc=$?
+
+    # Clear spinner line, restore cursor
+    printf '\r%*s\r' $((${#label} + 6)) ""
+    tput cnorm 2>/dev/null || true
+
+    if [ $rc -eq 0 ]; then
+        print_success "$label done"
+    else
+        print_error "$label failed (exit code: $rc)"
+    fi
+
+    return $rc
+}
+
+# Port conflict resolver (adapted from meshforge ConflictResolver)
+# Identifies process holding a port and offers to stop it.
+# Usage: resolve_port_conflict "37428" "rnsd"
+resolve_port_conflict() {
+    local port="$1"
+    local service="$2"
+
+    # Identify blocking process
+    local holder_pid="" holder_name=""
+    if command -v ss &>/dev/null; then
+        local ss_line
+        ss_line=$(ss -ulnp 2>/dev/null | grep ":${port} " | head -1)
+        holder_pid=$(echo "$ss_line" | sed -n 's/.*pid=\([0-9]*\).*/\1/p')
+        holder_name=$(echo "$ss_line" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p')
+    elif command -v netstat &>/dev/null; then
+        local net_line
+        net_line=$(netstat -ulnp 2>/dev/null | grep ":${port} " | head -1)
+        holder_pid=$(echo "$net_line" | awk '{print $NF}' | cut -d/ -f1)
+        holder_name=$(echo "$net_line" | awk '{print $NF}' | cut -d/ -f2)
+    fi
+
+    if [ -z "$holder_pid" ] || ! [[ "$holder_pid" =~ ^[0-9]+$ ]]; then
+        print_info "Port $port conflict detected but cannot identify blocking process"
+        return 1
+    fi
+
+    echo ""
+    print_warning "Port $port is in use by: $holder_name (PID $holder_pid)"
+    print_info "This port is needed by $service"
+    echo ""
+
+    # Check if it's our own service (stale instance)
+    if [ "$holder_name" = "$service" ]; then
+        print_info "This appears to be a stale $service instance"
+    fi
+
+    # Check ownership - only kill processes we own
+    local proc_uid
+    proc_uid=$(stat -c %u "/proc/$holder_pid" 2>/dev/null || echo "")
+    if [ -n "$proc_uid" ] && [ "$proc_uid" != "$(id -u)" ] && [ "$proc_uid" != "0" ]; then
+        print_warning "Process is owned by another user (UID $proc_uid)"
+        print_info "Stop it manually: sudo kill $holder_pid"
+        return 1
+    fi
+
+    echo "   1) Stop the blocking process (SIGTERM)"
+    echo "   2) Force stop (SIGKILL)"
+    echo "   3) Skip - leave conflict unresolved"
+    echo ""
+    echo -n "Action: "
+    read -r conflict_choice
+
+    case "$conflict_choice" in
+        1)
+            log_message "Sending SIGTERM to PID $holder_pid ($holder_name) holding port $port"
+            if kill "$holder_pid" 2>/dev/null; then
+                # Wait up to 5s for process to exit
+                local wait_count=0
+                while [ $wait_count -lt 5 ] && kill -0 "$holder_pid" 2>/dev/null; do
+                    sleep 1
+                    ((wait_count++))
+                done
+                if ! kill -0 "$holder_pid" 2>/dev/null; then
+                    print_success "Process $holder_pid stopped, port $port freed"
+                    return 0
+                else
+                    print_warning "Process did not stop after 5s"
+                    if confirm_action "Force kill (SIGKILL)?"; then
+                        kill -9 "$holder_pid" 2>/dev/null
+                        sleep 1
+                        if ! kill -0 "$holder_pid" 2>/dev/null; then
+                            print_success "Process force-stopped"
+                            return 0
+                        fi
+                        print_error "Could not stop process $holder_pid"
+                        return 1
+                    fi
+                fi
+            else
+                print_error "Cannot stop process $holder_pid (permission denied?)"
+                print_info "Try: sudo kill $holder_pid"
+                return 1
+            fi
+            ;;
+        2)
+            log_message "Sending SIGKILL to PID $holder_pid ($holder_name) holding port $port"
+            if kill -9 "$holder_pid" 2>/dev/null; then
+                sleep 1
+                if ! kill -0 "$holder_pid" 2>/dev/null; then
+                    print_success "Process force-stopped, port $port freed"
+                    return 0
+                fi
+            fi
+            print_error "Could not stop process $holder_pid"
+            return 1
+            ;;
+        *)
+            print_info "Skipping port conflict resolution"
+            return 1
+            ;;
+    esac
+}
+
 #########################################################
 # Utility Functions
 #########################################################
