@@ -41,11 +41,35 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 - [Security Model](#security-model)
 - [Troubleshooting](#troubleshooting)
 - [Supported Platforms](#supported-platforms)
+- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 
 ---
 
 ## Installation
+
+```mermaid
+flowchart TD
+    START(["Clone Repository"]) --> PLATFORM{"Platform?"}
+
+    PLATFORM -->|"Linux / RPi"| BASH["chmod +x rns_management_tool.sh\n./rns_management_tool.sh"]
+    PLATFORM -->|"Windows 11"| PWSH["Set-ExecutionPolicy Bypass\n.\rns_management_tool.ps1"]
+    PLATFORM -->|"CI / Headless"| CHECK["./rns_management_tool.sh --check"]
+
+    BASH --> HEALTH["Startup Health Check\ndisk, memory, ports"]
+    HEALTH --> FRESH{"First Run?"}
+    FRESH -->|"Yes"| WIZARD["First-Run Wizard\nInstall RNS → Config Template → Start rnsd"]
+    FRESH -->|"No"| MENU["Main Menu"]
+    WIZARD --> MENU
+
+    PWSH --> WMENU["Windows Main Menu"]
+    CHECK --> VALIDATE["Syntax + Module + Security\nValidation"]
+
+    style START fill:#2d6,stroke:#fff,color:#fff
+    style MENU fill:#1a6,stroke:#fff,color:#fff
+    style WMENU fill:#47a,stroke:#fff,color:#fff
+    style VALIDATE fill:#666,stroke:#fff,color:#fff
+```
 
 ### Linux / Raspberry Pi
 
@@ -329,39 +353,60 @@ This is the **only MeshForge ecosystem tool with native Windows support**.
 ```mermaid
 graph TB
     subgraph "User Interfaces"
-        TUI["Terminal UI<br/>(Bash - Linux/RPi)"]
-        PS["PowerShell UI<br/>(Windows - Native)"]
+        TUI["Bash TUI - Linux/RPi<br/>rns_management_tool.sh"]
+        PS["PowerShell TUI - Windows<br/>rns_management_tool.ps1"]
     end
 
-    subgraph "Management Core"
-        INST[Installer Engine]
-        DIAG[Diagnostics]
-        SVC[Service Manager]
-        BACKUP[Backup/Restore]
-        RNODE[RNODE Config]
-        ENV[Environment Detection]
-        HEALTH[Health Check]
+    subgraph "Cross-Platform Modules"
+        INST["Installer<br/>lib/install.sh | pwsh/install.ps1"]
+        DIAG["Diagnostics<br/>lib/diagnostics.sh | pwsh/diagnostics.ps1"]
+        SVC["Service Manager<br/>lib/services.sh | pwsh/services.ps1"]
+        BACKUP["Backup/Restore<br/>lib/backup.sh | pwsh/backup.ps1"]
+    end
+
+    subgraph "Bash-Only Modules"
+        RNODE["RNODE Config<br/>lib/rnode.sh"]
+        CONFIG["Config Templates<br/>lib/config.sh"]
+        ADV["Advanced & Quick Mode<br/>lib/advanced.sh"]
+    end
+
+    subgraph "Support Layer"
+        CORE["Core<br/>lib/core.sh | pwsh/core.ps1"]
+        VALID["Validation<br/>lib/validation.sh"]
+        UTILS["Utilities<br/>lib/utils.sh"]
+        UIMOD["UI<br/>lib/ui.sh | pwsh/ui.ps1"]
     end
 
     subgraph "Reticulum Ecosystem"
-        RNS[RNS Core]
-        LXMF[LXMF Protocol]
-        NOMAD[NomadNet]
-        MESH[MeshChat]
-        SIDE[Sideband]
+        RNS["RNS Core"]
+        LXMF["LXMF Protocol"]
+        NOMAD["NomadNet"]
+        MESH["MeshChat"]
+        SIDE["Sideband"]
     end
 
     subgraph "Hardware"
-        LORA[LoRa Radios]
-        USB[USB Devices]
+        LORA["LoRa Radios"]
+        USB["USB Devices"]
+        SPI["SPI HAT Devices"]
     end
 
-    TUI --> INST & DIAG & SVC & BACKUP & RNODE & ENV & HEALTH
-    PS --> INST & DIAG & SVC & BACKUP & ENV & HEALTH
+    TUI --> INST & DIAG & SVC & BACKUP
+    TUI --> RNODE & CONFIG & ADV
+    PS --> INST & DIAG & SVC & BACKUP
+
+    INST & DIAG & SVC & BACKUP --> CORE & UTILS & UIMOD
+    RNODE & CONFIG & ADV --> CORE & VALID & UTILS
 
     INST --> RNS --> LXMF
     LXMF --> NOMAD & MESH & SIDE
-    RNODE --> LORA & USB
+    RNODE --> LORA & USB & SPI
+
+    style TUI fill:#1a6,stroke:#fff,color:#fff
+    style PS fill:#47a,stroke:#fff,color:#fff
+    style RNODE fill:#a62,stroke:#fff,color:#fff
+    style CONFIG fill:#a62,stroke:#fff,color:#fff
+    style ADV fill:#a62,stroke:#fff,color:#fff
 ```
 
 ### Project Structure
@@ -448,9 +493,73 @@ LilyGO (T-Beam, T-Deck, LoRa32, T3S3, T-Echo), Heltec (LoRa32 v2-v4, Wireless St
 
 ---
 
+## Roadmap
+
+```mermaid
+timeline
+    title RNS Management Tool Evolution
+    section Foundation
+        v1.0 : Basic update tool
+             : Raspberry Pi support
+    section UI & Platform
+        v2.0 : Complete UI overhaul
+             : Windows 11 PowerShell support
+             : RNODE configuration wizard
+        v2.1 : Quick Status Dashboard
+             : Export/Import configs
+             : Security hardening
+        v2.2 : PowerShell advanced options
+             : Service management submenu
+    section Beta - Semantic Versioning
+        v0.3.0-beta : Modularization - 11 Bash + 9 PS modules
+                    : Config templates & first-run wizard
+                    : 6-step diagnostics
+                    : Security rules RNS001-RNS006
+        v0.3.5-beta : Security audit - A rating
+                    : CI expansion - 7 jobs
+                    : 990+ test assertions
+        v0.4.0-beta : Granular service health - 6 states
+                    : Deployment profiles
+                    : RNS009/RNS010 linter rules
+    section Planned
+        v0.5.0 : Field testing & community feedback
+               : Hardware validation across 21+ boards
+               : Platform parity improvements
+        v1.0.0 : Stable release
+               : Full cross-platform feature parity
+```
+
+---
+
 ## Contributing
 
 Contributions are welcome! This tool is in beta and benefits greatly from real-world testing.
+
+### CI/CD Pipeline
+
+All pull requests and pushes to `main` run 7 parallel CI jobs across Linux and Windows:
+
+```mermaid
+graph LR
+    TRIGGER["Push / PR\nto main"] --> LINUX & WINDOWS
+
+    subgraph LINUX["Linux (ubuntu-latest)"]
+        SC["ShellCheck\nSyntax + Lint"]
+        CL["Custom Linter\nRNS001-RNS010"]
+        CM["Dry-Run\n--check mode"]
+        SM["Smoke Test\n183 assertions"]
+        BT["BATS Suite\n7 test files\n468+ tests"]
+    end
+
+    subgraph WINDOWS["Windows (windows-latest)"]
+        PW["PowerShell Syntax\n+ PSScriptAnalyzer"]
+        PE["Pester Tests\n343 assertions"]
+    end
+
+    style TRIGGER fill:#666,stroke:#fff,color:#fff
+    style LINUX fill:#1a62,stroke:#1a6
+    style WINDOWS fill:#47a2,stroke:#47a
+```
 
 ### Development Setup
 
