@@ -177,6 +177,7 @@ advanced_menu() {
         echo "   6) Clean Cache and Temporary Files"
         echo "   7) View/Search Logs"
         echo "   8) Reset to Factory Defaults"
+        echo "   u) Check for Updates"
         echo ""
         echo "   0) Back to Main Menu"
         echo ""
@@ -262,6 +263,10 @@ advanced_menu() {
                 else
                     print_info "Reset cancelled - confirmation not received"
                 fi
+                pause_for_input
+                ;;
+            u|U)
+                check_ecosystem_versions
                 pause_for_input
                 ;;
             0|"")

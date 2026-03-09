@@ -80,11 +80,15 @@ get_status_line() {
         parts+=("rnsd:${RED}-${NC}")
     fi
 
-    # RNS version (cached)
+    # RNS version (cached) with update indicator
     local rns_ver
     rns_ver=$(get_cached_rns_version)
     if [ -n "$rns_ver" ]; then
-        parts+=("rns:${rns_ver}")
+        if [ "${_UPDATE_AVAILABLE_COUNT:-0}" -gt 0 ]; then
+            parts+=("rns:${rns_ver}${CYAN}↑${NC}")
+        else
+            parts+=("rns:${rns_ver}")
+        fi
     else
         parts+=("rns:${YELLOW}--${NC}")
     fi
