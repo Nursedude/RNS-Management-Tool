@@ -1,4 +1,4 @@
-From 73c6a8db096e43a98229b3da47052ae6e6e60f17 Mon Sep 17 00:00:00 2001
+From cad6d9075f30573d635ba57163fa9cf934f1a042 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 9 Mar 2026 19:05:59 +0000
 Subject: [PATCH] fix(datetime): handle Peewee DateTimeField type confusion and
@@ -25,11 +25,11 @@ Fixes #144, #146. Related to #139.
 
 https://claude.ai/code/session_01A3nv8XN4z6yyp8tHNGAS8M
 ---
- meshchat.py | 51 ++++++++++++++++++++++++++++++++++++---------------
- 1 file changed, 36 insertions(+), 15 deletions(-)
+ meshchat.py | 55 ++++++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 40 insertions(+), 15 deletions(-)
 
 diff --git a/meshchat.py b/meshchat.py
-index a7a7b32..3277b4f 100644
+index a7a7b32..00495bc 100644
 --- a/meshchat.py
 +++ b/meshchat.py
 @@ -34,6 +34,27 @@ from src.backend.audio_call_manager import AudioCall, AudioCallManager
@@ -95,7 +95,18 @@ index a7a7b32..3277b4f 100644
                  },
              })
  
-@@ -1735,7 +1756,7 @@ class ReticulumMeshChat:
+@@ -1728,6 +1749,10 @@ class ReticulumMeshChat:
+             # ensure probe_responder is hex as json_response can't serialize bytes
+             if "probe_responder" in interface_stats and interface_stats["probe_responder"] is not None:
+                 interface_stats["probe_responder"] = interface_stats["probe_responder"].hex()
++
++            # ensure network_id is hex as json_response can't serialize bytes
++            if "network_id" in interface_stats and interface_stats["network_id"] is not None:
++                interface_stats["network_id"] = interface_stats["network_id"].hex()
+             
+             # ensure ifac_signature is hex as json_response can't serialize bytes
+             for interface in interface_stats["interfaces"]:
+@@ -1735,7 +1760,7 @@ class ReticulumMeshChat:
                  if "short_name" in interface:
                      interface["interface_name"] = interface["short_name"]
  
@@ -104,7 +115,7 @@ index a7a7b32..3277b4f 100644
                      interface["parent_interface_hash"] = interface["parent_interface_hash"].hex()
  
                  if "ifac_signature" in interface and interface["ifac_signature"]:
-@@ -2016,7 +2037,7 @@ class ReticulumMeshChat:
+@@ -2016,7 +2041,7 @@ class ReticulumMeshChat:
                      "lxmf_user_icon": lxmf_user_icon,
                      # we say the conversation was updated when the latest message was created
                      # otherwise this will go crazy when sending a message, as the updated_at on the latest message changes very frequently
@@ -113,7 +124,7 @@ index a7a7b32..3277b4f 100644
                  })
  
              return web.json_response({
-@@ -2622,8 +2643,8 @@ class ReticulumMeshChat:
+@@ -2622,8 +2647,8 @@ class ReticulumMeshChat:
              "display_name": display_name,
              "custom_display_name": self.get_custom_destination_display_name(announce.destination_hash),
              "lxmf_user_icon": lxmf_user_icon,
@@ -124,7 +135,7 @@ index a7a7b32..3277b4f 100644
          }
  
      # convert database favourite to a dictionary
-@@ -2633,8 +2654,8 @@ class ReticulumMeshChat:
+@@ -2633,8 +2658,8 @@ class ReticulumMeshChat:
              "destination_hash": favourite.destination_hash,
              "display_name": favourite.display_name,
              "aspect": favourite.aspect,
@@ -135,7 +146,7 @@ index a7a7b32..3277b4f 100644
          }
  
      # convert database lxmf message to a dictionary
-@@ -2658,8 +2679,8 @@ class ReticulumMeshChat:
+@@ -2658,8 +2683,8 @@ class ReticulumMeshChat:
              "rssi": db_lxmf_message.rssi,
              "snr": db_lxmf_message.snr,
              "quality": db_lxmf_message.quality,
@@ -146,7 +157,7 @@ index a7a7b32..3277b4f 100644
          }
  
      # updates the lxmf user icon for the provided destination hash
-@@ -3278,8 +3299,8 @@ class ReticulumMeshChat:
+@@ -3278,8 +3303,8 @@ class ReticulumMeshChat:
              return True
  
          # conversation is unread if last read at is before the latest incoming message creation date
