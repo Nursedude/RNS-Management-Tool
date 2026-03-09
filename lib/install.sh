@@ -865,3 +865,152 @@ create_sideband_launcher() {
         "sideband" \
         "Keywords=lxmf;reticulum;mesh;messaging;"
 }
+
+#########################################################
+# Version Update Checker (adapted from meshforge version_checker.py)
+# Queries PyPI for latest versions, compares with installed
+#########################################################
+
+# Cache for PyPI version lookups (1-hour TTL, survives menu redraws)
+declare -A _PYPI_VERSION_CACHE=()
+_PYPI_CACHE_TIME=0
+_PYPI_CACHE_TTL=3600  # 1 hour
+
+# Compare two semver strings: returns 0 if $2 > $1 (update available)
+compare_semver() {
+    local installed="$1" latest="$2"
+    [ -z "$installed" ] || [ -z "$latest" ] && return 1
+
+    local IFS='.'
+    # shellcheck disable=SC2206
+    local -a inst=($installed) lat=($latest)
+
+    local i
+    for i in 0 1 2; do
+        local iv="${inst[$i]:-0}" lv="${lat[$i]:-0}"
+        # Strip non-numeric suffixes (e.g., "6rc1" → "6")
+        iv="${iv%%[!0-9]*}"
+        lv="${lv%%[!0-9]*}"
+        iv="${iv:-0}"
+        lv="${lv:-0}"
+        if [ "$lv" -gt "$iv" ]; then
+            return 0  # update available
+        elif [ "$lv" -lt "$iv" ]; then
+            return 1  # installed is newer
+        fi
+    done
+    return 1  # equal
+}
+
+# Query PyPI JSON API for latest version of a package
+get_latest_pypi_version() {
+    local package="$1"
+
+    # Check in-memory cache first
+    if [ -n "${_PYPI_VERSION_CACHE[$package]+x}" ]; then
+        local now
+        now=$(date +%s)
+        if [ $(( now - _PYPI_CACHE_TIME )) -lt $_PYPI_CACHE_TTL ]; then
+            echo "${_PYPI_VERSION_CACHE[$package]}"
+            return 0
+        fi
+    fi
+
+    # Query PyPI (with timeout to avoid blocking on no internet)
+    local json
+    json=$(run_with_timeout 10 curl -s "https://pypi.org/pypi/${package}/json" 2>/dev/null) || return 1
+
+    # Extract version from JSON (minimal parsing, no jq dependency)
+    local version
+    version=$(echo "$json" | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [ -n "$version" ]; then
+        _PYPI_VERSION_CACHE[$package]="$version"
+        _PYPI_CACHE_TIME=$(date +%s)
+        echo "$version"
+        return 0
+    fi
+    return 1
+}
+
+# Check all ecosystem component versions and display table
+# Usage: check_ecosystem_versions [--quiet]
+# --quiet: set _UPDATE_AVAILABLE_COUNT without printing
+check_ecosystem_versions() {
+    local quiet=false
+    [ "${1:-}" = "--quiet" ] && quiet=true
+
+    # Packages to check: pip_name:display_name
+    local -a packages=(
+        "rns:Reticulum (RNS)"
+        "lxmf:LXMF Protocol"
+        "nomadnet:NomadNet"
+        "rnodeconf:RNode Config"
+        "sbapp:Sideband"
+    )
+
+    local updates_available=0
+    local checked=0
+    local -a results=()
+
+    if [ "$quiet" != true ]; then
+        print_section "Ecosystem Version Check"
+        echo ""
+        printf "  ${BOLD}%-18s %-12s %-12s %s${NC}\n" "Component" "Installed" "Latest" "Status"
+        printf "  %-18s %-12s %-12s %s\n" "─────────────────" "───────────" "───────────" "──────"
+    fi
+
+    for entry in "${packages[@]}"; do
+        local pip_name="${entry%%:*}"
+        local display_name="${entry#*:}"
+
+        local installed latest status_str status_color
+
+        # Clear cache for this lookup to get fresh installed version
+        unset "_VERSION_CACHE[$pip_name]" 2>/dev/null || true
+        installed=$(get_installed_version "$pip_name")
+
+        if [ -z "$installed" ]; then
+            installed="--"
+            latest="--"
+            status_str="not installed"
+            status_color="$YELLOW"
+        else
+            latest=$(get_latest_pypi_version "$pip_name" 2>/dev/null) || latest=""
+
+            if [ -z "$latest" ]; then
+                status_str="offline"
+                status_color="$YELLOW"
+            elif compare_semver "$installed" "$latest"; then
+                status_str="↑ update"
+                status_color="$CYAN"
+                ((updates_available++))
+            else
+                status_str="✓ current"
+                status_color="$GREEN"
+            fi
+            ((checked++))
+        fi
+
+        if [ "$quiet" != true ]; then
+            printf "  %-18s %-12s %-12s ${status_color}%s${NC}\n" \
+                "$display_name" "$installed" "${latest:---}" "$status_str"
+        fi
+
+        results+=("$pip_name:$installed:${latest:---}:$status_str")
+    done
+
+    if [ "$quiet" != true ]; then
+        echo ""
+        if [ "$updates_available" -gt 0 ]; then
+            print_info "$updates_available update(s) available. Use 'Install/Update Reticulum Ecosystem' to upgrade."
+        elif [ "$checked" -gt 0 ]; then
+            print_success "All installed components are up to date."
+        fi
+        echo ""
+    fi
+
+    _UPDATE_AVAILABLE_COUNT=$updates_available
+    log_message "Version check: $checked checked, $updates_available updates available"
+    return 0
+}

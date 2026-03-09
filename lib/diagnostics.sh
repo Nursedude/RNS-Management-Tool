@@ -154,6 +154,21 @@ diag_check_rns_tools() {
         echo -e "  ${CYAN}[i] Install missing tools: pip3 install rns${NC}"
         ((_DIAG_TOTAL_WARNINGS++)) || true
     fi
+
+    # Show installed component versions (adapted from meshforge version_checker.py)
+    echo ""
+    echo -e "  ${CYAN}Component versions:${NC}"
+    local -a version_pkgs=("rns" "lxmf" "nomadnet" "rnodeconf" "sbapp")
+    local -a version_names=("RNS" "LXMF" "NomadNet" "RNode Config" "Sideband")
+    local idx=0
+    for pkg in "${version_pkgs[@]}"; do
+        local ver
+        ver=$(get_installed_version "$pkg")
+        if [ -n "$ver" ]; then
+            echo -e "  ${GREEN}✓${NC} ${version_names[$idx]}: $ver"
+        fi
+        ((idx++))
+    done
     echo ""
 }
 

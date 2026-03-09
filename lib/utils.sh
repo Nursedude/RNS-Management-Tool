@@ -18,7 +18,40 @@ run_with_timeout() {
     fi
 }
 
+# Classify error as transient (worth retrying) or permanent (bail immediately)
+# Adapted from meshforge RetryPolicy (message_queue.py) error classification
+# Returns 0 for transient, 1 for permanent
+_is_transient_error() {
+    local err_text="$1"
+    [ -z "$err_text" ] && return 0  # unknown errors default to transient (retry)
+
+    local err_lower
+    err_lower=$(echo "$err_text" | tr '[:upper:]' '[:lower:]')
+
+    # Permanent errors — retrying won't help
+    case "$err_lower" in
+        *"permission denied"*|*"no such file"*|*"no such directory"*)  return 1 ;;
+        *"module not found"*|*"no module named"*|*"import error"*)    return 1 ;;
+        *"syntax error"*|*"invalid argument"*|*"not a valid"*)        return 1 ;;
+        *"command not found"*|*"not installed"*)                      return 1 ;;
+        *"already installed"*|*"already up-to-date"*)                 return 1 ;;
+    esac
+
+    # Transient errors — worth retrying
+    case "$err_lower" in
+        *"connection refused"*|*"connection reset"*|*"connection timed out"*) return 0 ;;
+        *"timeout"*|*"timed out"*|*"temporarily unavailable"*)               return 0 ;;
+        *"network unreachable"*|*"could not resolve"*|*"name resolution"*)   return 0 ;;
+        *"no route to host"*|*"broken pipe"*|*"reset by peer"*)              return 0 ;;
+        *"503"*|*"502"*|*"429"*|*"service unavailable"*)                     return 0 ;;
+    esac
+
+    return 0  # default: assume transient, retry
+}
+
 # Retry with exponential backoff (adapted from meshforge install_reliability_triage.md)
+# Enhanced with transient vs permanent error classification (meshforge RetryPolicy pattern)
+# and interruptible delays (meshforge ReconnectStrategy.wait pattern)
 # Usage: retry_with_backoff <max_retries> <command...>
 # Retries with 2s, 4s, 8s... delays between attempts
 retry_with_backoff() {
@@ -26,24 +59,45 @@ retry_with_backoff() {
     shift
     local attempt=1
     local delay=2
+    local err_file
+    err_file=$(mktemp "${TMPDIR:-/tmp}/rns_retry_XXXXXX")
 
     while [ $attempt -le "$max_retries" ]; do
-        if "$@"; then
+        # Capture stderr to file for error classification; still show it to caller
+        if "$@" 2>"$err_file"; then
+            rm -f "$err_file"
             return 0
         fi
+        local rc=$?
+        # Replay stderr so callers still see it
+        cat "$err_file" >&2 2>/dev/null || true
 
         if [ $attempt -lt "$max_retries" ]; then
+            local err_text
+            err_text=$(cat "$err_file" 2>/dev/null)
+
+            # Classify error: bail immediately on permanent failures
+            if ! _is_transient_error "$err_text"; then
+                log_warn "Permanent error detected, skipping remaining retries: $err_text"
+                rm -f "$err_file"
+                return $rc
+            fi
+
             # Add jitter (0-1s) to prevent thundering herd (meshforge ReconnectConfig pattern)
             local jitter=$(( RANDOM % 2 ))
             local total_delay=$((delay + jitter))
             print_warning "Attempt $attempt/$max_retries failed, retrying in ${total_delay}s..."
-            log_warn "Retry $attempt/$max_retries for: $*"
-            sleep "$total_delay"
+            log_warn "Retry $attempt/$max_retries (transient error) for: $*"
+            # Interruptible sleep: exits immediately on Ctrl-C instead of waiting
+            # (adapted from meshforge ReconnectStrategy.wait using threading.Event)
+            sleep "$total_delay" &
+            wait $! 2>/dev/null || { rm -f "$err_file"; return 130; }
             delay=$((delay * 2))
         fi
         ((attempt++))
     done
 
+    rm -f "$err_file"
     log_error "All $max_retries attempts failed for: $*"
     return 1
 }

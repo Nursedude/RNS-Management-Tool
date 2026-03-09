@@ -161,6 +161,7 @@ _CACHE_LXMF_VER=""
 _CACHE_LXMF_TIME=0
 _CACHE_MTD_STATUS=""
 _CACHE_MTD_TIME=0
+_UPDATE_AVAILABLE_COUNT=0  # Set by check_ecosystem_versions()
 
 # Log levels (adapted from meshforge logging_config.py)
 LOG_LEVEL_DEBUG=0
