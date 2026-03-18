@@ -383,6 +383,14 @@ function Install-MeshChat {
         Write-ColorOutput "Step 3/4: Running security audit..." "Progress"
         & npm audit fix --audit-level=moderate 2>&1 | Out-File -FilePath $Script:LogFile -Append
 
+        # Install cx_Freeze for backend build (MeshChat's build-backend requires it)
+        Write-ColorOutput "Installing Python build dependency (cx_Freeze)..." "Progress"
+        Invoke-Pip install cx_Freeze --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput "Failed to install cx_Freeze (needed for backend build)" "Warning"
+            Write-Host "  Attempting build anyway - frontend-only may still work" -ForegroundColor Yellow
+        }
+
         # Step 4: Build
         Write-ColorOutput "Step 4/4: Building application..." "Progress"
         $buildOutput = & npm run build 2>&1
