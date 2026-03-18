@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     RNS Management Tool for Windows - Part of the MeshForge Ecosystem
 .DESCRIPTION
