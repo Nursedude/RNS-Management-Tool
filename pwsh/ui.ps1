@@ -178,6 +178,7 @@ function Show-MainMenu {
     Write-Host "  8) Backup/Restore Configuration"
     Write-Host "  9) Advanced Options"
     Write-Host ""
+    Write-Host "  l) Logs (system & app logs)"
     Write-Host "  0) Exit"
     Write-Host ""
 

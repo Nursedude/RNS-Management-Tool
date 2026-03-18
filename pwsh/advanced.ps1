@@ -105,18 +105,211 @@ function Reset-ToFactory {
 }
 
 function Show-Log {
-    Show-Section "Recent Log Entries"
+    Show-LogMenu
+}
 
-    if (Test-Path $Script:LogFile) {
-        Write-Host "Last 50 log entries:" -ForegroundColor Cyan
+function Show-LogMenu {
+    while ($true) {
+        Show-Header
+        Write-Host "Log Viewer:" -ForegroundColor White
         Write-Host ""
-        Get-Content -Path $Script:LogFile -Tail 50
-    }
-    else {
-        Write-ColorOutput "No log file found" "Warning"
-    }
+        Write-Host "  --- System Journal ---" -ForegroundColor Cyan
+        Write-Host "  1) View rnsd process logs"
+        Write-Host "  2) View Windows Event Log (Application)"
+        Write-Host ""
+        Write-Host "  --- Application Logs ---" -ForegroundColor Cyan
+        Write-Host "  3) View management tool log"
+        Write-Host "  4) View MeshChat build log"
+        Write-Host "  5) View NomadNet log"
+        Write-Host "  6) View Sideband log"
+        Write-Host ""
+        Write-Host "  --- Search & List ---" -ForegroundColor Cyan
+        Write-Host "  7) Search logs for keyword"
+        Write-Host "  8) List all log files"
+        Write-Host ""
+        Write-Host "  0) Back"
+        Write-Host ""
 
-    pause
+        $choice = Read-Host "Select option"
+
+        switch ($choice) {
+            "1" {
+                Show-Section "rnsd Process Logs"
+                $rnsdProc = Get-Process -Name "rnsd" -ErrorAction SilentlyContinue
+                if ($rnsdProc) {
+                    Write-ColorOutput "rnsd is running (PID $($rnsdProc.Id))" "Success"
+                } else {
+                    Write-ColorOutput "rnsd is not currently running" "Warning"
+                }
+                # Check management log for rnsd entries
+                if (Test-Path $Script:LogFile) {
+                    Write-Host ""
+                    Write-Host "Recent rnsd entries from management log:" -ForegroundColor Cyan
+                    Write-Host ""
+                    $entries = Select-String -Path $Script:LogFile -Pattern "rnsd|daemon|service" -ErrorAction SilentlyContinue | Select-Object -Last 20
+                    if ($entries) {
+                        $entries | ForEach-Object { Write-Host "  $($_.Line)" }
+                    } else {
+                        Write-ColorOutput "No rnsd entries found in management log" "Info"
+                    }
+                }
+                pause
+            }
+            "2" {
+                Show-Section "Windows Event Log (Application)"
+                Write-ColorOutput "Showing recent Application event log entries..." "Info"
+                Write-Host ""
+                try {
+                    Get-EventLog -LogName Application -Newest 30 -ErrorAction Stop |
+                        Format-Table -Property TimeGenerated, EntryType, Source, Message -AutoSize -Wrap |
+                        Out-String | Write-Host
+                } catch {
+                    Write-ColorOutput "Unable to read Windows Event Log: $_" "Warning"
+                    Write-ColorOutput "Try running as Administrator for full access" "Info"
+                }
+                pause
+            }
+            "3" {
+                Show-Section "Management Tool Log"
+                if (Test-Path $Script:LogFile) {
+                    Write-Host "File: $($Script:LogFile)" -ForegroundColor Cyan
+                    Write-Host ""
+                    Get-Content -Path $Script:LogFile -Tail 80
+                } else {
+                    Write-ColorOutput "No log file found" "Warning"
+                }
+                pause
+            }
+            "4" {
+                Show-Section "MeshChat Build Log"
+                $buildLog = Join-Path $env:USERPROFILE "meshchat_build.log"
+                if (Test-Path $buildLog) {
+                    Write-Host "File: $buildLog" -ForegroundColor Cyan
+                    Write-Host "This log is from a failed build - it is removed on success." -ForegroundColor Yellow
+                    Write-Host ""
+                    Get-Content -Path $buildLog -Tail 80
+                } else {
+                    Write-ColorOutput "No MeshChat build log found" "Info"
+                    Write-ColorOutput "This file only exists after a failed build (removed on success)" "Info"
+                    # Check management log for MeshChat entries
+                    if (Test-Path $Script:LogFile) {
+                        Write-Host ""
+                        Write-Host "MeshChat entries from management log:" -ForegroundColor Cyan
+                        Write-Host ""
+                        $entries = Select-String -Path $Script:LogFile -Pattern "meshchat|npm|node|build" -ErrorAction SilentlyContinue | Select-Object -Last 20
+                        if ($entries) {
+                            $entries | ForEach-Object { Write-Host "  $($_.Line)" }
+                        } else {
+                            Write-ColorOutput "No MeshChat entries found in management log" "Info"
+                        }
+                    }
+                }
+                pause
+            }
+            "5" {
+                Show-Section "NomadNet Log"
+                $nomadLog = Join-Path $env:USERPROFILE ".nomadnetwork\logfile"
+                if (Test-Path $nomadLog) {
+                    Write-Host "File: $nomadLog" -ForegroundColor Cyan
+                    Write-Host ""
+                    Get-Content -Path $nomadLog -Tail 80
+                } else {
+                    Write-ColorOutput "No NomadNet log found at $nomadLog" "Info"
+                    Write-ColorOutput "NomadNet may not have been run yet" "Info"
+                }
+                pause
+            }
+            "6" {
+                Show-Section "Sideband Log"
+                $sbLog = Join-Path $env:USERPROFILE ".sideband\logfile"
+                if (Test-Path $sbLog) {
+                    Write-Host "File: $sbLog" -ForegroundColor Cyan
+                    Write-Host ""
+                    Get-Content -Path $sbLog -Tail 80
+                } else {
+                    Write-ColorOutput "No Sideband log found at $sbLog" "Info"
+                    # Try alternate locations
+                    $altLog = Get-ChildItem -Path (Join-Path $env:USERPROFILE ".config\sideband"), (Join-Path $env:USERPROFILE ".sideband") -Filter "*.log" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($altLog) {
+                        Write-Host "Found log at: $($altLog.FullName)" -ForegroundColor Cyan
+                        Write-Host ""
+                        Get-Content -Path $altLog.FullName -Tail 80
+                    } else {
+                        Write-ColorOutput "Sideband may not have been run yet" "Info"
+                    }
+                }
+                pause
+            }
+            "7" {
+                Show-Section "Search Logs"
+                $searchTerm = Read-Host "Enter search term"
+                if ($searchTerm) {
+                    Write-ColorOutput "Searching for '$searchTerm' in log files..." "Info"
+                    Write-Host ""
+                    $found = $false
+                    $searchFiles = @($Script:LogFile, (Join-Path $env:USERPROFILE "meshchat_build.log"), (Join-Path $env:USERPROFILE ".nomadnetwork\logfile"), (Join-Path $env:USERPROFILE ".sideband\logfile"))
+                    foreach ($f in $searchFiles) {
+                        if (Test-Path $f) {
+                            $matches = Select-String -Path $f -Pattern $searchTerm -SimpleMatch -ErrorAction SilentlyContinue
+                            if ($matches) {
+                                $found = $true
+                                $matches | ForEach-Object {
+                                    Write-Host "  $(Split-Path $_.Path -Leaf):$($_.LineNumber): $($_.Line)"
+                                }
+                            }
+                        }
+                    }
+                    if (-not $found) {
+                        Write-ColorOutput "No matches found" "Warning"
+                    }
+                }
+                pause
+            }
+            "8" {
+                Show-Section "All Log Files"
+                Write-Host "Management logs:" -ForegroundColor White
+                Write-Host ""
+                $foundAny = $false
+                foreach ($logPath in @($Script:LogFile, "$($Script:LogFile).1", "$($Script:LogFile).2", "$($Script:LogFile).3")) {
+                    if (Test-Path $logPath) {
+                        $foundAny = $true
+                        $item = Get-Item $logPath
+                        $lines = (Get-Content $logPath | Measure-Object -Line).Lines
+                        Write-Host ("  {0} ({1:N0} bytes, {2} lines, modified: {3})" -f $item.Name, $item.Length, $lines, $item.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss"))
+                    }
+                }
+                if (-not $foundAny) {
+                    Write-ColorOutput "No management logs found" "Warning"
+                }
+
+                Write-Host ""
+                Write-Host "Application logs:" -ForegroundColor White
+                Write-Host ""
+                $appFound = $false
+                foreach ($appLog in @((Join-Path $env:USERPROFILE "meshchat_build.log"), (Join-Path $env:USERPROFILE ".nomadnetwork\logfile"), (Join-Path $env:USERPROFILE ".sideband\logfile"))) {
+                    if (Test-Path $appLog) {
+                        $appFound = $true
+                        $item = Get-Item $appLog
+                        $lines = (Get-Content $appLog | Measure-Object -Line).Lines
+                        Write-Host ("  {0} ({1:N0} bytes, {2} lines, modified: {3})" -f $item.Name, $item.Length, $lines, $item.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss"))
+                    }
+                }
+                if (-not $appFound) {
+                    Write-ColorOutput "No application logs found" "Info"
+                }
+
+                Write-Host ""
+                Write-ColorOutput "Logs directory: $env:USERPROFILE" "Info"
+                pause
+            }
+            "0" { return }
+            "" { return }
+            default {
+                Write-ColorOutput "Invalid option" "Error"
+                Start-Sleep -Seconds 1
+            }
+        }
+    }
 }
 
 function Test-ToolUpdate {
