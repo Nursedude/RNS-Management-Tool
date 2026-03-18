@@ -64,3 +64,45 @@ function Test-Pip {
         return $false
     }
 }
+
+function Get-PipCommand {
+    # Try pip/pip3 from PATH
+    $cmd = Get-Command pip -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $cmd = Get-Command pip3 -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+
+    # Check Python Scripts directory (common on Windows when Scripts/ is not in PATH)
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $python) { $python = Get-Command python3 -ErrorAction SilentlyContinue }
+    if ($python) {
+        $scriptsDir = Join-Path (Split-Path $python.Source) "Scripts"
+        foreach ($name in @("pip.exe", "pip3.exe")) {
+            $pipPath = Join-Path $scriptsDir $name
+            if (Test-Path $pipPath) { return $pipPath }
+        }
+    }
+
+    return $null
+}
+
+function Invoke-Pip {
+    param([Parameter(ValueFromRemainingArguments)][string[]]$Arguments)
+
+    $pipCmd = Get-PipCommand
+    if ($pipCmd) {
+        & $pipCmd @Arguments
+        return
+    }
+
+    # Fallback: python -m pip
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $python) { $python = Get-Command python3 -ErrorAction SilentlyContinue }
+    if ($python) {
+        & $python.Source -m pip @Arguments
+        return
+    }
+
+    Write-ColorOutput "pip not found. Ensure Python is installed with pip." "Error"
+    $global:LASTEXITCODE = 1
+}

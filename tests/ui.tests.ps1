@@ -155,7 +155,7 @@ Describe "Show-QuickStatus" {
     }
 
     It "Shows RNS version via pip" {
-        $Script:StatusBlock.Contains('pip show rns') | Should -BeTrue
+        ($Script:StatusBlock.Contains('pipCmd show rns') -or $Script:StatusBlock.Contains('Invoke-Pip show rns')) | Should -BeTrue
     }
 
     It "Shows Not installed when RNS missing" {

@@ -16,16 +16,11 @@ function Update-PythonPackage {
         return
     }
 
-    $pip = "pip"
-    if (Get-Command pip3 -ErrorAction SilentlyContinue) {
-        $pip = "pip3"
-    }
-
     Write-ColorOutput "Updating pip..." "Progress"
-    & $pip install --upgrade pip
+    Invoke-Pip install --upgrade pip
 
     Write-ColorOutput "Updating setuptools and wheel..." "Progress"
-    & $pip install --upgrade setuptools wheel
+    Invoke-Pip install --upgrade setuptools wheel
 
     Write-ColorOutput "Python packages updated" "Success"
     pause
@@ -34,13 +29,8 @@ function Update-PythonPackage {
 function Clear-Cache {
     Show-Section "Cleaning Cache"
 
-    $pip = "pip"
-    if (Get-Command pip3 -ErrorAction SilentlyContinue) {
-        $pip = "pip3"
-    }
-
     Write-ColorOutput "Clearing pip cache..." "Progress"
-    & $pip cache purge 2>&1 | Out-File -FilePath $Script:LogFile -Append
+    Invoke-Pip cache purge 2>&1 | Out-File -FilePath $Script:LogFile -Append
 
     Write-ColorOutput "Clearing Windows temp files..." "Progress"
     $tempPath = [System.IO.Path]::GetTempPath()

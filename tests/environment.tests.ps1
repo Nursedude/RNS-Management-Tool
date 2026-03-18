@@ -17,20 +17,22 @@ BeforeAll {
 
 Describe "Function Existence" {
 
-    It "All 4 environment functions exist" {
+    It "All 6 environment functions exist" {
         $Script:EnvSource.Contains('function Test-WSL') | Should -BeTrue
         $Script:EnvSource.Contains('function Get-WSLDistribution') | Should -BeTrue
         $Script:EnvSource.Contains('function Test-Python') | Should -BeTrue
         $Script:EnvSource.Contains('function Test-Pip') | Should -BeTrue
+        $Script:EnvSource.Contains('function Get-PipCommand') | Should -BeTrue
+        $Script:EnvSource.Contains('function Invoke-Pip') | Should -BeTrue
     }
 
-    It "environment.ps1 has exactly 4 functions" {
+    It "environment.ps1 has exactly 6 functions" {
         $functionCount = ([regex]::Matches(
             $Script:EnvSource,
             '^\s*function\s+',
             [System.Text.RegularExpressions.RegexOptions]::Multiline
         )).Count
-        $functionCount | Should -Be 4
+        $functionCount | Should -Be 6
     }
 }
 
@@ -119,7 +121,9 @@ Describe "Test-Pip" {
 
     BeforeAll {
         $fnIdx = $Script:EnvSource.IndexOf('function Test-Pip')
-        $Script:PipBlock = $Script:EnvSource.Substring($fnIdx)
+        $fnEnd = $Script:EnvSource.IndexOf("`nfunction ", $fnIdx + 10)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
+        $Script:PipBlock = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
     }
 
     It "Checks for pip and pip3 commands" {
@@ -138,6 +142,54 @@ Describe "Test-Pip" {
 
     It "Reports pip not found as error" {
         $Script:EnvSource.Contains('pip not found') | Should -BeTrue
+    }
+}
+
+Describe "Get-PipCommand" {
+
+    BeforeAll {
+        $fnIdx = $Script:EnvSource.IndexOf('function Get-PipCommand')
+        $fnEnd = $Script:EnvSource.IndexOf("`nfunction ", $fnIdx + 10)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:EnvSource.Length }
+        $Script:GetPipBlock = $Script:EnvSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Checks pip and pip3 from PATH" {
+        $Script:GetPipBlock.Contains('Get-Command pip ') | Should -BeTrue
+        $Script:GetPipBlock.Contains('Get-Command pip3') | Should -BeTrue
+    }
+
+    It "Returns full path via .Source" {
+        $Script:GetPipBlock.Contains('.Source') | Should -BeTrue
+    }
+
+    It "Falls back to Python Scripts directory" {
+        $Script:GetPipBlock.Contains('Scripts') | Should -BeTrue
+        $Script:GetPipBlock.Contains('pip.exe') | Should -BeTrue
+    }
+
+    It "Returns null when pip not found" {
+        $Script:GetPipBlock.Contains('return $null') | Should -BeTrue
+    }
+}
+
+Describe "Invoke-Pip" {
+
+    BeforeAll {
+        $fnIdx = $Script:EnvSource.IndexOf('function Invoke-Pip')
+        $Script:InvokePipBlock = $Script:EnvSource.Substring($fnIdx)
+    }
+
+    It "Uses Get-PipCommand for resolution" {
+        $Script:InvokePipBlock.Contains('Get-PipCommand') | Should -BeTrue
+    }
+
+    It "Falls back to python -m pip" {
+        $Script:InvokePipBlock.Contains('-m pip') | Should -BeTrue
+    }
+
+    It "Reports error when neither pip nor python found" {
+        $Script:InvokePipBlock.Contains('pip not found') | Should -BeTrue
     }
 }
 
