@@ -134,7 +134,7 @@ Describe "Show-Status" {
     }
 
     It "Shows installed component versions via pip" {
-        $Script:StatusBlock.Contains('pip show') | Should -BeTrue
+        ($Script:StatusBlock.Contains('pip show') -or $Script:StatusBlock.Contains('pipCmd show') -or $Script:StatusBlock.Contains('Invoke-Pip show')) | Should -BeTrue
     }
 
     It "Checks rns, lxmf, and nomadnet packages" {

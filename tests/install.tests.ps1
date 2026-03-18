@@ -78,14 +78,14 @@ Describe "Install-Reticulum" {
         $Script:ReticulumBlock.Contains('Test-Python') | Should -BeTrue
     }
 
-    It "Installs RNS and LXMF via pip" {
-        $Script:InstallSource.Contains('pip install rns --upgrade') | Should -BeTrue
-        $Script:InstallSource.Contains('pip install lxmf --upgrade') | Should -BeTrue
+    It "Installs RNS and LXMF via Invoke-Pip" {
+        $Script:InstallSource.Contains('Invoke-Pip install rns --upgrade') | Should -BeTrue
+        $Script:InstallSource.Contains('Invoke-Pip install lxmf --upgrade') | Should -BeTrue
     }
 
     It "Asks about NomadNet installation" {
         $Script:InstallSource.Contains('Install NomadNet') | Should -BeTrue
-        $Script:InstallSource.Contains('pip install nomadnet --upgrade') | Should -BeTrue
+        $Script:InstallSource.Contains('Invoke-Pip install nomadnet --upgrade') | Should -BeTrue
     }
 
     It "Checks LASTEXITCODE after pip operations" {
@@ -187,8 +187,8 @@ Describe "Install-RNODE" {
         $Script:InstallSource.Contains('Web Flasher') | Should -BeTrue
     }
 
-    It "Installs rnodeconf via pip" {
-        $Script:RnodeBlock.Contains('pip install rns --upgrade') | Should -BeTrue
+    It "Installs rnodeconf via Invoke-Pip" {
+        $Script:RnodeBlock.Contains('Invoke-Pip install rns --upgrade') | Should -BeTrue
     }
 
     It "Verifies rnodeconf after installation" {

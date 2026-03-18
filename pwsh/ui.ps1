@@ -119,10 +119,13 @@ function Show-QuickStatus {
     Write-Host "│" -ForegroundColor White
 
     # Check RNS version
-    $pip = "pip"
-    if (Get-Command pip3 -ErrorAction SilentlyContinue) { $pip = "pip3" }
+    $pipCmd = Get-PipCommand
     try {
-        $rnsVersion = & $pip show rns 2>$null | Select-String "Version:" | ForEach-Object { ($_ -replace "Version:\s*", "").Trim() }
+        if ($pipCmd) {
+            $rnsVersion = & $pipCmd show rns 2>$null | Select-String "Version:" | ForEach-Object { ($_ -replace "Version:\s*", "").Trim() }
+        } else {
+            $rnsVersion = Invoke-Pip show rns 2>$null | Select-String "Version:" | ForEach-Object { ($_ -replace "Version:\s*", "").Trim() }
+        }
     } catch { $rnsVersion = $null }
 
     Write-Host "│  " -ForegroundColor White -NoNewline

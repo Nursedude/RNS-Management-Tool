@@ -65,15 +65,15 @@ function Install-Reticulum {
 
     Write-ColorOutput "Installing Reticulum components..." "Progress"
 
-    # Get pip command
-    $pip = "pip"
-    if (Get-Command pip3 -ErrorAction SilentlyContinue) {
-        $pip = "pip3"
+    # Verify pip is available
+    $pip = Get-PipCommand
+    if (-not $pip) {
+        Write-ColorOutput "pip not found. Trying python -m pip as fallback..." "Warning"
     }
 
     # Install RNS
     Write-ColorOutput "Installing RNS (Reticulum Network Stack)..." "Progress"
-    & $pip install rns --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
+    Invoke-Pip install rns --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
 
     if ($LASTEXITCODE -eq 0) {
         Write-ColorOutput "RNS installed successfully" "Success"
@@ -84,7 +84,7 @@ function Install-Reticulum {
 
     # Install LXMF
     Write-ColorOutput "Installing LXMF..." "Progress"
-    & $pip install lxmf --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
+    Invoke-Pip install lxmf --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
 
     if ($LASTEXITCODE -eq 0) {
         Write-ColorOutput "LXMF installed successfully" "Success"
@@ -96,7 +96,7 @@ function Install-Reticulum {
     $installNomad = Read-Host "Install NomadNet (terminal client)? (Y/n)"
     if ($installNomad -ne 'n' -and $installNomad -ne 'N') {
         Write-ColorOutput "Installing NomadNet..." "Progress"
-        & $pip install nomadnet --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
+        Invoke-Pip install nomadnet --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
 
         if ($LASTEXITCODE -eq 0) {
             Write-ColorOutput "NomadNet installed successfully" "Success"
@@ -161,12 +161,7 @@ function Install-RNODE {
     switch ($choice) {
         "1" {
             Write-ColorOutput "Installing rnodeconf..." "Progress"
-            $pip = "pip"
-            if (Get-Command pip3 -ErrorAction SilentlyContinue) {
-                $pip = "pip3"
-            }
-
-            & $pip install rns --upgrade
+            Invoke-Pip install rns --upgrade
 
             if (Get-Command rnodeconf -ErrorAction SilentlyContinue) {
                 Write-ColorOutput "rnodeconf installed successfully" "Success"
@@ -218,11 +213,7 @@ function Install-Sideband {
         "2" {
             if (Test-Python) {
                 Write-ColorOutput "Installing Sideband from source..." "Progress"
-                $pip = "pip"
-                if (Get-Command pip3 -ErrorAction SilentlyContinue) {
-                    $pip = "pip3"
-                }
-                & $pip install sbapp
+                Invoke-Pip install sbapp
             } else {
                 Write-ColorOutput "Python not found" "Error"
             }
@@ -246,12 +237,7 @@ function Install-NomadNet {
 
     Write-ColorOutput "Installing NomadNet terminal client..." "Progress"
 
-    $pip = "pip"
-    if (Get-Command pip3 -ErrorAction SilentlyContinue) {
-        $pip = "pip3"
-    }
-
-    & $pip install nomadnet --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
+    Invoke-Pip install nomadnet --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
 
     if ($LASTEXITCODE -eq 0) {
         Write-ColorOutput "NomadNet installed successfully" "Success"

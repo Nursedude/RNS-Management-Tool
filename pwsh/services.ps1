@@ -19,15 +19,15 @@ function Show-Status {
     Write-Host "Installed Components:" -ForegroundColor Cyan
 
     # Check Python packages
-    $pip = "pip"
-    if (Get-Command pip3 -ErrorAction SilentlyContinue) {
-        $pip = "pip3"
-    }
-
+    $pipCmd = Get-PipCommand
     $packages = @("rns", "lxmf", "nomadnet")
     foreach ($package in $packages) {
         try {
-            $version = & $pip show $package 2>$null | Select-String "Version:" | ForEach-Object { $_ -replace "Version:\s*", "" }
+            if ($pipCmd) {
+                $version = & $pipCmd show $package 2>$null | Select-String "Version:" | ForEach-Object { $_ -replace "Version:\s*", "" }
+            } else {
+                $version = Invoke-Pip show $package 2>$null | Select-String "Version:" | ForEach-Object { $_ -replace "Version:\s*", "" }
+            }
             if ($version) {
                 Write-ColorOutput "$package : v$version" "Success"
             } else {

@@ -287,9 +287,7 @@ function Show-RnodeMenu {
         switch ($choice) {
             "1" {
                 Write-ColorOutput "Installing rnodeconf..." "Progress"
-                $pip = "pip"
-                if (Get-Command pip3 -ErrorAction SilentlyContinue) { $pip = "pip3" }
-                & $pip install rns --upgrade
+                Invoke-Pip install rns --upgrade
                 if (Get-Command rnodeconf -ErrorAction SilentlyContinue) {
                     Write-ColorOutput "rnodeconf installed successfully" "Success"
                 } else {
