@@ -18,7 +18,7 @@ BeforeAll {
 
 Describe "Function Existence" {
 
-    It "All 6 UI functions exist" {
+    It "All 6 top-level UI functions exist" {
         $Script:UiSource.Contains('function Write-ColorOutput') | Should -BeTrue
         $Script:UiSource.Contains('function Show-Header') | Should -BeTrue
         $Script:UiSource.Contains('function Show-Section') | Should -BeTrue
@@ -27,13 +27,13 @@ Describe "Function Existence" {
         $Script:UiSource.Contains('function Show-MainMenu') | Should -BeTrue
     }
 
-    It "ui.ps1 has exactly 6 functions" {
+    It "ui.ps1 has exactly 8 functions (6 top-level + 2 nested helpers)" {
         $functionCount = ([regex]::Matches(
             $Script:UiSource,
             '^\s*function\s+',
             [System.Text.RegularExpressions.RegexOptions]::Multiline
         )).Count
-        $functionCount | Should -Be 6
+        $functionCount | Should -Be 8
     }
 }
 
@@ -90,8 +90,9 @@ Describe "Show-Header" {
     }
 
     It "Uses box-drawing characters for header" {
-        $Script:UiSource.Contains('╔═') | Should -BeTrue
-        $Script:UiSource.Contains('╚═') | Should -BeTrue
+        $Script:UiSource.Contains('╔') | Should -BeTrue
+        $Script:UiSource.Contains('╚') | Should -BeTrue
+        $Script:UiSource.Contains('║') | Should -BeTrue
     }
 
     It "Shows environment info" {
@@ -140,8 +141,9 @@ Describe "Show-QuickStatus" {
     }
 
     It "Uses box-drawing characters for status panel" {
-        $Script:StatusBlock.Contains('┌─') | Should -BeTrue
-        $Script:StatusBlock.Contains('└─') | Should -BeTrue
+        $Script:StatusBlock.Contains('┌') | Should -BeTrue
+        $Script:StatusBlock.Contains('└') | Should -BeTrue
+        $Script:StatusBlock.Contains('│') | Should -BeTrue
     }
 
     It "Checks rnsd process status" {
