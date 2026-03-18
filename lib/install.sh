@@ -577,6 +577,13 @@ install_meshchat() {
     npm audit fix --audit-level=moderate 2>&1 | tee -a "$UPDATE_LOG" || true
     next_step "success"
 
+    # Install cx_Freeze for backend build (MeshChat's build-backend requires it)
+    print_info "Installing Python build dependency (cx_Freeze)..."
+    if ! "$PIP_CMD" install cx_Freeze --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        print_warning "Failed to install cx_Freeze (needed for backend build)"
+        echo "  Attempting build anyway — frontend-only may still work"
+    fi
+
     # Step 4: Build
     local build_log="${REAL_HOME}/meshchat_build.log"
     if npm run build 2>&1 | tee -a "$UPDATE_LOG" | tee "$build_log"; then
