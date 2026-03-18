@@ -155,6 +155,10 @@ Describe "Install-MeshChat" {
         $Script:InstallSource.Contains('Step 4/4') | Should -BeTrue
     }
 
+    It "Installs cx_Freeze for backend build" {
+        $Script:MeshChatBlock.Contains('Invoke-Pip install cx_Freeze') | Should -BeTrue
+    }
+
     It "Runs npm audit fix" {
         $Script:InstallSource.Contains('npm audit fix') | Should -BeTrue
     }
