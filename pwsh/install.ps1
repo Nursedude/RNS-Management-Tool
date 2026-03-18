@@ -327,7 +327,7 @@ function Install-MeshChat {
         if ($isUpdate) {
             Write-ColorOutput "Step 1/4: Updating repository..." "Progress"
             Push-Location $meshchatDir
-            $gitOutput = & git pull origin main 2>&1
+            $gitOutput = & git pull origin master 2>&1
             $gitOutput | Out-File -FilePath $Script:LogFile -Append
         } else {
             Write-ColorOutput "Step 1/4: Cloning repository..." "Progress"
@@ -347,7 +347,7 @@ function Install-MeshChat {
             Write-Host "Troubleshooting suggestions:" -ForegroundColor Yellow
             Write-Host "  1) Check your internet connection"
             Write-Host "  2) Verify git is installed: git --version"
-            Write-Host "  3) Try manually: git pull origin main"
+            Write-Host "  3) Try manually: git pull origin master"
             Write-Host "  4) Delete and re-clone: Remove-Item -Recurse $meshchatDir"
             Write-Host "  5) Check log: l) Logs from Main Menu"
             Pop-Location -ErrorAction SilentlyContinue

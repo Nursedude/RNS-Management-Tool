@@ -541,7 +541,7 @@ install_meshchat() {
     if [ "$is_update" = true ]; then
         pushd "$MESHCHAT_DIR" > /dev/null || return 1
         ensure_git_safe_directory "$MESHCHAT_DIR"
-        if retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git pull origin main 2>&1 | tee -a "$UPDATE_LOG"; then
+        if retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git pull origin master 2>&1 | tee -a "$UPDATE_LOG"; then
             next_step "success"
         else
             next_step "fail"

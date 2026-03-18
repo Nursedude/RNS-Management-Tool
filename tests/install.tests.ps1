@@ -145,7 +145,7 @@ Describe "Install-MeshChat" {
 
     It "Supports update of existing installation" {
         $Script:InstallSource.Contains('Update existing installation') | Should -BeTrue
-        $Script:InstallSource.Contains('git pull origin main') | Should -BeTrue
+        $Script:InstallSource.Contains('git pull origin master') | Should -BeTrue
     }
 
     It "Runs 4-step installation process" {
