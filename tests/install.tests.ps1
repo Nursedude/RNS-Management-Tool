@@ -148,15 +148,17 @@ Describe "Install-MeshChat" {
         $Script:InstallSource.Contains('git pull origin master') | Should -BeTrue
     }
 
-    It "Runs 4-step installation process" {
-        $Script:InstallSource.Contains('Step 1/4') | Should -BeTrue
-        $Script:InstallSource.Contains('Step 2/4') | Should -BeTrue
-        $Script:InstallSource.Contains('Step 3/4') | Should -BeTrue
-        $Script:InstallSource.Contains('Step 4/4') | Should -BeTrue
+    It "Runs 5-step installation process" {
+        $Script:InstallSource.Contains('Step 1/5') | Should -BeTrue
+        $Script:InstallSource.Contains('Step 2/5') | Should -BeTrue
+        $Script:InstallSource.Contains('Step 3/5') | Should -BeTrue
+        $Script:InstallSource.Contains('Step 4/5') | Should -BeTrue
+        $Script:InstallSource.Contains('Step 5/5') | Should -BeTrue
     }
 
-    It "Installs cx_Freeze for backend build" {
-        $Script:MeshChatBlock.Contains('Invoke-Pip install cx_Freeze') | Should -BeTrue
+    It "Installs Python dependencies from requirements.txt" {
+        $Script:MeshChatBlock.Contains('requirements.txt') | Should -BeTrue
+        $Script:MeshChatBlock.Contains('Invoke-Pip install -r') | Should -BeTrue
     }
 
     It "Runs npm audit fix" {
