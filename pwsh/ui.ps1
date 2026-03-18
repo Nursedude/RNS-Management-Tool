@@ -42,14 +42,28 @@ function Write-ColorOutput {
 function Show-Header {
     Clear-Host
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║                                                        ║" -ForegroundColor Cyan
-    Write-Host "║           RNS MANAGEMENT TOOL v$($Script:Version)                ║" -ForegroundColor Cyan
-    Write-Host "║     Complete Reticulum Network Stack Manager           ║" -ForegroundColor Cyan
-    Write-Host "║            Part of the MeshForge Ecosystem             ║" -ForegroundColor Cyan
-    Write-Host "║                  Windows Edition                       ║" -ForegroundColor Cyan
-    Write-Host "║                                                        ║" -ForegroundColor Cyan
-    Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+
+    $boxWidth = 56  # inner width between ║ chars
+    $border = "═" * $boxWidth
+
+    # Helper: pad a string to center it within the box
+    function Format-BoxLine {
+        param([string]$Text)
+        $pad = $boxWidth - $Text.Length
+        if ($pad -lt 0) { $pad = 0 }
+        $leftPad = [math]::Floor($pad / 2)
+        $rightPad = $pad - $leftPad
+        return "║" + (" " * $leftPad) + $Text + (" " * $rightPad) + "║"
+    }
+
+    Write-Host ("╔" + $border + "╗") -ForegroundColor Cyan
+    Write-Host (Format-BoxLine "") -ForegroundColor Cyan
+    Write-Host (Format-BoxLine "RNS MANAGEMENT TOOL v$($Script:Version)") -ForegroundColor Cyan
+    Write-Host (Format-BoxLine "Complete Reticulum Network Stack Manager") -ForegroundColor Cyan
+    Write-Host (Format-BoxLine "Part of the MeshForge Ecosystem") -ForegroundColor Cyan
+    Write-Host (Format-BoxLine "Windows Edition") -ForegroundColor Cyan
+    Write-Host (Format-BoxLine "") -ForegroundColor Cyan
+    Write-Host ("╚" + $border + "╝") -ForegroundColor Cyan
     Write-Host ""
 
     # Use pre-detected environment flags
@@ -98,25 +112,31 @@ function Show-Progress {
 }
 
 function Show-QuickStatus {
-    Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor White
-    Write-Host "│  " -ForegroundColor White -NoNewline
-    Write-Host "Quick Status" -ForegroundColor Cyan -NoNewline
-    Write-Host "                                           │" -ForegroundColor White
-    Write-Host "├─────────────────────────────────────────────────────────┤" -ForegroundColor White
+    $innerWidth = 57  # inner width between │ chars
+    $hLine = "─" * $innerWidth
+
+    # Helper: write a content line padded to fit the box
+    function Write-StatusLine {
+        param([string]$Text, [string]$Color = "White")
+        $pad = $innerWidth - 2 - $Text.Length  # 2 for leading "  "
+        if ($pad -lt 0) { $pad = 0 }
+        Write-Host "│  " -ForegroundColor White -NoNewline
+        Write-Host $Text -ForegroundColor $Color -NoNewline
+        Write-Host (" " * $pad) -NoNewline
+        Write-Host "│" -ForegroundColor White
+    }
+
+    Write-Host ("┌" + $hLine + "┐") -ForegroundColor White
+    Write-StatusLine "Quick Status" "Cyan"
+    Write-Host ("├" + $hLine + "┤") -ForegroundColor White
 
     # Check rnsd
     $rnsdProcess = Get-Process -Name "rnsd" -ErrorAction SilentlyContinue
-    Write-Host "│  " -ForegroundColor White -NoNewline
     if ($rnsdProcess) {
-        Write-Host "● rnsd: Running (PID $($rnsdProcess.Id))" -ForegroundColor Green -NoNewline
-        $padLen = 36 - "● rnsd: Running (PID $($rnsdProcess.Id))".Length
-        if ($padLen -lt 0) { $padLen = 0 }
-        Write-Host (" " * $padLen) -NoNewline
+        Write-StatusLine "● rnsd: Running (PID $($rnsdProcess.Id))" "Green"
     } else {
-        Write-Host "○ rnsd: Stopped" -ForegroundColor Yellow -NoNewline
-        Write-Host (" " * 22) -NoNewline
+        Write-StatusLine "○ rnsd: Stopped" "Yellow"
     }
-    Write-Host "│" -ForegroundColor White
 
     # Check RNS version
     $pipCmd = Get-PipCommand
@@ -128,19 +148,13 @@ function Show-QuickStatus {
         }
     } catch { $rnsVersion = $null }
 
-    Write-Host "│  " -ForegroundColor White -NoNewline
     if ($rnsVersion) {
-        Write-Host "● RNS: v$rnsVersion" -ForegroundColor Green -NoNewline
-        $padLen = 37 - "● RNS: v$rnsVersion".Length
-        if ($padLen -lt 0) { $padLen = 0 }
-        Write-Host (" " * $padLen) -NoNewline
+        Write-StatusLine "● RNS: v$rnsVersion" "Green"
     } else {
-        Write-Host "○ RNS: Not installed" -ForegroundColor Yellow -NoNewline
-        Write-Host (" " * 17) -NoNewline
+        Write-StatusLine "○ RNS: Not installed" "Yellow"
     }
-    Write-Host "│" -ForegroundColor White
 
-    Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor White
+    Write-Host ("└" + $hLine + "┘") -ForegroundColor White
     Write-Host ""
 }
 
