@@ -1,4 +1,4 @@
-#Requires -Modules Pester
+﻿#Requires -Modules Pester
 <#
 .SYNOPSIS
     Pester tests for pwsh/services.ps1 — Service management, autostart, network tools

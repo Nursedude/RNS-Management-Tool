@@ -1,4 +1,4 @@
-#Requires -Modules Pester
+﻿#Requires -Modules Pester
 <#
 .SYNOPSIS
     Pester tests for pwsh/environment.ps1 — WSL, Python, pip detection

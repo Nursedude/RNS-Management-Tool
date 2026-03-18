@@ -1,4 +1,4 @@
-#Requires -Modules Pester
+﻿#Requires -Modules Pester
 <#
 .SYNOPSIS
     Pester tests for pwsh/diagnostics.ps1 — 6-step system diagnostics

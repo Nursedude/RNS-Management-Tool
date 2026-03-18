@@ -1,4 +1,4 @@
-#Requires -Modules Pester
+﻿#Requires -Modules Pester
 <#
 .SYNOPSIS
     Pester tests for pwsh/core.ps1 — Environment detection, logging, health checks
