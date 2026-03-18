@@ -174,9 +174,9 @@ NomadNet provides a text-based UI for sending and receiving encrypted messages, 
 MeshChat is a web-based LXMF messaging client. After installation, it runs a local web server you access through your browser.
 
 ```bash
-# Navigate to the MeshChat directory and start the dev server
+# Navigate to the MeshChat directory and start it
 cd ~/reticulum-meshchat
-npm run start
+npm run dev
 
 # Then open your browser to the URL shown (typically http://localhost:8000)
 ```
