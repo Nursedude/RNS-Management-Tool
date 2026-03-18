@@ -176,9 +176,11 @@ MeshChat is a web-based LXMF messaging client. After installation, it runs a loc
 ```bash
 # Navigate to the MeshChat directory and start it
 cd ~/reticulum-meshchat
-npm run dev
+python meshchat.py
 
-# Then open your browser to the URL shown (typically http://localhost:8000)
+# Then open your browser to http://localhost:8000
+# For additional options:
+python meshchat.py --help
 ```
 
 A desktop launcher is also created during installation if you have a graphical environment. MeshChat is Linux/RPi only.

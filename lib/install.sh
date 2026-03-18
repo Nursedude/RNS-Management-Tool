@@ -665,7 +665,7 @@ create_meshchat_launcher() {
     create_desktop_launcher "meshchat" \
         "Reticulum MeshChat" \
         "LXMF messaging client for Reticulum" \
-        "bash -c 'cd $MESHCHAT_DIR && npm run dev'" \
+        "bash -c 'cd $MESHCHAT_DIR && python meshchat.py'" \
         "$MESHCHAT_DIR/icon.png"
 }
 
