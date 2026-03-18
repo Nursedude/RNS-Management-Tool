@@ -320,31 +320,60 @@ function Install-MeshChat {
         $isUpdate = $true
     }
 
+    $buildLog = Join-Path $env:USERPROFILE "meshchat_build.log"
+
     try {
         # Step 1: Clone or update
         if ($isUpdate) {
             Write-ColorOutput "Step 1/4: Updating repository..." "Progress"
             Push-Location $meshchatDir
-            & git pull origin main 2>&1 | Out-File -FilePath $Script:LogFile -Append
+            $gitOutput = & git pull origin main 2>&1
+            $gitOutput | Out-File -FilePath $Script:LogFile -Append
         } else {
             Write-ColorOutput "Step 1/4: Cloning repository..." "Progress"
-            & git clone https://github.com/liamcottle/reticulum-meshchat.git $meshchatDir 2>&1 | Out-File -FilePath $Script:LogFile -Append
+            $gitOutput = & git clone https://github.com/liamcottle/reticulum-meshchat.git $meshchatDir 2>&1
+            $gitOutput | Out-File -FilePath $Script:LogFile -Append
             Push-Location $meshchatDir
         }
 
         if ($LASTEXITCODE -ne 0) {
             Write-ColorOutput "Failed to clone/update MeshChat repository" "Error"
-            Pop-Location
+            Write-Host ""
+            Write-Host "Git output:" -ForegroundColor Yellow
+            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
+            $gitOutput | ForEach-Object { Write-Host "  $_" }
+            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Troubleshooting suggestions:" -ForegroundColor Yellow
+            Write-Host "  1) Check your internet connection"
+            Write-Host "  2) Verify git is installed: git --version"
+            Write-Host "  3) Try manually: git pull origin main"
+            Write-Host "  4) Delete and re-clone: Remove-Item -Recurse $meshchatDir"
+            Write-Host "  5) Check log: l) Logs from Main Menu"
+            Pop-Location -ErrorAction SilentlyContinue
             pause
             return
         }
 
         # Step 2: npm install
         Write-ColorOutput "Step 2/4: Installing npm dependencies..." "Progress"
-        & npm install 2>&1 | Out-File -FilePath $Script:LogFile -Append
+        $npmOutput = & npm install 2>&1
+        $npmOutput | Out-File -FilePath $Script:LogFile -Append
 
         if ($LASTEXITCODE -ne 0) {
             Write-ColorOutput "npm install failed" "Error"
+            $npmOutput | Out-File -FilePath $buildLog
+            Write-Host ""
+            Write-Host "Last 20 lines of output:" -ForegroundColor Yellow
+            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
+            $npmOutput | Select-Object -Last 20 | ForEach-Object { Write-Host "  $_" }
+            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Troubleshooting suggestions:" -ForegroundColor Yellow
+            Write-Host "  1) Clear npm cache: npm cache clean --force"
+            Write-Host "  2) Delete node_modules and retry: Remove-Item -Recurse node_modules"
+            Write-Host "  3) Check disk space"
+            Write-Host "  4) Full log saved to: $buildLog"
             Pop-Location
             pause
             return
@@ -356,14 +385,33 @@ function Install-MeshChat {
 
         # Step 4: Build
         Write-ColorOutput "Step 4/4: Building application..." "Progress"
-        & npm run build 2>&1 | Out-File -FilePath $Script:LogFile -Append
+        $buildOutput = & npm run build 2>&1
+        $buildOutput | Out-File -FilePath $Script:LogFile -Append
 
         if ($LASTEXITCODE -ne 0) {
+            $buildOutput | Out-File -FilePath $buildLog
+            Write-RnsLog "MeshChat build failed - see $buildLog for details" "ERROR"
             Write-ColorOutput "Build failed" "Error"
+            Write-Host ""
+            Write-Host "Last 20 lines of build output:" -ForegroundColor Yellow
+            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
+            $buildOutput | Select-Object -Last 20 | ForEach-Object { Write-Host "  $_" }
+            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Troubleshooting suggestions:" -ForegroundColor Yellow
+            Write-Host "  1) Check Node.js version: node --version (requires 18+)"
+            Write-Host "  2) Clear npm cache: npm cache clean --force"
+            Write-Host "  3) Delete node_modules and retry: Remove-Item -Recurse node_modules; npm install"
+            Write-Host "  4) Check disk space"
+            Write-Host "  5) Full build log saved to: $buildLog"
+            Write-Host "  6) View logs: Main Menu > l) Logs > MeshChat build log"
             Pop-Location
             pause
             return
         }
+
+        # Build succeeded — remove any stale build log
+        if (Test-Path $buildLog) { Remove-Item $buildLog -ErrorAction SilentlyContinue }
 
         # Verify
         $packageJson = Join-Path $meshchatDir "package.json"

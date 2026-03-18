@@ -110,6 +110,8 @@ function Main {
             "7" { Show-ServiceMenu }
             "8" { Show-BackupMenu }
             "9" { Show-AdvancedMenu }
+            "l" { Show-LogMenu }
+            "L" { Show-LogMenu }
             "0" {
                 Write-Host ""
                 Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
