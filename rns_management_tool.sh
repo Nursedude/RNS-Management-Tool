@@ -141,6 +141,7 @@ show_main_menu() {
     echo "   9) Advanced Options"
     echo ""
     echo -e "  ${CYAN}─── Quick & Help ───${NC}"
+    echo "   l) Logs (system journal & app logs)"
     echo "   q) Quick Mode (field operations)"
     echo "   h) Help & Quick Reference"
     echo "   0) Exit"
@@ -243,6 +244,10 @@ main() {
             9)
                 # Advanced Options
                 safe_call "Advanced Options" advanced_menu
+                ;;
+            l|L)
+                # Logs
+                safe_call "Logs" view_logs_menu
                 ;;
             q|Q)
                 # Quick Mode / Emergency

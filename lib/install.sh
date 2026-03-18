@@ -578,12 +578,31 @@ install_meshchat() {
     next_step "success"
 
     # Step 4: Build
-    if npm run build 2>&1 | tee -a "$UPDATE_LOG"; then
+    local build_log="${REAL_HOME}/meshchat_build.log"
+    if npm run build 2>&1 | tee -a "$UPDATE_LOG" | tee "$build_log"; then
         next_step "success"
+        rm -f "$build_log"
     else
         next_step "fail"
         popd > /dev/null || true
         complete_operation "fail"
+        log_error "MeshChat build failed — see $build_log for details"
+
+        # Show last build errors inline
+        echo ""
+        echo -e "${RED}${BOLD}Build failed. Last 20 lines of build output:${NC}"
+        echo -e "${YELLOW}────────────────────────────────────────────${NC}"
+        tail -n 20 "$build_log" 2>/dev/null
+        echo -e "${YELLOW}────────────────────────────────────────────${NC}"
+        echo ""
+        echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
+        echo "  1) Check Node.js version: node --version (requires 18+)"
+        echo "  2) Clear npm cache: npm cache clean --force"
+        echo "  3) Delete node_modules and retry: rm -rf node_modules && npm install"
+        echo "  4) Check disk space: df -h"
+        echo "  5) Full build log saved to: $build_log"
+        echo "  6) View logs: Main Menu > l) Logs > MeshChat build log"
+        echo ""
         return 1
     fi
 
