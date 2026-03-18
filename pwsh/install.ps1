@@ -379,21 +379,25 @@ function Install-MeshChat {
             return
         }
 
-        # Step 3: Security audit (non-fatal)
-        Write-ColorOutput "Step 3/4: Running security audit..." "Progress"
-        & npm audit fix --audit-level=moderate 2>&1 | Out-File -FilePath $Script:LogFile -Append
-
-        # Install cx_Freeze for backend build (MeshChat's build-backend requires it)
-        Write-ColorOutput "Installing Python build dependency (cx_Freeze)..." "Progress"
-        Invoke-Pip install cx_Freeze --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
-        if ($LASTEXITCODE -ne 0) {
-            Write-ColorOutput "Failed to install cx_Freeze (needed for backend build)" "Warning"
-            Write-Host "  Attempting build anyway - frontend-only may still work" -ForegroundColor Yellow
+        # Step 3: Install Python dependencies (aiohttp, lxmf, peewee, rns, websockets)
+        Write-ColorOutput "Step 3/5: Installing Python dependencies..." "Progress"
+        $reqFile = Join-Path $meshchatDir "requirements.txt"
+        if (Test-Path $reqFile) {
+            Invoke-Pip install -r $reqFile 2>&1 | Out-File -FilePath $Script:LogFile -Append
+            if ($LASTEXITCODE -ne 0) {
+                Write-ColorOutput "Failed to install some Python dependencies — MeshChat may not run correctly" "Warning"
+            }
+        } else {
+            Write-ColorOutput "requirements.txt not found — skipping Python dependencies" "Warning"
         }
 
-        # Step 4: Build
-        Write-ColorOutput "Step 4/4: Building application..." "Progress"
-        $buildOutput = & npm run build 2>&1
+        # Step 4: Security audit (non-fatal)
+        Write-ColorOutput "Step 4/5: Running security audit..." "Progress"
+        & npm audit fix --audit-level=moderate 2>&1 | Out-File -FilePath $Script:LogFile -Append
+
+        # Step 5: Build frontend
+        Write-ColorOutput "Step 5/5: Building frontend..." "Progress"
+        $buildOutput = & npm run build-frontend 2>&1
         $buildOutput | Out-File -FilePath $Script:LogFile -Append
 
         if ($LASTEXITCODE -ne 0) {
@@ -428,7 +432,7 @@ function Install-MeshChat {
             Write-ColorOutput "MeshChat v$($pkg.version) installed successfully" "Success"
             Write-Host ""
             Write-Host "Start MeshChat with:" -ForegroundColor Yellow
-            Write-Host "  cd $meshchatDir && npm start" -ForegroundColor Cyan
+            Write-Host "  cd $meshchatDir && python meshchat.py" -ForegroundColor Cyan
             Write-RnsLog "MeshChat installed: $($pkg.version)" "INFO"
         }
 
