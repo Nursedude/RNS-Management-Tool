@@ -533,8 +533,8 @@ install_meshchat() {
     init_operation "Installing MeshChat" \
         "Clone/update repository" \
         "Install npm dependencies" \
-        "Security audit" \
-        "Build application" \
+        "Install Python dependencies" \
+        "Build frontend" \
         "Verify installation"
 
     # Step 1: Clone or update
@@ -573,20 +573,25 @@ install_meshchat() {
         return 1
     fi
 
-    # Step 3: Security audit (non-fatal)
-    npm audit fix --audit-level=moderate 2>&1 | tee -a "$UPDATE_LOG" || true
-    next_step "success"
-
-    # Install cx_Freeze for backend build (MeshChat's build-backend requires it)
-    print_info "Installing Python build dependency (cx_Freeze)..."
-    if ! "$PIP_CMD" install cx_Freeze --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
-        print_warning "Failed to install cx_Freeze (needed for backend build)"
-        echo "  Attempting build anyway — frontend-only may still work"
+    # Step 3: Install Python dependencies (aiohttp, lxmf, peewee, rns, websockets)
+    if [ -f "requirements.txt" ]; then
+        print_info "Installing Python dependencies..."
+        if "$PIP_CMD" install -r requirements.txt --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+            next_step "success"
+        else
+            next_step "fail"
+            print_warning "Failed to install some Python dependencies"
+            echo "  MeshChat may not run correctly without them"
+        fi
+    else
+        print_warning "requirements.txt not found — skipping Python dependencies"
+        next_step "fail"
     fi
 
-    # Step 4: Build
+    # Step 4: Build frontend
+    npm audit fix --audit-level=moderate 2>&1 | tee -a "$UPDATE_LOG" || true
     local build_log="${REAL_HOME}/meshchat_build.log"
-    if npm run build 2>&1 | tee -a "$UPDATE_LOG" | tee "$build_log"; then
+    if npm run build-frontend 2>&1 | tee -a "$UPDATE_LOG" | tee "$build_log"; then
         next_step "success"
         rm -f "$build_log"
     else
