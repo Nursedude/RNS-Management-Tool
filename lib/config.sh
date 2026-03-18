@@ -417,15 +417,24 @@ view_config_files() {
 view_logs_menu() {
     while true; do
         print_header
-        MENU_BREADCRUMB="Main Menu > Advanced > Logs"
+        MENU_BREADCRUMB="Main Menu > Logs"
         print_breadcrumb
 
         echo -e "${BOLD}Log Viewer:${NC}\n"
-        echo "   1) View recent management tool log"
-        echo "   2) View rnsd daemon logs (systemd)"
-        echo "   3) View meshtasticd logs (systemd)"
-        echo "   4) Search logs for keyword"
-        echo "   5) List all management logs"
+        echo -e "  ${CYAN}─── System Journal ───${NC}"
+        echo "   1) View rnsd daemon logs (systemd)"
+        echo "   2) View meshtasticd logs (systemd)"
+        echo "   3) View all Reticulum journal entries"
+        echo ""
+        echo -e "  ${CYAN}─── Application Logs ───${NC}"
+        echo "   4) View management tool log"
+        echo "   5) View MeshChat build log"
+        echo "   6) View NomadNet log"
+        echo "   7) View Sideband log"
+        echo ""
+        echo -e "  ${CYAN}─── Search & List ───${NC}"
+        echo "   8) Search logs for keyword"
+        echo "   9) List all log files"
         echo ""
         echo "   0) Back"
         echo ""
@@ -434,6 +443,51 @@ view_logs_menu() {
 
         case $LOG_CHOICE in
             1)
+                print_section "rnsd Daemon Logs"
+                if command -v journalctl &>/dev/null; then
+                    print_info "Showing recent rnsd-related log entries..."
+                    echo ""
+                    journalctl --user -u rnsd --no-pager -n 50 2>/dev/null || \
+                        journalctl -t rnsd --no-pager -n 50 2>/dev/null || \
+                        print_warning "No systemd logs found for rnsd"
+                else
+                    print_warning "journalctl not available"
+                    print_info "Try: ps aux | grep rnsd"
+                fi
+                pause_for_input
+                ;;
+            2)
+                # meshtasticd logs (meshforge 259f22e — expanded log viewer)
+                print_section "meshtasticd Logs"
+                if ! command -v meshtasticd &>/dev/null; then
+                    print_info "meshtasticd is not installed"
+                elif command -v journalctl &>/dev/null; then
+                    print_info "Showing recent meshtasticd log entries..."
+                    echo ""
+                    sudo journalctl -u meshtasticd --no-pager -n 50 2>/dev/null || \
+                        print_warning "No systemd logs found for meshtasticd"
+                else
+                    print_warning "journalctl not available"
+                fi
+                pause_for_input
+                ;;
+            3)
+                print_section "Reticulum Journal Entries"
+                if command -v journalctl &>/dev/null; then
+                    print_info "Showing recent Reticulum-related journal entries..."
+                    echo ""
+                    # Search for rnsd, rns, lxmf across both user and system journals
+                    {
+                        journalctl --user -u rnsd --no-pager -n 20 2>/dev/null
+                        journalctl --user --grep="reticulum\|lxmf\|nomadnet\|meshchat\|sideband" --no-pager -n 20 2>/dev/null
+                    } | sort -u | tail -n 50 || print_warning "No Reticulum journal entries found"
+                else
+                    print_warning "journalctl not available"
+                fi
+                pause_for_input
+                ;;
+            4)
+                print_section "Management Tool Log"
                 if [ -f "$UPDATE_LOG" ]; then
                     echo -e "${CYAN}File: $UPDATE_LOG${NC}\n"
                     tail -n 100 "$UPDATE_LOG" | show_paged_output "Recent Log Entries"
@@ -450,54 +504,82 @@ view_logs_menu() {
                 fi
                 pause_for_input
                 ;;
-            2)
-                print_section "Daemon Logs"
-                if command -v journalctl &>/dev/null; then
-                    print_info "Showing recent rnsd-related log entries..."
-                    echo ""
-                    journalctl --user -u rnsd --no-pager -n 30 2>/dev/null || \
-                        journalctl -t rnsd --no-pager -n 30 2>/dev/null || \
-                        print_warning "No systemd logs found for rnsd"
+            5)
+                print_section "MeshChat Build Log"
+                local meshchat_build_log="${REAL_HOME}/meshchat_build.log"
+                if [ -f "$meshchat_build_log" ]; then
+                    echo -e "${CYAN}File: $meshchat_build_log${NC}"
+                    echo -e "${YELLOW}This log is from a failed build — it is removed on success.${NC}\n"
+                    tail -n 80 "$meshchat_build_log" | show_paged_output "MeshChat Build Output"
                 else
-                    print_warning "journalctl not available"
-                    print_info "Try: ps aux | grep rnsd"
+                    print_info "No MeshChat build log found"
+                    print_info "This file only exists after a failed build (removed on success)"
+                    # Check management log for MeshChat-related entries
+                    if [ -f "$UPDATE_LOG" ]; then
+                        echo ""
+                        print_info "MeshChat entries from management log:"
+                        echo ""
+                        grep -i "meshchat\|npm\|node\|build" "$UPDATE_LOG" 2>/dev/null | tail -n 20 || \
+                            print_info "No MeshChat entries found in management log"
+                    fi
                 fi
                 pause_for_input
                 ;;
-            3)
-                # meshtasticd logs (meshforge 259f22e — expanded log viewer)
-                print_section "meshtasticd Logs"
-                if ! command -v meshtasticd &>/dev/null; then
-                    print_info "meshtasticd is not installed"
-                elif command -v journalctl &>/dev/null; then
-                    print_info "Showing recent meshtasticd log entries..."
-                    echo ""
-                    sudo journalctl -u meshtasticd --no-pager -n 30 2>/dev/null || \
-                        print_warning "No systemd logs found for meshtasticd"
+            6)
+                print_section "NomadNet Log"
+                local nomadnet_log="$REAL_HOME/.nomadnetwork/logfile"
+                if [ -f "$nomadnet_log" ]; then
+                    echo -e "${CYAN}File: $nomadnet_log${NC}\n"
+                    tail -n 80 "$nomadnet_log" | show_paged_output "NomadNet Log"
                 else
-                    print_warning "journalctl not available"
+                    print_info "No NomadNet log found at $nomadnet_log"
+                    print_info "NomadNet may not have been run yet"
                 fi
                 pause_for_input
                 ;;
-            4)
+            7)
+                print_section "Sideband Log"
+                local sideband_log="$REAL_HOME/.sideband/logfile"
+                if [ -f "$sideband_log" ]; then
+                    echo -e "${CYAN}File: $sideband_log${NC}\n"
+                    tail -n 80 "$sideband_log" | show_paged_output "Sideband Log"
+                else
+                    print_info "No Sideband log found at $sideband_log"
+                    # Try alternate locations
+                    local alt_log
+                    alt_log=$(find "$REAL_HOME/.config/sideband" "$REAL_HOME/.sideband" -name "*.log" -type f 2>/dev/null | head -1)
+                    if [ -n "$alt_log" ]; then
+                        echo -e "${CYAN}Found log at: $alt_log${NC}\n"
+                        tail -n 80 "$alt_log" | show_paged_output "Sideband Log"
+                    else
+                        print_info "Sideband may not have been run yet"
+                    fi
+                fi
+                pause_for_input
+                ;;
+            8)
                 print_section "Search Logs"
                 echo -n "Enter search term: "
                 read -r SEARCH_TERM
                 if [ -n "$SEARCH_TERM" ]; then
                     print_info "Searching for '$SEARCH_TERM' in log files..."
                     echo ""
-                    # Search current + rotated + legacy timestamped logs
-                    grep -F --color=always "$SEARCH_TERM" \
-                        "$UPDATE_LOG" "${UPDATE_LOG}".* \
-                        "$REAL_HOME"/rns_management_*.log 2>/dev/null || \
-                        print_warning "No matches found"
+                    # Search management logs + app logs
+                    {
+                        grep -F --color=always "$SEARCH_TERM" \
+                            "$UPDATE_LOG" "${UPDATE_LOG}".* \
+                            "$REAL_HOME"/rns_management_*.log \
+                            "$REAL_HOME/meshchat_build.log" \
+                            "$REAL_HOME/.nomadnetwork/logfile" \
+                            "$REAL_HOME/.sideband/logfile" 2>/dev/null
+                    } || print_warning "No matches found"
                 fi
                 pause_for_input
                 ;;
-            5)
+            9)
                 # Enhanced log listing with line counts (meshforge 259f22e pattern)
-                print_section "All Management Logs"
-                echo -e "${BOLD}Log files:${NC}\n"
+                print_section "All Log Files"
+                echo -e "${BOLD}Management logs:${NC}\n"
                 local found_any=false
                 # Show current + rotated logs with sizes and line counts
                 for logfile in "$UPDATE_LOG" "${UPDATE_LOG}.1" "${UPDATE_LOG}.2" "${UPDATE_LOG}.3"; do
@@ -526,10 +608,29 @@ view_logs_menu() {
                     done <<< "$legacy_logs"
                 fi
                 if [ "$found_any" = false ]; then
-                    print_warning "No log files found"
+                    print_warning "No management logs found"
                 fi
+
+                # Application logs
                 echo ""
-                print_info "Logs are in: $REAL_HOME/"
+                echo -e "${BOLD}Application logs:${NC}\n"
+                local app_found=false
+                for app_log in "$REAL_HOME/meshchat_build.log" "$REAL_HOME/.nomadnetwork/logfile" "$REAL_HOME/.sideband/logfile"; do
+                    if [ -f "$app_log" ]; then
+                        app_found=true
+                        local sz lc mod_time
+                        sz=$(stat -c%s "$app_log" 2>/dev/null || stat -f%z "$app_log" 2>/dev/null || echo "?")
+                        lc=$(wc -l < "$app_log" 2>/dev/null || echo "?")
+                        mod_time=$(stat -c%y "$app_log" 2>/dev/null | cut -d. -f1 || echo "?")
+                        echo "  $(basename "$app_log") (${sz} bytes, ${lc} lines, modified: ${mod_time})"
+                    fi
+                done
+                if [ "$app_found" = false ]; then
+                    print_info "No application logs found"
+                fi
+
+                echo ""
+                print_info "Logs directory: $REAL_HOME/"
                 pause_for_input
                 ;;
             0|"")
