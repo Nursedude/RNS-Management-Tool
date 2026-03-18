@@ -325,12 +325,12 @@ function Install-MeshChat {
     try {
         # Step 1: Clone or update
         if ($isUpdate) {
-            Write-ColorOutput "Step 1/4: Updating repository..." "Progress"
+            Write-ColorOutput "Step 1/5: Updating repository..." "Progress"
             Push-Location $meshchatDir
             $gitOutput = & git pull origin master 2>&1
             $gitOutput | Out-File -FilePath $Script:LogFile -Append
         } else {
-            Write-ColorOutput "Step 1/4: Cloning repository..." "Progress"
+            Write-ColorOutput "Step 1/5: Cloning repository..." "Progress"
             $gitOutput = & git clone https://github.com/liamcottle/reticulum-meshchat.git $meshchatDir 2>&1
             $gitOutput | Out-File -FilePath $Script:LogFile -Append
             Push-Location $meshchatDir
@@ -356,7 +356,7 @@ function Install-MeshChat {
         }
 
         # Step 2: npm install
-        Write-ColorOutput "Step 2/4: Installing npm dependencies..." "Progress"
+        Write-ColorOutput "Step 2/5: Installing npm dependencies..." "Progress"
         $npmOutput = & npm install 2>&1
         $npmOutput | Out-File -FilePath $Script:LogFile -Append
 
