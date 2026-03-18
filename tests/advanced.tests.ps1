@@ -22,13 +22,13 @@ BeforeAll {
 # ─────────────────────────────────────────────────────────────
 Describe "Function Existence" {
 
-    It "advanced.ps1 has exactly 6 functions" {
+    It "advanced.ps1 has exactly 7 functions" {
         $functionCount = ([regex]::Matches(
             $Script:AdvancedSource,
             '^\s*function\s+',
             [System.Text.RegularExpressions.RegexOptions]::Multiline
         )).Count
-        $functionCount | Should -Be 6
+        $functionCount | Should -Be 7
     }
 }
 
