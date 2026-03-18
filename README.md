@@ -33,6 +33,7 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 
 - [Installation](#installation)
 - [Updating](#updating)
+- [Running Installed Applications](#running-installed-applications)
 - [Usage Guide](#usage-guide)
 - [MeshForge Integration](#meshforge-integration)
 - [Feature Matrix](#feature-matrix)
@@ -145,6 +146,56 @@ You can also update individual components:
 ### Update RNODE firmware
 
 Select **2) Install/Configure RNODE Device > Auto-install firmware** to flash the latest firmware to a connected RNODE device.
+
+---
+
+## Running Installed Applications
+
+After installing ecosystem components through the management tool, here's how to launch each application.
+
+### NomadNet (Terminal Messaging Client)
+
+NomadNet is a terminal-based messaging client for the LXMF protocol. It runs in your terminal and does not require a graphical environment.
+
+```bash
+# Launch NomadNet
+nomadnet
+
+# NomadNet will start its own Reticulum instance if rnsd is not running.
+# For best results, start rnsd first:
+rnsd --daemon
+nomadnet
+```
+
+NomadNet provides a text-based UI for sending and receiving encrypted messages, reading and hosting pages (microblog-style content), and managing your LXMF identity.
+
+### MeshChat (Web-Based Messaging)
+
+MeshChat is a web-based LXMF messaging client. After installation, it runs a local web server you access through your browser.
+
+```bash
+# Navigate to the MeshChat directory and start the dev server
+cd ~/reticulum-meshchat
+npm run start
+
+# Then open your browser to the URL shown (typically http://localhost:8000)
+```
+
+A desktop launcher is also created during installation if you have a graphical environment. MeshChat is Linux/RPi only.
+
+### Sideband (Graphical Messaging App)
+
+Sideband is a graphical LXMF messaging application with full encryption support.
+
+```bash
+# Launch Sideband (if installed via pip)
+sideband
+
+# Alternative if the command is not in your PATH
+python3 -m sbapp
+```
+
+A desktop launcher is created during installation. Sideband requires a graphical environment (X11 or Wayland). For headless systems, use NomadNet instead.
 
 ---
 
