@@ -62,6 +62,17 @@ while IFS= read -r -d '' file; do
         ((PK_FOUND++))
     fi
 done < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null)
+# Path-based rule: block Reticulum identity files, which are raw binary and
+# carry no PEM header the content regex would catch. These paths contain
+# long-term private keys that grant impersonation on the mesh.
+while IFS= read -r -d '' file; do
+    case "$file" in
+        *storage/identities/*|*.reticulum/identities/*|*reticulum/identities/*)
+            echo "    FAIL: Reticulum identity file (private key): $file"
+            ((PK_FOUND++))
+            ;;
+    esac
+done < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null)
 if [ "$PK_FOUND" -gt 0 ]; then
     echo "    BLOCKED: $PK_FOUND file(s) contain private keys — remove before committing"
     ((ERRORS++))

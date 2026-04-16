@@ -107,7 +107,15 @@ jobs:
           echo "============================================"
           echo "== BATS FAILURE SUMMARY (CI-EXTRACTED)   =="
           echo "============================================"
-          grep -aE "^not ok|^# \(in test file|^# \(from function|assert|Error:|^# " /tmp/bats.log | head -50 || true
+          # Extract each failing test plus its attached diagnostic `#` lines.
+          # TAP format: `not ok N - desc` starts a failure block; subsequent
+          # `# ...` lines are the diagnostic for that failure until the next
+          # `ok N` / `not ok N` line.
+          awk '
+            /^not ok / { printing=1; print; next }
+            /^ok /     { printing=0; next }
+            printing   { print }
+          ' /tmp/bats.log | head -100 || true
           echo "--- failing test names ---"
           grep -aE "^not ok " /tmp/bats.log | head -50 || true
           echo "============================================"
@@ -128,8 +136,12 @@ jobs:
             echo "## BATS test failure summary"
             echo ""
             echo '~~~'
-            grep -aE "^not ok|^# \(in test file|^# \(from function|assert|Error:|^# " /tmp/bats.log \
-              | head -50 \
+            awk '
+              /^not ok / { printing=1; print; next }
+              /^ok /     { printing=0; next }
+              printing   { print }
+            ' /tmp/bats.log \
+              | head -100 \
               | sed 's/^~~~/~ ~~/' || true
             echo '~~~'
           } > /tmp/bats-comment.md

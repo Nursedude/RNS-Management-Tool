@@ -381,11 +381,13 @@ shellcheck -x -S warning rns_management_tool.sh
 
 ## Project Metrics
 
-- **Bash:** 439 lines (main) + 5,171 lines (11 lib/ modules) = ~5,610 lines
-- **PowerShell:** 144 lines (main) + 2,413 lines (9 pwsh/ modules) = ~2,557 lines
-- **Tests:** ~5,825 lines across 18 test files (970+ assertions)
-- **Functions:** 131+ across all bash modules
-- **Scripts:** lint.sh (RNS001-RNS010), dead_code_check.sh, verify_install.sh, pre-commit hook
+Rough order of magnitude — regenerate exact counts with `scripts/metrics.sh` when precision matters.
+
+- **Bash:** main dispatcher + 11 `lib/` modules (~6,400 lines total)
+- **PowerShell:** main dispatcher + 9 `pwsh/` modules (~2,800 lines total)
+- **Tests:** ~6,000 lines across 18 test files (~1,000 assertions)
+- **Functions:** 130+ across all bash modules
+- **Scripts:** `lint.sh` (RNS001-RNS010), `dead_code_check.sh`, `verify_install.sh`, `metrics.sh`, pre-commit hook
 - **Markdown:** 7 documentation files (including SECURITY_REVIEW.md, PERSISTENT_ISSUES.md)
 - **Security Rating:** A (formal review 2026-02-21 — see SECURITY_REVIEW.md)
 - **CI Jobs:** 7 (shellcheck, custom-lint, check-mode, smoke-test, bats, powershell, pester)
