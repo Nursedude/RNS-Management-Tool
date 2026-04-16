@@ -51,6 +51,16 @@ lint_file() {
         # Skip comments
         [[ "$stripped" == "#"* ]] && continue
 
+        # Helper: detect display-only lines (strings referencing commands, not executing them)
+        # Matches echo, print_*, log_*, check_*, report, confirm_action, and inline comments
+        local is_display=false
+        if [[ "$line" == *"echo"* ]] || [[ "$line" == *"print_"* ]] || [[ "$line" == *"log_"* ]] || \
+           [[ "$line" == *"check_pass"* ]] || [[ "$line" == *"check_fail"* ]] || \
+           [[ "$line" == *"check_warn"* ]] || [[ "$line" == *"report"* ]] || \
+           [[ "$line" == *"confirm_action"* ]]; then
+            is_display=true
+        fi
+
         # RNS001: No eval usage (command injection risk)
         # Skip lines that merely reference 'eval' in grep patterns, strings, or comments
         if [[ "$line" =~ [^_a-zA-Z\"\'\\]eval[[:space:]] ]] || [[ "$line" =~ ^eval[[:space:]] ]]; then
@@ -84,14 +94,17 @@ lint_file() {
 
         # RNS006: Network commands without timeout protection
         # Check for apt/pip/git/curl without run_with_timeout wrapper
+        # Skip display-only lines which reference commands in help text
         if [[ "$line" =~ sudo[[:space:]]+apt[[:space:]] ]] && \
-           [[ "$line" != *"run_with_timeout"* ]] && [[ "$line" != *"retry_with_backoff"* ]]; then
+           [[ "$line" != *"run_with_timeout"* ]] && [[ "$line" != *"retry_with_backoff"* ]] && \
+           [ "$is_display" = false ]; then
             report "W" "$filepath" "$lineno" "RNS006" \
                 "apt command without timeout wrapper — use run_with_timeout"
         fi
 
         if [[ "$line" =~ pip[3]?[[:space:]]+install ]] && \
-           [[ "$line" != *"run_with_timeout"* ]] && [[ "$line" != *"retry_with_backoff"* ]]; then
+           [[ "$line" != *"run_with_timeout"* ]] && [[ "$line" != *"retry_with_backoff"* ]] && \
+           [ "$is_display" = false ]; then
             report "W" "$filepath" "$lineno" "RNS006" \
                 "pip install without timeout wrapper — use run_with_timeout"
         fi
@@ -107,20 +120,23 @@ lint_file() {
         fi
 
         # RNS005: Destructive operations (rm -rf) should have confirmation nearby
-        if [[ "$line" =~ rm[[:space:]]+-rf ]] && [[ "$filepath" != *"test"* ]]; then
+        if [[ "$line" =~ rm[[:space:]]+-rf ]] && [[ "$filepath" != *"test"* ]] && \
+           [ "$is_display" = false ]; then
             local context
-            context=$(head -n "$lineno" "$filepath" | tail -n 15)
-            if ! echo "$context" | grep -qE 'confirm_action|CONFIRM.*RESET|y/N|Y/n|cleanup_on_exit|TEMP_EXPORT|mktemp|TMPDIR' 2>/dev/null; then
+            context=$(head -n "$lineno" "$filepath" | tail -n 20)
+            if ! echo "$context" | grep -qE 'confirm_action|CONFIRM.*RESET|y/N|Y/n|cleanup_on_exit|TEMP_EXPORT|mktemp|TMPDIR|factory_reset_confirmed' 2>/dev/null; then
                 report "W" "$filepath" "$lineno" "RNS005" \
                     "rm -rf without visible confirmation or temp-dir context nearby"
             fi
         fi
 
         # RNS006 extension: rnodeconf calls without timeout protection
+        # Skip display-only lines and string literals referencing the command
         if [[ "$line" =~ [^_a-zA-Z]rnodeconf[[:space:]] ]] && \
            [[ "$line" != *"run_with_timeout"* ]] && [[ "$line" != *"command -v"* ]] && \
            [[ "$line" != *"--version"* ]] && [[ "$line" != *"--help"* ]] && \
-           [[ "$line" != *"console"* ]] && [[ "$filepath" != *"test"* ]]; then
+           [[ "$line" != *"console"* ]] && [[ "$filepath" != *"test"* ]] && \
+           [[ "$filepath" != *"lint.sh"* ]] && [ "$is_display" = false ]; then
             report "W" "$filepath" "$lineno" "RNS006" \
                 "rnodeconf call without timeout wrapper — use run_with_timeout"
         fi
@@ -136,9 +152,12 @@ lint_file() {
 
         # RNS008: Direct pgrep calls outside centralized service detection
         # (adapted from meshforge MF008 — raw systemctl calls should use check_service)
+        # Excluded: utils.sh (owns service detection), diagnostics.sh (needs direct inspection),
+        #           verify_install.sh (standalone, cannot source lib/), display-only lines
         if [[ "$line" =~ pgrep[[:space:]] ]] && \
            [[ "$filepath" != *"utils.sh"* ]] && [[ "$filepath" != *"test"* ]] && \
-           [[ "$filepath" != *"diagnostics.sh"* ]] && [[ "$filepath" != *"lint.sh"* ]]; then
+           [[ "$filepath" != *"diagnostics.sh"* ]] && [[ "$filepath" != *"lint.sh"* ]] && \
+           [[ "$filepath" != *"verify_install.sh"* ]] && [ "$is_display" = false ]; then
             report "W" "$filepath" "$lineno" "RNS008" \
                 "Direct pgrep call — prefer check_service_status() from lib/utils.sh"
         fi

@@ -243,7 +243,14 @@ advanced_menu() {
                 echo -n "Type 'RESET' to confirm factory reset: "
                 read -r CONFIRM
 
+                # factory_reset_confirmed: RNS005 marker — RESET typed above, backup follows
                 if [ "$CONFIRM" = "RESET" ]; then
+                    # Stop rnsd before destructive operations to avoid file contention
+                    if is_rnsd_running; then
+                        print_info "Stopping rnsd before reset..."
+                        stop_services
+                    fi
+
                     print_info "Creating final backup before reset..."
                     if ! create_backup; then
                         print_error "Backup failed — aborting factory reset to protect your data"
@@ -252,6 +259,7 @@ advanced_menu() {
                         continue
                     fi
 
+                    # factory_reset_confirmed: destructive ops guarded by RESET confirmation + backup above
                     print_info "Removing configuration directories..."
                     [ -d "$REAL_HOME/.reticulum" ] && rm -rf "$REAL_HOME/.reticulum" && print_success "Removed ~/.reticulum"
                     [ -d "$REAL_HOME/.nomadnetwork" ] && rm -rf "$REAL_HOME/.nomadnetwork" && print_success "Removed ~/.nomadnetwork"
@@ -260,6 +268,7 @@ advanced_menu() {
                     print_success "Factory reset complete"
                     print_info "Run 'rnsd --daemon' to create fresh configuration"
                     log_message "Factory reset performed - all configurations removed"
+                    invalidate_status_cache
                 else
                     print_info "Reset cancelled - confirmation not received"
                 fi

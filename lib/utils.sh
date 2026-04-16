@@ -18,6 +18,42 @@ run_with_timeout() {
     fi
 }
 
+# Atomic file write (adapted from meshforge paths.py atomic_write_text)
+# Prevents partial/corrupt files on crash or power loss by writing to temp file
+# then atomically renaming. Safe for config and identity files.
+# Usage: write_atomic "/path/to/file" "content"
+write_atomic() {
+    local target="$1"
+    local content="$2"
+    local target_dir
+    target_dir=$(dirname "$target")
+
+    if [ ! -d "$target_dir" ]; then
+        mkdir -p "$target_dir" || {
+            log_error "write_atomic: cannot create directory $target_dir"
+            return 1
+        }
+    fi
+
+    local tmpfile
+    tmpfile=$(mktemp "${target}.XXXXXX") || {
+        log_error "write_atomic: cannot create temp file for $target"
+        return 1
+    }
+
+    # Write content, sync to disk, then atomic rename
+    if printf '%s' "$content" > "$tmpfile" && sync "$tmpfile" 2>/dev/null; then
+        if mv -f "$tmpfile" "$target"; then
+            return 0
+        fi
+    fi
+
+    # Cleanup on failure
+    rm -f "$tmpfile" 2>/dev/null
+    log_error "write_atomic: failed to write $target"
+    return 1
+}
+
 # Classify error as transient (worth retrying) or permanent (bail immediately)
 # Adapted from meshforge RetryPolicy (message_queue.py) error classification
 # Returns 0 for transient, 1 for permanent

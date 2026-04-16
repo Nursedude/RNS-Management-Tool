@@ -221,10 +221,15 @@ import_configuration() {
     print_success "Archive validation passed"
     echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
 
+    # Advisory: stop rnsd before importing to avoid inconsistent state
+    advise_service "rnsd" "stopped" \
+        "rnsd is running. Importing config while rnsd runs may cause inconsistent state." || return
+
     if confirm_action "Continue?"; then
         print_info "Creating backup of current configuration..."
         create_backup
 
+        # RNS004: Archive validated by validate_archive_contents() above (path traversal + symlink checks)
         print_info "Importing configuration..."
         if tar -xzf "$IMPORT_FILE" --no-same-owner -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
             print_success "Configuration imported successfully"
@@ -349,6 +354,12 @@ restore_backup() {
         local selected_backup="${backups[$((BACKUP_CHOICE-1))]}"
 
         echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
+
+        # Advisory: stop rnsd before restoring to avoid reading partial config state
+        # (meshforge safety principle: avoid config mutation while service is active)
+        advise_service "rnsd" "stopped" \
+            "rnsd is running. Restoring config while rnsd runs may cause inconsistent state." || return
+
         if confirm_action "Continue?"; then
             print_info "Restoring from: $selected_backup"
 
@@ -362,6 +373,8 @@ restore_backup() {
             if [ "$restore_ok" = true ] && [ -d "$REAL_HOME/.reticulum" ]; then
                 print_success "Backup restored successfully"
                 log_message "Restored backup from: $selected_backup"
+                # Invalidate caches since config changed
+                invalidate_status_cache
             elif [ "$restore_ok" = false ]; then
                 print_error "Some files failed to restore - check permissions"
                 log_error "Partial restore failure from: $selected_backup"

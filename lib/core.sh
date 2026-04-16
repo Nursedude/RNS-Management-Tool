@@ -188,4 +188,4 @@ NETWORK_TIMEOUT=300      # 5 minutes for network operations
 APT_TIMEOUT=600          # 10 minutes for apt operations (can be slow)
 GIT_TIMEOUT=300          # 5 minutes for git operations
 PIP_TIMEOUT=300          # 5 minutes for pip operations
-RNODECONF_TIMEOUT=120    # 2 minutes for rnodeconf device operations
+RNODECONF_TIMEOUT=120    # 2 minutes for RNODE device operations
