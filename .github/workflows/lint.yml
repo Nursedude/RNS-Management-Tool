@@ -74,6 +74,9 @@ jobs:
     name: Bats Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write # for the PR-comment failure diagnostic below
     steps:
       - uses: actions/checkout@v4
 
@@ -83,25 +86,53 @@ jobs:
           sudo apt-get install -y bats shellcheck
 
       - name: Run bats test suite
-        run: bats tests/rns_management_tool.bats
+        id: bats
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            bats tests/rns_management_tool.bats &&
+            bats tests/hardware_validation.bats &&
+            bats tests/integration_tests.bats &&
+            bats tests/regression_guards.bats &&
+            bats tests/functional_tests.bats &&
+            bats tests/service_health_tests.bats &&
+            bats tests/diagnostics_enhanced.bats
+          } 2>&1 | tee /tmp/bats.log
 
-      - name: Run hardware validation tests
-        run: bats tests/hardware_validation.bats
+      - name: Dump failure summary
+        if: failure() && steps.bats.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "============================================"
+          echo "== BATS FAILURE SUMMARY (CI-EXTRACTED)   =="
+          echo "============================================"
+          grep -aE "^not ok|^# \(in test file|^# \(from function|assert|Error:|^# " /tmp/bats.log | head -50 || true
+          echo "--- failing test names ---"
+          grep -aE "^not ok " /tmp/bats.log | head -50 || true
+          echo "============================================"
 
-      - name: Run integration tests
-        run: bats tests/integration_tests.bats
-
-      - name: Run regression guard tests
-        run: bats tests/regression_guards.bats
-
-      - name: Run functional tests
-        run: bats tests/functional_tests.bats
-
-      - name: Run service health tests
-        run: bats tests/service_health_tests.bats
-
-      - name: Run diagnostics enhanced tests
-        run: bats tests/diagnostics_enhanced.bats
+      - name: Post failure summary to PR
+        if: failure() && steps.bats.outcome == 'failure' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "DEBUG: entering comment step for PR #${PR_NUMBER}"
+          echo "DEBUG: /tmp/bats.log size: $(wc -c </tmp/bats.log 2>/dev/null || echo MISSING)"
+          {
+            echo "## BATS test failure summary"
+            echo ""
+            echo '```'
+            grep -aE "^not ok|^# \(in test file|^# \(from function|assert|Error:|^# " /tmp/bats.log | head -50 || true
+            echo '```'
+          } > /tmp/bats-comment.md
+          echo "DEBUG: comment body:"
+          cat /tmp/bats-comment.md
+          echo "DEBUG: posting comment…"
+          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/bats-comment.md
+          echo "DEBUG: gh pr comment exit=$?"
 
   powershell:
     name: PowerShell Syntax
