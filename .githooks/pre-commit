@@ -43,11 +43,21 @@ else
 fi
 
 # 3. Detect private keys in staged files (adapted from meshforge pre-commit-config.yaml)
+# Matches common PEM-encoded private key headers:
+#   -----BEGIN RSA PRIVATE KEY-----           (traditional)
+#   -----BEGIN DSA PRIVATE KEY-----
+#   -----BEGIN EC PRIVATE KEY-----
+#   -----BEGIN OPENSSH PRIVATE KEY-----       (modern ssh-keygen default incl. ed25519)
+#   -----BEGIN PGP PRIVATE KEY BLOCK-----
+#   -----BEGIN PRIVATE KEY-----               (PKCS#8, no algo identifier)
+#   -----BEGIN ENCRYPTED PRIVATE KEY-----     (encrypted PKCS#8)
+#   -----BEGIN ED25519 PRIVATE KEY-----       (rarely seen, defense-in-depth)
+#   -----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----(SSH.com multi-word format)
 echo "  [3/5] Private key detection..."
 PK_FOUND=0
 while IFS= read -r -d '' file; do
     [ -f "$file" ] || continue
-    if grep -lE 'BEGIN (RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY' "$file" &>/dev/null; then
+    if grep -lE -- '-----BEGIN ([A-Z0-9]+ ){0,3}PRIVATE KEY( BLOCK)?-----' "$file" &>/dev/null; then
         echo "    FAIL: Private key detected in: $file"
         ((PK_FOUND++))
     fi

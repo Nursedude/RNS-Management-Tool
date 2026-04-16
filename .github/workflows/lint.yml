@@ -121,12 +121,17 @@ jobs:
         run: |
           echo "DEBUG: entering comment step for PR #${PR_NUMBER}"
           echo "DEBUG: /tmp/bats.log size: $(wc -c </tmp/bats.log 2>/dev/null || echo MISSING)"
+          # Use tilde code fence and strip any leading ~~~ in test output so a
+          # malicious test name/diagnostic cannot close the fence and inject
+          # arbitrary markdown into the PR comment body.
           {
             echo "## BATS test failure summary"
             echo ""
-            echo '```'
-            grep -aE "^not ok|^# \(in test file|^# \(from function|assert|Error:|^# " /tmp/bats.log | head -50 || true
-            echo '```'
+            echo '~~~'
+            grep -aE "^not ok|^# \(in test file|^# \(from function|assert|Error:|^# " /tmp/bats.log \
+              | head -50 \
+              | sed 's/^~~~/~ ~~/' || true
+            echo '~~~'
           } > /tmp/bats-comment.md
           echo "DEBUG: comment body:"
           cat /tmp/bats-comment.md

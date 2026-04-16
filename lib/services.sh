@@ -461,14 +461,28 @@ handle_identity_management() {
                 fi
                 RNID_PATH="$REAL_HOME/.reticulum/identities/new_$(date +%Y%m%d_%H%M%S)"
             else
-                # RNS004: Path traversal prevention for user-supplied identity path
+                # RNS004: Resolve and confine identity path to user's home directory.
+                # realpath canonicalizes dot-dot segments even without -s, so
+                # string-matching the resolved path for traversal markers is
+                # ineffective. Confinement to REAL_HOME is the actual safeguard
+                # against writes outside the user's own config.
                 local resolved_path
-                resolved_path=$(realpath -s "$RNID_PATH" 2>/dev/null) || {
+                resolved_path=$(realpath -m "$RNID_PATH" 2>/dev/null) || {
                     print_error "Invalid path: $RNID_PATH"
                     return 1
                 }
-                if [[ "$resolved_path" == *".."* ]]; then
-                    print_error "Path traversal detected in identity path"
+                # Guard against degenerate REAL_HOME ("" or "/") that would make
+                # the prefix check match every absolute path and silently disable
+                # the control.
+                if [ -z "$REAL_HOME" ] || [ "$REAL_HOME" = "/" ]; then
+                    print_error "Cannot determine a safe home directory for identity"
+                    log_error "SECURITY: refusing identity write with REAL_HOME='$REAL_HOME'"
+                    return 1
+                fi
+                local home_prefix="${REAL_HOME%/}/"
+                if [[ "${resolved_path}/" != "$home_prefix"* ]]; then
+                    print_error "Identity path must be within $REAL_HOME"
+                    log_error "SECURITY: rejected identity path outside home: $RNID_PATH -> $resolved_path"
                     return 1
                 fi
                 RNID_PATH="$resolved_path"
