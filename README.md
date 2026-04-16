@@ -620,7 +620,8 @@ graph LR
 git clone https://github.com/Nursedude/RNS-Management-Tool.git
 cd RNS-Management-Tool
 
-# Enable pre-commit hooks (enforces syntax + linter on every commit)
+# Enable pre-commit hooks (5-stage checks: syntax, linter, private-key detection,
+# large-file check, ShellCheck — adapted from meshforge)
 git config core.hooksPath .githooks
 
 # Syntax validation
