@@ -181,7 +181,7 @@ install_nodejs_modern() {
             NPM_VERSION=$(npm --version 2>/dev/null | cut -d. -f1)
             if [ -n "$NPM_VERSION" ] && [ "$NPM_VERSION" -lt 10 ]; then
                 print_info "Updating npm to latest version..."
-                sudo npm install -g npm@latest 2>&1 | tee -a "$UPDATE_LOG"
+                run_with_timeout "$NETWORK_TIMEOUT" sudo npm install -g npm@latest 2>&1 | tee -a "$UPDATE_LOG"
             fi
             return 0
         else
@@ -210,6 +210,15 @@ install_nodejs_modern() {
         if [ "$script_size" -lt 100 ] || [ "$script_size" -gt 512000 ]; then
             print_error "NodeSource setup script has unexpected size (${script_size} bytes) — aborting"
             log_message "NodeSource script rejected: ${script_size} bytes (expected 100-512000)"
+            rm -f "$nodesource_script"
+            return 1
+        fi
+        # Content validation: verify script starts with a shebang (not HTML error page or binary)
+        local first_line
+        first_line=$(head -c 64 "$nodesource_script" 2>/dev/null)
+        if [[ "$first_line" != "#!/"* ]]; then
+            print_error "NodeSource script has unexpected content (no shebang) — aborting"
+            log_message "SECURITY: NodeSource script rejected: invalid content (first bytes: ${first_line:0:20})"
             rm -f "$nodesource_script"
             return 1
         fi
@@ -576,7 +585,7 @@ install_meshchat() {
     # Step 3: Install Python dependencies (aiohttp, lxmf, peewee, rns, websockets)
     if [ -f "requirements.txt" ]; then
         print_info "Installing Python dependencies..."
-        if "$PIP_CMD" install -r requirements.txt --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
+        if run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install -r requirements.txt --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
             next_step "success"
         else
             next_step "fail"

@@ -16,7 +16,7 @@ echo "Running pre-commit checks..."
 # 1. Syntax check on staged .sh files
 STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.sh$')
 if [ -n "$STAGED_SH" ]; then
-    echo "  [1/3] Bash syntax check..."
+    echo "  [1/5] Bash syntax check..."
     while IFS= read -r file; do
         [ -f "$file" ] || continue
         if ! bash -n "$file" 2>/dev/null; then
@@ -26,12 +26,12 @@ if [ -n "$STAGED_SH" ]; then
     done <<< "$STAGED_SH"
     [ "$ERRORS" -eq 0 ] && echo "    OK: All staged .sh files parse cleanly"
 else
-    echo "  [1/3] No staged .sh files — skipping syntax check"
+    echo "  [1/5] No staged .sh files — skipping syntax check"
 fi
 
 # 2. Custom linter on staged files
 if [ -f "$SCRIPT_DIR/scripts/lint.sh" ] && [ -n "$STAGED_SH" ]; then
-    echo "  [2/3] Custom linter (RNS001-RNS006)..."
+    echo "  [2/5] Custom linter (RNS001-RNS010)..."
     if ! bash "$SCRIPT_DIR/scripts/lint.sh" --staged; then
         echo "    FAIL: Linter found errors"
         ((ERRORS++))
@@ -39,12 +39,46 @@ if [ -f "$SCRIPT_DIR/scripts/lint.sh" ] && [ -n "$STAGED_SH" ]; then
         echo "    OK: Linter passed"
     fi
 else
-    echo "  [2/3] No staged .sh files — skipping linter"
+    echo "  [2/5] No staged .sh files — skipping linter"
 fi
 
-# 3. ShellCheck on staged files (optional — runs if installed)
+# 3. Detect private keys in staged files (adapted from meshforge pre-commit-config.yaml)
+echo "  [3/5] Private key detection..."
+PK_FOUND=0
+while IFS= read -r -d '' file; do
+    [ -f "$file" ] || continue
+    if grep -lE 'BEGIN (RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY' "$file" &>/dev/null; then
+        echo "    FAIL: Private key detected in: $file"
+        ((PK_FOUND++))
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null)
+if [ "$PK_FOUND" -gt 0 ]; then
+    echo "    BLOCKED: $PK_FOUND file(s) contain private keys — remove before committing"
+    ((ERRORS++))
+else
+    echo "    OK: No private keys in staged files"
+fi
+
+# 4. Detect large files (>1MB) in staged files
+echo "  [4/5] Large file check..."
+LARGE_FOUND=0
+while IFS= read -r -d '' file; do
+    [ -f "$file" ] || continue
+    file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo 0)
+    if [ "$file_size" -gt 1048576 ]; then
+        echo "    WARN: Large file ($(( file_size / 1024 ))KB): $file"
+        ((LARGE_FOUND++))
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null)
+if [ "$LARGE_FOUND" -gt 0 ]; then
+    echo "    INFO: $LARGE_FOUND large file(s) staged (non-blocking)"
+else
+    echo "    OK: No large files"
+fi
+
+# 5. ShellCheck on staged files (optional — runs if installed)
 if command -v shellcheck &>/dev/null && [ -n "$STAGED_SH" ]; then
-    echo "  [3/3] ShellCheck..."
+    echo "  [5/5] ShellCheck..."
     SC_ERRORS=0
     while IFS= read -r file; do
         [ -f "$file" ] || continue
@@ -59,7 +93,7 @@ if command -v shellcheck &>/dev/null && [ -n "$STAGED_SH" ]; then
         echo "    OK: ShellCheck passed"
     fi
 else
-    echo "  [3/3] ShellCheck not installed — skipping (install with: apt install shellcheck)"
+    echo "  [5/5] ShellCheck not installed — skipping (install with: apt install shellcheck)"
 fi
 
 # Result

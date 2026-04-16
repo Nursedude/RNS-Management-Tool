@@ -408,9 +408,18 @@ handle_remote_command() {
         echo -n "Command to execute: "
         read -r RNX_CMD
         if [ -n "$RNX_CMD" ]; then
+            # Security: Show exact command and require explicit confirmation before remote execution
+            echo ""
+            echo -e "${RED}${BOLD}You are about to execute on remote $RNX_DEST:${NC}"
+            echo -e "  ${CYAN}$RNX_CMD${NC}"
+            echo ""
+            if ! confirm_action "Execute this command on the remote system?"; then
+                print_info "Cancelled"
+                return
+            fi
             log_message "rnx remote command: dest=$RNX_DEST cmd=$RNX_CMD"
             print_info "Executing on $RNX_DEST: $RNX_CMD"
-            rnx "$RNX_DEST" "$RNX_CMD" 2>&1
+            run_with_timeout "$NETWORK_TIMEOUT" rnx "$RNX_DEST" "$RNX_CMD" 2>&1
         else
             print_info "Cancelled"
         fi
@@ -450,6 +459,27 @@ handle_identity_management() {
                     return 1
                 fi
                 RNID_PATH="$REAL_HOME/.reticulum/identities/new_$(date +%Y%m%d_%H%M%S)"
+            else
+                # RNS004: Path traversal prevention for user-supplied identity path
+                local resolved_path
+                resolved_path=$(realpath -s "$RNID_PATH" 2>/dev/null) || {
+                    print_error "Invalid path: $RNID_PATH"
+                    return 1
+                }
+                if [[ "$resolved_path" == *".."* ]]; then
+                    print_error "Path traversal detected in identity path"
+                    return 1
+                fi
+                RNID_PATH="$resolved_path"
+                # Ensure parent directory exists
+                local parent_dir
+                parent_dir=$(dirname "$RNID_PATH")
+                if [ ! -d "$parent_dir" ]; then
+                    mkdir -p "$parent_dir" 2>/dev/null || {
+                        print_error "Cannot create directory: $parent_dir"
+                        return 1
+                    }
+                fi
             fi
             print_info "Generating new identity..."
             rnid -g "$RNID_PATH" 2>&1
