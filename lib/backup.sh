@@ -167,9 +167,10 @@ export_configuration() {
 
         print_info "Creating export archive..."
 
-        # Create temporary directory for export (trap ensures cleanup on any exit path)
+        # Create temporary directory for export
+        # Use trap to guarantee cleanup AND umask restoration on any exit path
         TEMP_EXPORT=$(mktemp -d)
-        trap 'rm -rf "$TEMP_EXPORT" 2>/dev/null' RETURN
+        trap 'rm -rf "$TEMP_EXPORT" 2>/dev/null; umask "$old_umask"' RETURN
 
         [ -d "$REAL_HOME/.reticulum" ] && cp -r "$REAL_HOME/.reticulum" "$TEMP_EXPORT/"
         [ -d "$REAL_HOME/.nomadnetwork" ] && cp -r "$REAL_HOME/.nomadnetwork" "$TEMP_EXPORT/"
@@ -185,6 +186,7 @@ export_configuration() {
 
         rm -rf "$TEMP_EXPORT"
         umask "$old_umask"
+        trap - RETURN
     else
         print_warning "No configuration files found to export"
     fi
@@ -201,19 +203,37 @@ import_configuration() {
     # Resolve to absolute path (validate_archive_path already checked existence)
     IMPORT_FILE=$(realpath -s "$IMPORT_FILE" 2>/dev/null)
 
-    # RNS004: Archive contents validation (traversal + symlink checks)
+    # TOCTOU prevention: copy archive to temp location before validation.
+    # This eliminates the window where the archive could be swapped between
+    # validation and extraction (adapted from meshforge atomic operation pattern).
+    local safe_copy
+    safe_copy=$(mktemp "${TMPDIR:-/tmp}/rns_import_XXXXXX.tar.gz") || {
+        print_error "Cannot create temporary file for safe import"
+        return 1
+    }
+    if ! cp "$IMPORT_FILE" "$safe_copy" 2>/dev/null; then
+        print_error "Cannot copy archive for validation"
+        rm -f "$safe_copy"
+        return 1
+    fi
+
+    # RNS004: Archive contents validation on the safe copy (traversal + symlink checks)
     print_info "Validating archive structure..."
-    validate_archive_contents "$IMPORT_FILE" || return 1
+    if ! validate_archive_contents "$safe_copy"; then
+        rm -f "$safe_copy"
+        return 1
+    fi
 
     # Verify archive contains expected Reticulum config files
     local archive_contents
-    archive_contents=$(tar -tzf "$IMPORT_FILE" 2>/dev/null)
+    archive_contents=$(tar -tzf "$safe_copy" 2>/dev/null)
 
     if ! echo "$archive_contents" | grep -qE '^\.(reticulum|nomadnetwork|lxmf)/'; then
         print_warning "Archive does not appear to contain Reticulum configuration"
         echo "Expected directories: .reticulum/, .nomadnetwork/, .lxmf/"
         if ! confirm_action "Continue anyway?"; then
             print_info "Import cancelled"
+            rm -f "$safe_copy"
             return 0
         fi
     fi
@@ -222,16 +242,19 @@ import_configuration() {
     echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
 
     # Advisory: stop rnsd before importing to avoid inconsistent state
-    advise_service "rnsd" "stopped" \
-        "rnsd is running. Importing config while rnsd runs may cause inconsistent state." || return
+    if ! advise_service "rnsd" "stopped" \
+        "rnsd is running. Importing config while rnsd runs may cause inconsistent state."; then
+        rm -f "$safe_copy"
+        return
+    fi
 
     if confirm_action "Continue?"; then
         print_info "Creating backup of current configuration..."
         create_backup
 
-        # RNS004: Archive validated by validate_archive_contents() above (path traversal + symlink checks)
+        # RNS004: Extract from validate_archive_contents()-checked safe copy (TOCTOU-safe)
         print_info "Importing configuration..."
-        if tar -xzf "$IMPORT_FILE" --no-same-owner -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
+        if tar -xzf "$safe_copy" --no-same-owner -C "$REAL_HOME" 2>&1 | tee -a "$UPDATE_LOG"; then
             print_success "Configuration imported successfully"
             log_message "Imported configuration from: $IMPORT_FILE"
         else
@@ -240,6 +263,7 @@ import_configuration() {
     else
         print_info "Import cancelled"
     fi
+    rm -f "$safe_copy"
 }
 
 #########################################################
@@ -265,9 +289,21 @@ create_backup() {
     old_umask=$(umask)
     umask 077
 
-    # Generate fresh timestamp per backup (avoids stale BACKUP_DIR from source time)
-    BACKUP_DIR="$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
+    # Generate backup directory with unpredictable suffix to prevent symlink attacks.
+    # Attacker cannot pre-create a symlink if the directory name is randomized.
+    BACKUP_DIR=$(mktemp -d "$REAL_HOME/.reticulum_backup_$(date +%Y%m%d_%H%M%S)_XXXXXX") || {
+        print_error "Failed to create backup directory"
+        umask "$old_umask"
+        return 1
+    }
+    # Defense-in-depth: verify mktemp created a real directory, not a symlink
+    if [ -L "$BACKUP_DIR" ]; then
+        print_error "Security: backup directory is a symlink — aborting"
+        log_error "SECURITY: Backup dir is symlink: $BACKUP_DIR"
+        rm -f "$BACKUP_DIR" 2>/dev/null
+        umask "$old_umask"
+        return 1
+    fi
     local backed_up=false
 
     # Backup RNS config
@@ -346,11 +382,17 @@ restore_backup() {
     echo -n "Select backup to restore (0 to cancel): "
     read -r BACKUP_CHOICE
 
-    if [ "$BACKUP_CHOICE" -eq 0 ] 2>/dev/null; then
+    # Validate input is numeric before using in arithmetic (prevents type confusion)
+    if ! [[ "$BACKUP_CHOICE" =~ ^[0-9]+$ ]]; then
+        print_error "Invalid selection — enter a number"
+        return 1
+    fi
+
+    if [ "$BACKUP_CHOICE" -eq 0 ]; then
         return 0
     fi
 
-    if [ "$BACKUP_CHOICE" -ge 1 ] && [ "$BACKUP_CHOICE" -le ${#backups[@]} ] 2>/dev/null; then
+    if [ "$BACKUP_CHOICE" -ge 1 ] && [ "$BACKUP_CHOICE" -le ${#backups[@]} ]; then
         local selected_backup="${backups[$((BACKUP_CHOICE-1))]}"
 
         echo -e "${RED}${BOLD}WARNING:${NC} This will overwrite your current configuration!"
