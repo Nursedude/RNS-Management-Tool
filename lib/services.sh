@@ -417,7 +417,8 @@ handle_remote_command() {
                 print_info "Cancelled"
                 return
             fi
-            log_message "rnx remote command: dest=$RNX_DEST cmd=$RNX_CMD"
+            # Log destination but not command content (may contain sensitive data)
+            log_message "rnx remote command: dest=$RNX_DEST (command redacted from log)"
             print_info "Executing on $RNX_DEST: $RNX_CMD"
             run_with_timeout "$NETWORK_TIMEOUT" rnx "$RNX_DEST" "$RNX_CMD" 2>&1
         else

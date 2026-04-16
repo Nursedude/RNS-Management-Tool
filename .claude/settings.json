@@ -1,0 +1,75 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_TOOL_ARG_file_path\" in *.sh) bash scripts/lint.sh \"$CLAUDE_TOOL_ARG_file_path\" 2>/dev/null || true ;; esac"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(ls:*)",
+      "Bash(cd:*)",
+      "Bash(wc:*)",
+      "Bash(pwd)",
+      "Bash(bash -n:*)",
+      "Bash(bash scripts/lint.sh:*)",
+      "Bash(bash tests/smoke_test.sh:*)",
+      "Bash(bash tests/run_bats_compat.sh:*)",
+      "Bash(bash rns_management_tool.sh --check)",
+      "Bash(bats:*)",
+      "Bash(shellcheck:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git push -u origin:*)",
+      "Bash(git push origin:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git remote -v)",
+      "Bash(git stash:*)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(diff:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(rm -fr:*)",
+      "Bash(sudo rm:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git config --global:*)",
+      "Bash(sudo pip install:*)",
+      "Bash(sudo pip3 install:*)",
+      "Bash(sudo chmod 777:*)",
+      "Bash(curl * | sh)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(wget * | bash)",
+      "Bash(eval:*)"
+    ]
+  }
+}
