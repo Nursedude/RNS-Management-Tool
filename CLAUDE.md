@@ -106,10 +106,10 @@ graph TB
 │   ├── rns_management_tool.bats    # 63 BATS tests
 │   ├── hardware_validation.bats    # 92 BATS tests (RNODE hardware safety)
 │   ├── integration_tests.bats      # 145 BATS tests (service, backup, platform, behavioral)
-│   ├── regression_guards.bats      # 74 BATS tests (architectural invariant prevention)
-│   ├── functional_tests.bats       # 42 BATS tests (functional behavior)
+│   ├── regression_guards.bats      # 72 BATS tests (architectural invariant prevention)
+│   ├── functional_tests.bats       # 59 BATS tests (functional behavior)
 │   ├── service_health_tests.bats   # 24 BATS tests (granular health states)
-│   ├── diagnostics_enhanced.bats   # 15 BATS tests (enhanced diagnostics)
+│   ├── diagnostics_enhanced.bats   # 14 BATS tests (enhanced diagnostics)
 │   ├── run_bats_compat.sh          # Lightweight BATS-compatible test runner
 │   ├── rnode.tests.ps1             # 57 Pester tests
 │   ├── services.tests.ps1          # 61 Pester tests
@@ -122,7 +122,7 @@ graph TB
 │   └── verify_install.sh           # Post-install verification (colored/quiet/JSON)
 │
 ├── .githooks/                      # Git hooks (setup: git config core.hooksPath .githooks)
-│   └── pre-commit                  # Enforces syntax + linter on every commit
+│   └── pre-commit                  # 5-stage checks: syntax, linter, private-key detection, large-file check, ShellCheck
 │
 ├── .github/workflows/lint.yml      # CI: shellcheck, custom-lint, check-mode, smoke-test, bats, powershell, pester
 │
