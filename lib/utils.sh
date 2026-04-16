@@ -21,6 +21,8 @@ run_with_timeout() {
 # Atomic file write (adapted from meshforge paths.py atomic_write_text)
 # Prevents partial/corrupt files on crash or power loss by writing to temp file
 # then atomically renaming. Safe for config and identity files.
+# Preserves the target file's existing mode — mktemp creates files at 0600, so
+# without this, updates to 0644/0640 config files would be silently tightened.
 # Usage: write_atomic "/path/to/file" "content"
 write_atomic() {
     local target="$1"
@@ -35,14 +37,24 @@ write_atomic() {
         }
     fi
 
+    # Capture existing mode before writing so we can restore it after rename
+    local original_mode=""
+    if [ -e "$target" ]; then
+        original_mode=$(stat -c '%a' "$target" 2>/dev/null || \
+                        stat -f '%Lp' "$target" 2>/dev/null)
+    fi
+
     local tmpfile
     tmpfile=$(mktemp "${target}.XXXXXX") || {
         log_error "write_atomic: cannot create temp file for $target"
         return 1
     }
 
-    # Write content, sync to disk, then atomic rename
+    # Write content, sync to disk, restore mode, then atomic rename
     if printf '%s' "$content" > "$tmpfile" && sync "$tmpfile" 2>/dev/null; then
+        if [ -n "$original_mode" ]; then
+            chmod "$original_mode" "$tmpfile" 2>/dev/null || true
+        fi
         if mv -f "$tmpfile" "$target"; then
             return 0
         fi
