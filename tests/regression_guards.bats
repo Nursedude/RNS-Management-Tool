@@ -506,3 +506,25 @@ EOF
     # silently when the upstream pull failed.
     grep -q 'if ! retry_with_backoff.*git pull origin main' "$LIB_DIR/install.sh"
 }
+
+#########################################################
+# Function-size guideline (CLAUDE.md says <200 lines)
+#########################################################
+
+@test "QUALITY: view_logs_menu stays under the 200-line function-size guideline" {
+    # Regression for: PR #80 split a 227-line view_logs_menu into 9 _logs_*
+    # helpers + a thin dispatcher. CLAUDE.md says functions should be <200 lines;
+    # this test keeps the dispatcher honest if someone adds a 10th menu option.
+    local body_lines
+    body_lines=$(awk '/^view_logs_menu\(\)/{start=NR} /^}/{if(start){print NR-start+1; exit}}' "$LIB_DIR/config.sh")
+    [ -n "$body_lines" ]
+    [ "$body_lines" -lt 200 ]
+}
+
+@test "QUALITY: view_logs_menu helpers are defined and prefixed _logs_" {
+    # Cheap structural check that the split landed — protects against a
+    # future merge that accidentally collapses the helpers back inline.
+    local helper_count
+    helper_count=$(grep -c '^_logs_[a-z_]*()' "$LIB_DIR/config.sh")
+    [ "$helper_count" -ge 9 ]
+}
