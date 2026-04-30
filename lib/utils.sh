@@ -91,7 +91,11 @@ _is_transient_error() {
         *"already installed"*|*"already up-to-date"*)                 return 1 ;;
     esac
 
-    # Transient errors — worth retrying
+    # Transient errors — worth retrying.
+    # NOTE: pattern order matters — shellcheck SC2221 will flag any later
+    # pattern that's a strict superset of an earlier one. The "temporarily
+    # unavailable" wildcard already covers "resource temporarily unavailable"
+    # so we list "try again" (errno EAGAIN string) on its own.
     case "$err_lower" in
         *"connection refused"*|*"connection reset"*|*"connection timed out"*) return 0 ;;
         *"timeout"*|*"timed out"*|*"temporarily unavailable"*)               return 0 ;;
@@ -100,8 +104,8 @@ _is_transient_error() {
         *"503"*|*"502"*|*"429"*|*"service unavailable"*)                     return 0 ;;
         # apt/dpkg lock contention — another package manager is running, retrying works
         *"could not get lock"*|*"could not open lock file"*|*"unable to lock"*) return 0 ;;
-        # Generic transient kernel/network errno strings (EAGAIN, ECONNREFUSED text)
-        *"resource temporarily unavailable"*|*"try again"*)                   return 0 ;;
+        # Generic transient errno strings (EAGAIN translates to "Try again")
+        *"try again"*)                                                       return 0 ;;
     esac
 
     return 0  # default: assume transient, retry
