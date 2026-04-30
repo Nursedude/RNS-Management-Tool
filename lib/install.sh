@@ -498,6 +498,40 @@ check_meshchat_installed() {
     fi
 }
 
+# cleanup_partial_install — remove a half-installed component directory after a
+# failed FIRST-time install so the operator can retry from a clean slate.
+# On UPDATE failure we leave the previous (working) install in place — clobbering
+# it would turn a recoverable update failure into a total outage.
+#
+# User-data caveat: install dirs ($MESHCHAT_DIR, $SIDEBAND_DIR) hold the cloned
+# repo + build artifacts only. Identity / config live in $REAL_HOME/.reticulum/
+# and $REAL_HOME/.config/<app>/ respectively, which we never touch.
+#
+# Usage: cleanup_partial_install <component_name> <install_dir> <is_update>
+cleanup_partial_install() {
+    local component="$1"
+    local target_dir="$2"
+    local is_update="$3"
+
+    if [ "$is_update" = "true" ]; then
+        print_info "$component update failed — previous install left intact at $target_dir"
+        print_info "Re-run the install option to retry; existing version still works"
+        log_message "$component update failed; preserving previous install at $target_dir"
+        return 0
+    fi
+
+    if [ -d "$target_dir" ]; then
+        print_info "Cleaning up partial $component install at $target_dir..."
+        if rm -rf "$target_dir"; then
+            print_success "Partial install cleaned up — safe to retry"
+            log_message "Cleaned up partial $component install at $target_dir"
+        else
+            print_warning "Could not remove $target_dir — remove manually before retry"
+            log_warn "Failed to clean up partial $component install at $target_dir"
+        fi
+    fi
+}
+
 install_meshchat() {
     print_section "Installing MeshChat"
 
@@ -567,6 +601,7 @@ install_meshchat() {
             print_error "Failed to clone MeshChat repository"
             complete_operation "fail"
             show_error_help "git" ""
+            cleanup_partial_install "MeshChat" "$MESHCHAT_DIR" "$is_update"
             return 1
         fi
     fi
@@ -579,6 +614,7 @@ install_meshchat() {
         popd > /dev/null || true
         complete_operation "fail"
         show_error_help "nodejs" ""
+        cleanup_partial_install "MeshChat" "$MESHCHAT_DIR" "$is_update"
         return 1
     fi
 
@@ -624,6 +660,7 @@ install_meshchat() {
         echo "  5) Full build log saved to: $build_log"
         echo "  6) View logs: Main Menu > l) Logs > MeshChat build log"
         echo ""
+        cleanup_partial_install "MeshChat" "$MESHCHAT_DIR" "$is_update"
         return 1
     fi
 
@@ -809,7 +846,10 @@ install_sideband_pip() {
 install_sideband_source() {
     print_section "Installing Sideband from Source"
 
+    local is_update=false
+
     if [ -d "$SIDEBAND_DIR" ]; then
+        is_update=true
         print_warning "Sideband directory already exists"
         if confirm_action "Update existing installation?" "y"; then
             pushd "$SIDEBAND_DIR" > /dev/null || return 1
@@ -820,6 +860,8 @@ install_sideband_source() {
                 print_error "Failed to pull Sideband updates"
                 show_error_help "git" ""
                 popd > /dev/null || true
+                # is_update=true → cleanup_partial_install will preserve the dir
+                cleanup_partial_install "Sideband" "$SIDEBAND_DIR" "$is_update"
                 return 1
             fi
         else
@@ -831,6 +873,7 @@ install_sideband_source() {
             pushd "$SIDEBAND_DIR" > /dev/null || return 1
         else
             print_error "Failed to clone Sideband repository"
+            cleanup_partial_install "Sideband" "$SIDEBAND_DIR" "$is_update"
             return 1
         fi
     fi
@@ -844,6 +887,7 @@ install_sideband_source() {
     else
         print_error "Failed to install Sideband from source"
         popd > /dev/null || true
+        cleanup_partial_install "Sideband" "$SIDEBAND_DIR" "$is_update"
         return 1
     fi
 }
