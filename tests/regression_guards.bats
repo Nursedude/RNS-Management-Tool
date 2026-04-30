@@ -506,3 +506,68 @@ EOF
     # silently when the upstream pull failed.
     grep -q 'if ! retry_with_backoff.*git pull origin main' "$LIB_DIR/install.sh"
 }
+
+#########################################################
+# Partial-install rollback (cleanup_partial_install helper)
+#########################################################
+
+@test "ROLLBACK: cleanup_partial_install helper exists in lib/install.sh" {
+    grep -q '^cleanup_partial_install()' "$LIB_DIR/install.sh"
+}
+
+@test "ROLLBACK: cleanup helper preserves dir on update failure" {
+    # Source the helper in isolation and verify it does NOT remove the dir
+    # when called with is_update=true.
+    local tmpdir
+    tmpdir=$(mktemp -d "${BATS_TMPDIR:-/tmp}/rollback_update_XXXXXX")
+    touch "$tmpdir/sentinel"
+    # Stub helpers the function calls so we can source-and-call standalone
+    print_info() { :; }
+    print_warning() { :; }
+    print_success() { :; }
+    log_message() { :; }
+    log_warn() { :; }
+    # shellcheck source=/dev/null
+    source <(sed -n '/^cleanup_partial_install()/,/^}/p' "$LIB_DIR/install.sh")
+    cleanup_partial_install "TestComponent" "$tmpdir" "true"
+    [ -f "$tmpdir/sentinel" ]
+    rm -rf "$tmpdir"
+}
+
+@test "ROLLBACK: cleanup helper removes dir on first-install failure" {
+    local tmpdir
+    tmpdir=$(mktemp -d "${BATS_TMPDIR:-/tmp}/rollback_install_XXXXXX")
+    touch "$tmpdir/sentinel"
+    print_info() { :; }
+    print_warning() { :; }
+    print_success() { :; }
+    log_message() { :; }
+    log_warn() { :; }
+    # shellcheck source=/dev/null
+    source <(sed -n '/^cleanup_partial_install()/,/^}/p' "$LIB_DIR/install.sh")
+    cleanup_partial_install "TestComponent" "$tmpdir" "false"
+    [ ! -d "$tmpdir" ]
+}
+
+@test "ROLLBACK: install_meshchat invokes cleanup on every hard-failure branch" {
+    # Hard failures: clone (step 1), npm install (step 2), build-frontend (step 4).
+    # Step 3 (pip requirements) is intentionally a soft warn — exempt.
+    local meshchat_block
+    meshchat_block=$(sed -n '/^install_meshchat()/,/^}/p' "$LIB_DIR/install.sh")
+    local invocations
+    invocations=$(grep -c 'cleanup_partial_install "MeshChat"' <<<"$meshchat_block")
+    [ "$invocations" -ge 3 ]
+}
+
+@test "ROLLBACK: install_sideband_source invokes cleanup on every hard-failure branch" {
+    # Hard failures: clone, git pull, pip install . — all three need cleanup.
+    local sideband_block
+    sideband_block=$(sed -n '/^install_sideband_source()/,/^}/p' "$LIB_DIR/install.sh")
+    local invocations
+    invocations=$(grep -c 'cleanup_partial_install "Sideband"' <<<"$sideband_block")
+    [ "$invocations" -ge 3 ]
+}
+
+@test "ROLLBACK: install_sideband_source tracks is_update so cleanup can branch on it" {
+    grep -q 'local is_update=false' <(sed -n '/^install_sideband_source()/,/^}/p' "$LIB_DIR/install.sh")
+}

@@ -126,7 +126,7 @@ lint_file() {
            [ "$is_display" = false ]; then
             local context
             context=$(head -n "$lineno" "$filepath" | tail -n 20)
-            if ! echo "$context" | grep -qE 'confirm_action|CONFIRM.*RESET|y/N|Y/n|cleanup_on_exit|TEMP_EXPORT|mktemp|TMPDIR|factory_reset_confirmed' 2>/dev/null; then
+            if ! echo "$context" | grep -qE 'confirm_action|CONFIRM.*RESET|y/N|Y/n|cleanup_on_exit|cleanup_partial_install|TEMP_EXPORT|mktemp|TMPDIR|factory_reset_confirmed' 2>/dev/null; then
                 report "W" "$filepath" "$lineno" "RNS005" \
                     "rm -rf without visible confirmation or temp-dir context nearby"
             fi
