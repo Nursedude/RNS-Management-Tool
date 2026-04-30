@@ -106,7 +106,7 @@ graph TB
 │   ├── rns_management_tool.bats    # 63 BATS tests
 │   ├── hardware_validation.bats    # 92 BATS tests (RNODE hardware safety)
 │   ├── integration_tests.bats      # 145 BATS tests (service, backup, platform, behavioral)
-│   ├── regression_guards.bats      # 72 BATS tests (architectural invariant prevention)
+│   ├── regression_guards.bats      # 76 BATS tests (architectural invariant prevention)
 │   ├── functional_tests.bats       # 59 BATS tests (functional behavior)
 │   ├── service_health_tests.bats   # 24 BATS tests (granular health states)
 │   ├── diagnostics_enhanced.bats   # 14 BATS tests (enhanced diagnostics)
@@ -130,6 +130,7 @@ graph TB
 ├── CLAUDE.md                       # THIS FILE - Development guide
 ├── QUICKSTART.md                   # 5-minute setup guide
 ├── CHANGELOG.md                    # Version history (semantic versioning)
+├── SECURITY.md                     # Security policy + vuln reporting + RNS001–RNS011 audit table
 ├── SESSION_NOTES.md                # Development session history
 ├── SECURITY_REVIEW.md              # Security & code review (Session 13)
 └── PERSISTENT_ISSUES.md            # Recurring issues & resolution patterns
@@ -153,6 +154,7 @@ The project enforces strict security practices:
 | RNS008 | Config templates must have `[reticulum]` section | Linter |
 | RNS009 | Temp files must use `mktemp` | Linter (`scripts/lint.sh`) |
 | RNS010 | No sensitive data in log output | Linter (`scripts/lint.sh`) |
+| RNS011 | No hardcoded `/home/<user>/` paths (use `$HOME` / `$REAL_HOME` / `~`) | Linter (`scripts/lint.sh`) |
 
 ### Security Examples
 
@@ -175,6 +177,11 @@ fi
 if [[ "$SF" =~ ^[0-9]+$ ]] && [ "$SF" -ge 7 ] && [ "$SF" -le 12 ]; then
     CMD_ARGS+=("--sf" "$SF")
 fi
+
+# CORRECT: Atomic write for any config/identity file
+# Use write_atomic() (lib/utils.sh) — never `cmd > /path/to/config`. The helper
+# preserves file mode and survives crashes/power-loss via mktemp+rename.
+write_atomic "$REAL_HOME/.reticulum/config" "$rendered_config"
 ```
 
 ---
@@ -388,7 +395,7 @@ Rough order of magnitude — regenerate exact counts with `scripts/metrics.sh` w
 - **Tests:** ~6,000 lines across 18 test files (~1,000 assertions)
 - **Functions:** 130+ across all bash modules
 - **Scripts:** `lint.sh` (RNS001-RNS010), `dead_code_check.sh`, `verify_install.sh`, `metrics.sh`, pre-commit hook
-- **Markdown:** 7 documentation files (including SECURITY_REVIEW.md, PERSISTENT_ISSUES.md)
+- **Markdown:** 8 documentation files (including SECURITY.md, SECURITY_REVIEW.md, PERSISTENT_ISSUES.md)
 - **Security Rating:** A (formal review 2026-02-21 — see SECURITY_REVIEW.md)
 - **CI Jobs:** 7 (shellcheck, custom-lint, check-mode, smoke-test, bats, powershell, pester)
 

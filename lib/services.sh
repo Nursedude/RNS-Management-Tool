@@ -43,7 +43,8 @@ stop_services() {
     if check_service_status "nomadnet"; then
         print_warning "NomadNet is running - please close it manually"
         echo -n "Press Enter when NomadNet is closed..."
-        read -r
+        # 5-min timeout: avoids hanging forever if invoked non-interactively
+        read -r -t 300 || { echo ""; print_warning "Timed out waiting for confirmation"; return 1; }
         log_message "User closed NomadNet manually"
     fi
 
@@ -51,7 +52,7 @@ stop_services() {
     if check_service_status "meshchat"; then
         print_warning "MeshChat appears to be running - please close it manually"
         echo -n "Press Enter when MeshChat is closed..."
-        read -r
+        read -r -t 300 || { echo ""; print_warning "Timed out waiting for confirmation"; return 1; }
         log_message "User closed MeshChat manually"
     fi
 
@@ -121,7 +122,7 @@ show_service_status() {
     case "$rnsd_health" in
         "$SVC_STATE_RUNNING")
             print_success "rnsd daemon: Running"
-            if command -v rnstatus &> /dev/null; then
+            if has_command rnstatus; then
                 echo ""
                 rnstatus 2>&1 | show_paged_output ""
             fi
@@ -140,7 +141,7 @@ show_service_status() {
     esac
 
     # meshtasticd status with HTTP API check (ported from meshforge)
-    if command -v meshtasticd &>/dev/null; then
+    if has_command meshtasticd; then
         echo ""
         echo -e "${BOLD}meshtasticd:${NC}"
         if check_service_status "meshtasticd"; then
@@ -197,7 +198,7 @@ show_service_status() {
     fi
 
     # Check rnodeconf
-    if command -v rnodeconf &> /dev/null; then
+    if has_command rnodeconf; then
         RNODE_VER=$(rnodeconf --version 2>&1 | head -1 | sed -n 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' || echo "installed")
         [ -z "$RNODE_VER" ] && RNODE_VER="installed"
         print_success "rnodeconf: $RNODE_VER"
@@ -227,7 +228,7 @@ show_services_status_box() {
                 print_box_line "${GREEN}●${NC} rnsd daemon: ${GREEN}Running${NC}"
             fi
             # Boot persistence warning (meshforge pattern)
-            if command -v systemctl &>/dev/null; then
+            if has_command systemctl; then
                 if ! systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
                     print_box_line "  ${YELLOW}! not enabled at boot${NC}"
                 fi
@@ -245,7 +246,7 @@ show_services_status_box() {
     esac
 
     # Check for meshtasticd with granular health states (ported from meshforge)
-    if command -v meshtasticd &>/dev/null; then
+    if has_command meshtasticd; then
         local mtd_state
         mtd_state=$(get_cached_meshtasticd_status)
         case "$mtd_state" in
@@ -522,7 +523,7 @@ handle_identity_management() {
 # Start meshtasticd service
 meshtasticd_start() {
     print_section "Starting meshtasticd"
-    if ! command -v meshtasticd &>/dev/null; then
+    if ! has_command meshtasticd; then
         print_error "meshtasticd is not installed"
     elif check_service_status "meshtasticd"; then
         print_info "meshtasticd is already running"
@@ -559,7 +560,7 @@ meshtasticd_start() {
 # Stop meshtasticd service
 meshtasticd_stop() {
     print_section "Stopping meshtasticd"
-    if ! command -v meshtasticd &>/dev/null; then
+    if ! has_command meshtasticd; then
         print_error "meshtasticd is not installed"
     elif ! check_service_status "meshtasticd"; then
         print_info "meshtasticd is not running"
@@ -590,7 +591,7 @@ meshtasticd_stop() {
 # Restart meshtasticd service
 meshtasticd_restart() {
     print_section "Restarting meshtasticd"
-    if ! command -v meshtasticd &>/dev/null; then
+    if ! has_command meshtasticd; then
         print_error "meshtasticd is not installed"
     else
         print_info "Restarting meshtasticd service..."
@@ -624,7 +625,7 @@ meshtasticd_restart() {
 # Check meshtasticd HTTP API and configuration (ported from meshforge diagnostics)
 meshtasticd_check_api() {
     print_section "meshtasticd HTTP API & Configuration"
-    if ! command -v meshtasticd &>/dev/null; then
+    if ! has_command meshtasticd; then
         print_error "meshtasticd is not installed"
         return
     fi
@@ -664,6 +665,8 @@ meshtasticd_check_api() {
         print_success "HTTP API reachable at $MESHTASTICD_HTTP_URL"
 
         # Try to fetch node count from /json/nodes
+        # -k OK: MESHTASTICD_HTTP_URL is set by check_meshtasticd_http_api(),
+        # which only ever assigns 127.0.0.1 URLs (self-signed cert is expected).
         local nodes_response
         nodes_response=$(curl -sk --connect-timeout 3 --max-time 5 \
             "${MESHTASTICD_HTTP_URL}/json/nodes" 2>/dev/null)
@@ -708,7 +711,7 @@ services_menu() {
         echo "   3) Restart rnsd daemon"
         echo "   4) View detailed status"
         echo ""
-        if command -v meshtasticd &>/dev/null; then
+        if has_command meshtasticd; then
             echo -e "  ${CYAN}─── meshtasticd Control ───${NC}"
             echo "  m1) Start meshtasticd"
             echo "  m2) Stop meshtasticd"

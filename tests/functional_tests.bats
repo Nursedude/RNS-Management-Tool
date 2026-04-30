@@ -309,7 +309,7 @@ teardown() {
     local bare
     bare=$(grep 'rnodeconf' "$rnode_sh" | \
         grep -v '#' | \
-        grep -v 'command -v' | \
+        grep -v 'command -v\|has_command' | \
         grep -v 'run_with_timeout' | \
         grep -v 'print_info\|print_error\|echo\|confirm_action' | \
         grep -v 'console\|--help' || true)

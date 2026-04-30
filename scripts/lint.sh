@@ -4,8 +4,8 @@
 # RNS Management Tool — Custom Linter
 # Enforces project-specific security and coding standards
 #
-# Adapted from meshforge scripts/lint.py (MF001-MF010)
-# Checks RNS001-RNS010 rules from CLAUDE.md
+# Adapted from meshforge scripts/lint.py (MF001-MF014)
+# Checks RNS001-RNS011 rules from CLAUDE.md
 #
 # Usage:
 #   ./scripts/lint.sh              # Lint all bash source files
@@ -73,7 +73,9 @@ lint_file() {
 
         # RNS002: Device port validation — check for rnodeconf calls without prior validation
         # (Informational: just flag direct rnodeconf calls with variable args)
-        if [[ "$line" =~ rnodeconf[[:space:]]+\"\$ ]] && [[ "$filepath" != *"test"* ]]; then
+        # Matches both `rnodeconf "$VAR"` and `rnodeconf "${ARR[@]}"` array-expansion form
+        # (the project's preferred style per CLAUDE.md security examples).
+        if [[ "$line" =~ rnodeconf[[:space:]]+\"\$\{?[A-Za-z_] ]] && [[ "$filepath" != *"test"* ]]; then
             # Check if this file has the validation regex or centralized validator
             if ! grep -qE 'tty\[A-Za-z0-9\]|validate_device_port' "$filepath" 2>/dev/null; then
                 report "W" "$filepath" "$lineno" "RNS002" \
@@ -182,6 +184,25 @@ lint_file() {
                [[ "$line" != *"#"* ]]; then
                 report "W" "$filepath" "$lineno" "RNS010" \
                     "Log call may contain sensitive data — avoid logging secrets"
+            fi
+        fi
+
+        # RNS011: Operator-personal values that break repo portability for new operators
+        # Adapted from meshforge MF014 (post-mortem: source-scrub commit 155a74d).
+        # Catches hardcoded /home/<user>/ paths leaking the original operator's username.
+        # Excludes $HOME, $REAL_HOME, ~ (variable forms) and the .claude/ private dir.
+        # Skipped for: tests/, .claude/, lint.sh itself, and any *.md doc files.
+        if [[ "$filepath" != *"test"* ]] && [[ "$filepath" != *".claude/"* ]] && \
+           [[ "$filepath" != *"lint.sh"* ]] && [[ "$filepath" != *.md ]]; then
+            if [[ "$line" =~ /home/[a-zA-Z0-9_-]+/ ]] && \
+               [[ "$line" != *'$HOME'* ]] && [[ "$line" != *'${HOME'* ]] && \
+               [[ "$line" != *'$REAL_HOME'* ]] && [[ "$line" != *'${REAL_HOME'* ]] && \
+               [[ "$line" != *'/home/$'* ]] && [[ "$line" != *'/home/${'* ]] && \
+               [[ "$line" != *"grep"* ]] && [[ "$line" != *"sed"* ]] && \
+               [[ "$line" != *"awk"* ]] && [[ "$line" != *"find"* ]] && \
+               [ "$is_display" = false ]; then
+                report "W" "$filepath" "$lineno" "RNS011" \
+                    "Hardcoded /home/<user>/ path — use \$HOME, \$REAL_HOME, or ~ for portability"
             fi
         fi
 

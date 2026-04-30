@@ -216,7 +216,7 @@ advanced_menu() {
                 print_info "Cleaning pip cache..."
                 "$PIP_CMD" cache purge 2>&1 | tee -a "$UPDATE_LOG"
 
-                if command -v npm &>/dev/null; then
+                if has_command npm; then
                     print_info "Cleaning npm cache..."
                     npm cache clean --force 2>&1 | tee -a "$UPDATE_LOG"
                 fi
@@ -356,10 +356,14 @@ run_startup_health_check() {
     ensure_git_safe_directory "$SIDEBAND_DIR"
 
     # 6. Log directory writable
+    # On fallback, use a stable per-uid filename so the file is overwritten/rotated
+    # rather than accumulating one log per startup in /tmp. Then call rotate_log()
+    # so the same 1MB-rotation policy applies as it does for $REAL_HOME logs.
     if ! touch "$UPDATE_LOG" 2>/dev/null; then
         print_warning "Cannot write to log file: $UPDATE_LOG"
-        UPDATE_LOG="${TMPDIR:-/tmp}/rns_management_$(date +%Y%m%d_%H%M%S).log"
+        UPDATE_LOG="${TMPDIR:-/tmp}/rns_management_$(id -u).log"
         print_info "Falling back to: $UPDATE_LOG"
+        rotate_log
         ((warnings++))
     fi
 
@@ -368,10 +372,10 @@ run_startup_health_check() {
     if [ "$HAS_RNSD" = true ] && ! check_service_status "rnsd"; then
         local port_conflict=false
         local conflict_proc=""
-        if command -v ss &>/dev/null; then
+        if has_command ss; then
             conflict_proc=$(ss -ulnp 2>/dev/null | grep ':37428 ' | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1)
             [ -n "$conflict_proc" ] && port_conflict=true
-        elif command -v netstat &>/dev/null; then
+        elif has_command netstat; then
             conflict_proc=$(netstat -ulnp 2>/dev/null | grep ':37428 ' | awk '{print $NF}' | head -1)
             [ -n "$conflict_proc" ] && port_conflict=true
         fi
@@ -389,9 +393,9 @@ run_startup_health_check() {
     fi
 
     # 8. meshtasticd port conflict (informational)
-    if command -v meshtasticd &>/dev/null && ! check_service_status "meshtasticd"; then
+    if has_command meshtasticd && ! check_service_status "meshtasticd"; then
         local mtd_port_conflict=false
-        if command -v ss &>/dev/null; then
+        if has_command ss; then
             if ss -tlnp 2>/dev/null | grep -qE ':443 |:9443 '; then
                 mtd_port_conflict=true
             fi
@@ -422,7 +426,7 @@ first_run_wizard() {
 
     # Check if RNS is installed at all
     local rns_installed=false
-    if command -v rnsd &>/dev/null || pip3 show rns &>/dev/null 2>&1; then
+    if has_command rnsd || pip3 show rns &>/dev/null 2>&1; then
         rns_installed=true
     fi
 
@@ -545,7 +549,7 @@ first_run_wizard() {
     esac
 
     # Step 4: Start rnsd
-    if [ "$applied_template" = true ] || command -v rnsd &>/dev/null; then
+    if [ "$applied_template" = true ] || has_command rnsd; then
         echo ""
         if confirm_action "Start rnsd daemon now?" "y"; then
             start_services
