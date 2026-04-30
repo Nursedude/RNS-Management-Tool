@@ -45,7 +45,12 @@ backup_restore_menu() {
         echo "   0) Back to Main Menu"
         echo ""
         echo -n "Select an option: "
-        read -r BACKUP_CHOICE
+        # 5-min timeout for menu selection — exits the menu loop on stdin close
+        if ! read -r -t 300 BACKUP_CHOICE; then
+            echo ""
+            print_warning "No selection within 5 minutes — returning to main menu"
+            return 0
+        fi
 
         case $BACKUP_CHOICE in
             1)

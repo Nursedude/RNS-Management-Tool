@@ -9,7 +9,13 @@
 rnode_get_device_port() {
     echo "Enter the device port (e.g., /dev/ttyUSB0, /dev/ttyACM0):"
     echo -n "Device port: "
-    read -r DEVICE_PORT
+    # 5-min timeout: bail cleanly if stdin is closed (script piped in,
+    # backgrounded, or run from a non-TTY context like systemd)
+    if ! read -r -t 300 DEVICE_PORT; then
+        echo ""
+        print_warning "No response within 5 minutes — returning to menu"
+        return 1
+    fi
 
     # RNS002: Device port validation (centralized in lib/validation.sh)
     validate_device_port "$DEVICE_PORT" || return 1
@@ -227,7 +233,7 @@ rnode_show_help() {
 
 configure_rnode_interactive() {
     # Check if rnodeconf is available
-    if ! command -v rnodeconf &> /dev/null; then
+    if ! has_command rnodeconf; then
         print_error "rnodeconf not found"
         echo ""
         if confirm_action "Install rnodeconf now?" "y"; then

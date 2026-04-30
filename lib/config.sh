@@ -34,7 +34,11 @@ apply_config_template() {
     echo -e "${GREEN}Your existing config will be backed up first.${NC}"
     echo ""
     echo -n "Select template: "
-    read -r TMPL_CHOICE
+    if ! read -r -t 300 TMPL_CHOICE; then
+        echo ""
+        print_warning "No selection within 5 minutes — cancelling"
+        return 1
+    fi
 
     local template_file=""
     local template_name=""
@@ -47,7 +51,11 @@ apply_config_template() {
             # View a template without applying
             echo ""
             echo -n "Which template to view (1-4)? "
-            read -r VIEW_CHOICE
+            if ! read -r -t 300 VIEW_CHOICE; then
+                echo ""
+                print_warning "No selection within 5 minutes — cancelling"
+                return 1
+            fi
             case $VIEW_CHOICE in
                 1) template_file="$template_dir/minimal.conf" ;;
                 2) template_file="$template_dir/lora_rnode.conf" ;;
@@ -153,7 +161,11 @@ apply_deployment_profile() {
     echo "   0) Cancel"
     echo ""
     echo -n "Select profile: "
-    read -r PROFILE_CHOICE
+    if ! read -r -t 300 PROFILE_CHOICE; then
+        echo ""
+        print_warning "No selection within 5 minutes — cancelling"
+        return 1
+    fi
 
     local profile_name="" template_file="" enable_autostart=false
     local template_dir="$SCRIPT_DIR/config_templates"
@@ -220,11 +232,11 @@ apply_deployment_profile() {
 
     # Step 3: Configure autostart
     if [ "$enable_autostart" = true ]; then
-        if command -v systemctl &>/dev/null; then
+        if has_command systemctl; then
             setup_autostart
         fi
     else
-        if command -v systemctl &>/dev/null && \
+        if has_command systemctl && \
            systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
             disable_autostart
         fi
@@ -303,7 +315,11 @@ edit_config_file() {
     echo "   0) Cancel"
     echo ""
     echo -n "Select file: "
-    read -r EDIT_CHOICE
+    if ! read -r -t 300 EDIT_CHOICE; then
+        echo ""
+        print_warning "No selection within 5 minutes — cancelling"
+        return 1
+    fi
 
     if [ "$EDIT_CHOICE" = "0" ] || [ -z "$EDIT_CHOICE" ]; then
         return
@@ -387,7 +403,11 @@ view_config_files() {
     echo "   0) Cancel"
     echo ""
     echo -n "Select file to view: "
-    read -r CONFIG_CHOICE
+    if ! read -r -t 300 CONFIG_CHOICE; then
+        echo ""
+        print_warning "No selection within 5 minutes — cancelling"
+        return 1
+    fi
 
     case $CONFIG_CHOICE in
         1)
@@ -444,7 +464,7 @@ view_logs_menu() {
         case $LOG_CHOICE in
             1)
                 print_section "rnsd Daemon Logs"
-                if command -v journalctl &>/dev/null; then
+                if has_command journalctl; then
                     print_info "Showing recent rnsd-related log entries..."
                     echo ""
                     journalctl --user -u rnsd --no-pager -n 50 2>/dev/null || \
@@ -459,9 +479,9 @@ view_logs_menu() {
             2)
                 # meshtasticd logs (meshforge 259f22e — expanded log viewer)
                 print_section "meshtasticd Logs"
-                if ! command -v meshtasticd &>/dev/null; then
+                if ! has_command meshtasticd; then
                     print_info "meshtasticd is not installed"
-                elif command -v journalctl &>/dev/null; then
+                elif has_command journalctl; then
                     print_info "Showing recent meshtasticd log entries..."
                     echo ""
                     sudo journalctl -u meshtasticd --no-pager -n 50 2>/dev/null || \
@@ -473,7 +493,7 @@ view_logs_menu() {
                 ;;
             3)
                 print_section "Reticulum Journal Entries"
-                if command -v journalctl &>/dev/null; then
+                if has_command journalctl; then
                     print_info "Showing recent Reticulum-related journal entries..."
                     echo ""
                     # Search for rnsd, rns, lxmf across both user and system journals

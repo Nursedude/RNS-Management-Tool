@@ -14,7 +14,7 @@ diag_check_system_resources() {
     echo -e "${BLUE}▶ Step 1/7: System Resources${NC}"
 
     # Disk space check
-    if command -v df &> /dev/null; then
+    if has_command df; then
         local avail_mb
         avail_mb=$(df -m "$REAL_HOME" 2>/dev/null | awk 'NR==2 {print $4}')
         if [ -n "$avail_mb" ]; then
@@ -248,7 +248,7 @@ diag_check_services() {
     local rnsd_detection_method="none"
     local rnsd_running=false
 
-    if command -v systemctl &>/dev/null && systemctl --user is-active rnsd.service &>/dev/null 2>&1; then
+    if has_command systemctl && systemctl --user is-active rnsd.service &>/dev/null 2>&1; then
         rnsd_detection_method="systemctl"
         rnsd_running=true
     elif pgrep -x "rnsd" > /dev/null 2>&1; then
@@ -258,9 +258,9 @@ diag_check_services() {
 
     # Liveness verification via port check (reuses zombie detection logic)
     local port_bound=false
-    if command -v ss &>/dev/null; then
+    if has_command ss; then
         ss -ulnp 2>/dev/null | grep -q ':37428 ' && port_bound=true
-    elif command -v netstat &>/dev/null; then
+    elif has_command netstat; then
         netstat -ulnp 2>/dev/null | grep -q ':37428 ' && port_bound=true
     fi
 
@@ -298,7 +298,7 @@ diag_check_services() {
         ((_DIAG_TOTAL_WARNINGS++)) || true
     fi
 
-    if command -v systemctl &>/dev/null; then
+    if has_command systemctl; then
         if systemctl --user is-enabled rnsd.service &>/dev/null 2>&1; then
             print_success "Auto-start enabled at boot"
         else
@@ -307,7 +307,7 @@ diag_check_services() {
     fi
 
     # meshtasticd health check (ported from meshforge dashboard_mixin.py)
-    if command -v meshtasticd &>/dev/null; then
+    if has_command meshtasticd; then
         echo ""
         echo -e "  ${CYAN}meshtasticd Integration:${NC}"
 
@@ -336,7 +336,7 @@ diag_check_services() {
 diag_check_network() {
     echo -e "${BLUE}▶ Step 6/7: Network & Interfaces${NC}"
 
-    if command -v ip &> /dev/null; then
+    if has_command ip; then
         local net_ifaces
         net_ifaces=$(ip -br addr 2>/dev/null | grep -v "^lo" | grep -c "UP" || echo 0)
         if [ "$net_ifaces" -gt 0 ]; then

@@ -16,7 +16,7 @@ echo "Running pre-commit checks..."
 # 1. Syntax check on staged .sh files
 STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.sh$')
 if [ -n "$STAGED_SH" ]; then
-    echo "  [1/5] Bash syntax check..."
+    echo "  [1/6] Bash syntax check..."
     while IFS= read -r file; do
         [ -f "$file" ] || continue
         if ! bash -n "$file" 2>/dev/null; then
@@ -26,12 +26,12 @@ if [ -n "$STAGED_SH" ]; then
     done <<< "$STAGED_SH"
     [ "$ERRORS" -eq 0 ] && echo "    OK: All staged .sh files parse cleanly"
 else
-    echo "  [1/5] No staged .sh files — skipping syntax check"
+    echo "  [1/6] No staged .sh files — skipping syntax check"
 fi
 
 # 2. Custom linter on staged files
 if [ -f "$SCRIPT_DIR/scripts/lint.sh" ] && [ -n "$STAGED_SH" ]; then
-    echo "  [2/5] Custom linter (RNS001-RNS010)..."
+    echo "  [2/6] Custom linter (RNS001-RNS011)..."
     if ! bash "$SCRIPT_DIR/scripts/lint.sh" --staged; then
         echo "    FAIL: Linter found errors"
         ((ERRORS++))
@@ -39,7 +39,7 @@ if [ -f "$SCRIPT_DIR/scripts/lint.sh" ] && [ -n "$STAGED_SH" ]; then
         echo "    OK: Linter passed"
     fi
 else
-    echo "  [2/5] No staged .sh files — skipping linter"
+    echo "  [2/6] No staged .sh files — skipping linter"
 fi
 
 # 3. Detect private keys in staged files (adapted from meshforge pre-commit-config.yaml)
@@ -53,7 +53,7 @@ fi
 #   -----BEGIN ENCRYPTED PRIVATE KEY-----     (encrypted PKCS#8)
 #   -----BEGIN ED25519 PRIVATE KEY-----       (rarely seen, defense-in-depth)
 #   -----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----(SSH.com multi-word format)
-echo "  [3/5] Private key detection..."
+echo "  [3/6] Private key detection..."
 PK_FOUND=0
 while IFS= read -r -d '' file; do
     [ -f "$file" ] || continue
@@ -81,7 +81,7 @@ else
 fi
 
 # 4. Detect large files (>1MB) in staged files
-echo "  [4/5] Large file check..."
+echo "  [4/6] Large file check..."
 LARGE_FOUND=0
 while IFS= read -r -d '' file; do
     [ -f "$file" ] || continue
@@ -99,7 +99,7 @@ fi
 
 # 5. ShellCheck on staged files (optional — runs if installed)
 if command -v shellcheck &>/dev/null && [ -n "$STAGED_SH" ]; then
-    echo "  [5/5] ShellCheck..."
+    echo "  [5/6] ShellCheck..."
     SC_ERRORS=0
     while IFS= read -r file; do
         [ -f "$file" ] || continue
@@ -114,7 +114,50 @@ if command -v shellcheck &>/dev/null && [ -n "$STAGED_SH" ]; then
         echo "    OK: ShellCheck passed"
     fi
 else
-    echo "  [5/5] ShellCheck not installed — skipping (install with: apt install shellcheck)"
+    echo "  [5/6] ShellCheck not installed — skipping (install with: apt install shellcheck)"
+fi
+
+# 6. Validate staged .claude/settings.json files parse as JSON
+# A typo here silently disables permission gates — this is a real foot-gun.
+# (adapted from meshforge .claude settings validation pattern)
+STAGED_JSON=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '\.claude/.*\.json$' || true)
+if [ -n "$STAGED_JSON" ]; then
+    echo "  [6/6] Claude settings JSON validation..."
+    JSON_ERRORS=0
+    if command -v python3 &>/dev/null; then
+        VALIDATOR="python3 -c"
+        VALIDATOR_ARG='import json,sys; json.load(open(sys.argv[1]))'
+    elif command -v jq &>/dev/null; then
+        VALIDATOR="jq"
+        VALIDATOR_ARG="."
+    else
+        echo "    SKIP: neither python3 nor jq available — install one to enable JSON validation"
+        VALIDATOR=""
+    fi
+    if [ -n "$VALIDATOR" ]; then
+        while IFS= read -r file; do
+            [ -f "$file" ] || continue
+            if [ "$VALIDATOR" = "jq" ]; then
+                if ! jq . "$file" >/dev/null 2>&1; then
+                    echo "    FAIL: $file is not valid JSON"
+                    ((JSON_ERRORS++))
+                fi
+            else
+                if ! python3 -c "$VALIDATOR_ARG" "$file" 2>/dev/null; then
+                    echo "    FAIL: $file is not valid JSON"
+                    ((JSON_ERRORS++))
+                fi
+            fi
+        done <<< "$STAGED_JSON"
+        if [ "$JSON_ERRORS" -gt 0 ]; then
+            echo "    BLOCKED: malformed JSON would silently break Claude Code permission gates"
+            ((ERRORS++))
+        else
+            echo "    OK: Claude settings JSON parses cleanly"
+        fi
+    fi
+else
+    echo "  [6/6] No staged .claude JSON — skipping"
 fi
 
 # Result

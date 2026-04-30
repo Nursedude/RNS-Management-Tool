@@ -15,7 +15,7 @@ check_disk_space() {
     local min_mb="${1:-500}"  # Default: 500MB minimum
     local target_path="${2:-$REAL_HOME}"
 
-    if ! command -v df &> /dev/null; then
+    if ! has_command df; then
         log_warn "df command not available, skipping disk check"
         return 0
     fi
@@ -88,7 +88,7 @@ ensure_git_safe_directory() {
 check_python() {
     print_section "Checking Python Installation"
 
-    if command -v python3 &> /dev/null; then
+    if has_command python3; then
         PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
         PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
         PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
@@ -110,8 +110,8 @@ check_python() {
 check_pip() {
     print_section "Checking pip Installation"
 
-    if command -v pip3 &> /dev/null || command -v pip &> /dev/null; then
-        if command -v pip3 &> /dev/null; then
+    if has_command pip3 || has_command pip; then
+        if has_command pip3; then
             PIP_CMD="pip3"
         else
             PIP_CMD="pip"
@@ -170,7 +170,7 @@ install_nodejs_modern() {
     print_section "Installing Modern Node.js"
 
     # Check if nodejs is already installed and up to date
-    if command -v node &> /dev/null; then
+    if has_command node; then
         NODE_VERSION=$(node --version | sed 's/v//')
         NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
 
@@ -193,7 +193,7 @@ install_nodejs_modern() {
     log_message "Installing Node.js from NodeSource"
 
     # Install curl if not present
-    if ! command -v curl &> /dev/null; then
+    if ! has_command curl; then
         print_info "Installing curl..."
         run_with_timeout "$APT_TIMEOUT" sudo apt install -y curl 2>&1 | tee -a "$UPDATE_LOG"
     fi
@@ -262,7 +262,7 @@ install_nodejs_modern() {
 }
 
 check_nodejs_version() {
-    if command -v node &> /dev/null; then
+    if has_command node; then
         NODE_VERSION=$(node --version | sed 's/v//')
         NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
 
@@ -309,7 +309,7 @@ install_rnode_tools() {
         print_success "RNS and rnodeconf installed successfully"
 
         # Verify rnodeconf is available
-        if command -v rnodeconf &> /dev/null; then
+        if has_command rnodeconf; then
             RNODECONF_VERSION=$(rnodeconf --version 2>&1 | head -1 || echo "unknown")
             print_success "rnodeconf is ready: $RNODECONF_VERSION"
             log_message "rnodeconf installed: $RNODECONF_VERSION"
@@ -508,7 +508,7 @@ install_meshchat() {
     fi
 
     # Check for Node.js
-    if ! command -v npm &> /dev/null; then
+    if ! has_command npm; then
         print_warning "Node.js/npm not found"
         echo -e "${YELLOW}MeshChat requires Node.js 18+${NC}"
         if confirm_action "Install Node.js now?" "y"; then
@@ -521,7 +521,7 @@ install_meshchat() {
     fi
 
     # Check for git
-    if ! command -v git &> /dev/null; then
+    if ! has_command git; then
         print_info "Installing git..."
         run_with_timeout "$APT_TIMEOUT" sudo apt update && run_with_timeout "$APT_TIMEOUT" sudo apt install -y git
     fi
@@ -778,7 +778,7 @@ install_sideband_pip() {
         print_success "Sideband installed successfully"
 
         # Verify installation
-        if command -v sideband &> /dev/null || "$PIP_CMD" show sbapp &>/dev/null; then
+        if has_command sideband || "$PIP_CMD" show sbapp &>/dev/null; then
             local sb_version
             sb_version=$($PIP_CMD show sbapp 2>/dev/null | grep "^Version:" | awk '{print $2}')
             print_success "Sideband v$sb_version is ready"
@@ -814,7 +814,14 @@ install_sideband_source() {
         if confirm_action "Update existing installation?" "y"; then
             pushd "$SIDEBAND_DIR" > /dev/null || return 1
             print_info "Updating from git..."
-            retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git pull origin main 2>&1 | tee -a "$UPDATE_LOG"
+            # Wrap in an if-conditional: pipefail is on, but a bare pipeline
+            # ignored the exit code and let pip install run against a stale tree.
+            if ! retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git pull origin main 2>&1 | tee -a "$UPDATE_LOG"; then
+                print_error "Failed to pull Sideband updates"
+                show_error_help "git" ""
+                popd > /dev/null || true
+                return 1
+            fi
         else
             return 1
         fi
@@ -857,7 +864,7 @@ show_sideband_appimage_info() {
     echo ""
 
     # Try to open browser if available
-    if command -v xdg-open &> /dev/null && [ -n "$DISPLAY" ]; then
+    if has_command xdg-open && [ -n "$DISPLAY" ]; then
         if confirm_action "Open releases page in browser?" "y"; then
             xdg-open "$appimage_url" 2>/dev/null &
             print_success "Opened browser"

@@ -465,3 +465,44 @@ setup() {
 @test "LINTER: linter passes cleanly on all lib/ modules" {
     bash "$SCRIPT_DIR/scripts/lint.sh" "$LIB_DIR"/*.sh
 }
+
+#########################################################
+# RNS011: Operator-personal values (hardcoded /home/<user>/ paths)
+#########################################################
+
+@test "RNS011: linter flags hardcoded /home/<user>/ path" {
+    local tmpfile
+    tmpfile=$(mktemp "${BATS_TMPDIR:-/tmp}/rns011_bad_XXXXXX.sh")
+    cat > "$tmpfile" <<'EOF'
+#!/bin/bash
+CONFIG="/home/someoperator/.reticulum/config"
+EOF
+    local output
+    output=$(bash "$SCRIPT_DIR/scripts/lint.sh" "$tmpfile" 2>&1)
+    rm -f "$tmpfile"
+    [[ "$output" == *"RNS011"* ]]
+}
+
+@test "RNS011: linter accepts \$HOME-based path" {
+    local tmpfile
+    tmpfile=$(mktemp "${BATS_TMPDIR:-/tmp}/rns011_good_XXXXXX.sh")
+    cat > "$tmpfile" <<'EOF'
+#!/bin/bash
+CONFIG="$HOME/.reticulum/config"
+ALT="${REAL_HOME}/.reticulum/config"
+EOF
+    local output
+    output=$(bash "$SCRIPT_DIR/scripts/lint.sh" "$tmpfile" 2>&1)
+    rm -f "$tmpfile"
+    [[ "$output" != *"RNS011"* ]]
+}
+
+#########################################################
+# Reliability: install pipelines must check exit codes
+#########################################################
+
+@test "Sideband install: git pull is wrapped in error-checking conditional" {
+    # Regression for: bare `retry... | tee ...` would let stale-tree pip install run
+    # silently when the upstream pull failed.
+    grep -q 'if ! retry_with_backoff.*git pull origin main' "$LIB_DIR/install.sh"
+}

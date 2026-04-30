@@ -6,11 +6,17 @@
 # Sourced by rns_management_tool.sh
 #########################################################
 
+# Lightweight wrapper around the command -v lookup — single source of truth so
+# callsites don't repeat the same probe six times across modules.
+has_command() {
+    command -v "$1" &>/dev/null
+}
+
 # Timeout wrapper for network operations
 run_with_timeout() {
     local timeout_val="$1"
     shift
-    if command -v timeout &> /dev/null; then
+    if has_command timeout; then
         timeout "$timeout_val" "$@"
     else
         # Fallback if timeout command not available
@@ -85,13 +91,21 @@ _is_transient_error() {
         *"already installed"*|*"already up-to-date"*)                 return 1 ;;
     esac
 
-    # Transient errors — worth retrying
+    # Transient errors — worth retrying.
+    # NOTE: pattern order matters — shellcheck SC2221 will flag any later
+    # pattern that's a strict superset of an earlier one. The "temporarily
+    # unavailable" wildcard already covers "resource temporarily unavailable"
+    # so we list "try again" (errno EAGAIN string) on its own.
     case "$err_lower" in
         *"connection refused"*|*"connection reset"*|*"connection timed out"*) return 0 ;;
         *"timeout"*|*"timed out"*|*"temporarily unavailable"*)               return 0 ;;
         *"network unreachable"*|*"could not resolve"*|*"name resolution"*)   return 0 ;;
         *"no route to host"*|*"broken pipe"*|*"reset by peer"*)              return 0 ;;
         *"503"*|*"502"*|*"429"*|*"service unavailable"*)                     return 0 ;;
+        # apt/dpkg lock contention — another package manager is running, retrying works
+        *"could not get lock"*|*"could not open lock file"*|*"unable to lock"*) return 0 ;;
+        # Generic transient errno strings (EAGAIN translates to "Try again")
+        *"try again"*)                                                       return 0 ;;
     esac
 
     return 0  # default: assume transient, retry
@@ -795,6 +809,8 @@ check_meshtasticd_http_api() {
         local base_url="${scheme}://127.0.0.1:${port}"
 
         # Single probe: JSON report endpoint
+        # -k OK: base_url is hard-coded to https://127.0.0.1:<port> above;
+        # localhost meshtasticd uses a self-signed cert by default.
         local response
         if response=$(curl -sk --connect-timeout 2 --max-time 3 \
             -H "Accept: application/json" \
@@ -808,6 +824,7 @@ check_meshtasticd_http_api() {
         fi
 
         # Fallback: check HTTP status on protobuf endpoint
+        # -k OK: same loopback constraint as above (127.0.0.1).
         local http_code
         http_code=$(curl -sk --connect-timeout 2 --max-time 3 \
             -o /dev/null -w "%{http_code}" \

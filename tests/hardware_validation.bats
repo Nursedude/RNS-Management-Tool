@@ -456,10 +456,11 @@ setup() {
 }
 
 @test "RNODE: rnodeconf availability checked before menu" {
-    # configure_rnode_interactive should check for rnodeconf
+    # configure_rnode_interactive should check for rnodeconf via either
+    # the raw `command -v` probe or the has_command helper (lib/utils.sh)
     local func_body
     func_body=$(sed -n '/^configure_rnode_interactive()/,/^}/p' "$RNODE_SH")
-    echo "$func_body" | grep -q 'command -v rnodeconf'
+    echo "$func_body" | grep -qE 'command -v rnodeconf|has_command rnodeconf'
 }
 
 #########################################################
