@@ -50,7 +50,11 @@ jobs:
   check-mode:
     name: Dry-Run Check Mode
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # Bumped 3 → 5 min: PR #78 saw a transient 3m+ hang where the same SHA
+    # passed on rerun in 1m35s. The detect_environment EXTERNALLY-MANAGED
+    # recursive glob can spike on slow CI runners; 5 min absorbs that variance
+    # without masking a real regression (typical run is ~1–2 min).
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 

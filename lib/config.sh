@@ -434,6 +434,210 @@ view_config_files() {
     esac
 }
 
+# Log-viewer helpers — each renders one log source. The dispatcher
+# (view_logs_menu) is intentionally thin so the file stays under the 200-line
+# function-size guideline in CLAUDE.md and each log source can be unit-tested
+# in isolation. Helpers use the _logs_ prefix to signal "private to this file".
+#
+# Convention: helpers print their output but never call pause_for_input —
+# the dispatcher owns that so behavior is uniform across all menu options.
+
+_logs_show_rnsd() {
+    print_section "rnsd Daemon Logs"
+    if has_command journalctl; then
+        print_info "Showing recent rnsd-related log entries..."
+        echo ""
+        journalctl --user -u rnsd --no-pager -n 50 2>/dev/null || \
+            journalctl -t rnsd --no-pager -n 50 2>/dev/null || \
+            print_warning "No systemd logs found for rnsd"
+    else
+        print_warning "journalctl not available"
+        print_info "Try: ps aux | grep rnsd"
+    fi
+}
+
+# meshtasticd logs (meshforge 259f22e — expanded log viewer)
+_logs_show_meshtasticd() {
+    print_section "meshtasticd Logs"
+    if ! has_command meshtasticd; then
+        print_info "meshtasticd is not installed"
+    elif has_command journalctl; then
+        print_info "Showing recent meshtasticd log entries..."
+        echo ""
+        sudo journalctl -u meshtasticd --no-pager -n 50 2>/dev/null || \
+            print_warning "No systemd logs found for meshtasticd"
+    else
+        print_warning "journalctl not available"
+    fi
+}
+
+_logs_show_reticulum_journal() {
+    print_section "Reticulum Journal Entries"
+    if has_command journalctl; then
+        print_info "Showing recent Reticulum-related journal entries..."
+        echo ""
+        # Search for rnsd, rns, lxmf across both user and system journals
+        {
+            journalctl --user -u rnsd --no-pager -n 20 2>/dev/null
+            journalctl --user --grep="reticulum\|lxmf\|nomadnet\|meshchat\|sideband" --no-pager -n 20 2>/dev/null
+        } | sort -u | tail -n 50 || print_warning "No Reticulum journal entries found"
+    else
+        print_warning "journalctl not available"
+    fi
+}
+
+_logs_show_management() {
+    print_section "Management Tool Log"
+    if [ -f "$UPDATE_LOG" ]; then
+        echo -e "${CYAN}File: $UPDATE_LOG${NC}\n"
+        tail -n 100 "$UPDATE_LOG" | show_paged_output "Recent Log Entries"
+    else
+        # Find most recent log
+        local latest_log
+        latest_log=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r | head -1)
+        if [ -n "$latest_log" ]; then
+            echo -e "${CYAN}File: $latest_log${NC}\n"
+            tail -n 100 "$latest_log" | show_paged_output "Recent Log Entries"
+        else
+            print_warning "No log files found"
+        fi
+    fi
+}
+
+_logs_show_meshchat_build() {
+    print_section "MeshChat Build Log"
+    local meshchat_build_log="${REAL_HOME}/meshchat_build.log"
+    if [ -f "$meshchat_build_log" ]; then
+        echo -e "${CYAN}File: $meshchat_build_log${NC}"
+        echo -e "${YELLOW}This log is from a failed build — it is removed on success.${NC}\n"
+        tail -n 80 "$meshchat_build_log" | show_paged_output "MeshChat Build Output"
+    else
+        print_info "No MeshChat build log found"
+        print_info "This file only exists after a failed build (removed on success)"
+        # Check management log for MeshChat-related entries
+        if [ -f "$UPDATE_LOG" ]; then
+            echo ""
+            print_info "MeshChat entries from management log:"
+            echo ""
+            grep -i "meshchat\|npm\|node\|build" "$UPDATE_LOG" 2>/dev/null | tail -n 20 || \
+                print_info "No MeshChat entries found in management log"
+        fi
+    fi
+}
+
+_logs_show_nomadnet() {
+    print_section "NomadNet Log"
+    local nomadnet_log="$REAL_HOME/.nomadnetwork/logfile"
+    if [ -f "$nomadnet_log" ]; then
+        echo -e "${CYAN}File: $nomadnet_log${NC}\n"
+        tail -n 80 "$nomadnet_log" | show_paged_output "NomadNet Log"
+    else
+        print_info "No NomadNet log found at $nomadnet_log"
+        print_info "NomadNet may not have been run yet"
+    fi
+}
+
+_logs_show_sideband() {
+    print_section "Sideband Log"
+    local sideband_log="$REAL_HOME/.sideband/logfile"
+    if [ -f "$sideband_log" ]; then
+        echo -e "${CYAN}File: $sideband_log${NC}\n"
+        tail -n 80 "$sideband_log" | show_paged_output "Sideband Log"
+    else
+        print_info "No Sideband log found at $sideband_log"
+        # Try alternate locations
+        local alt_log
+        alt_log=$(find "$REAL_HOME/.config/sideband" "$REAL_HOME/.sideband" -name "*.log" -type f 2>/dev/null | head -1)
+        if [ -n "$alt_log" ]; then
+            echo -e "${CYAN}Found log at: $alt_log${NC}\n"
+            tail -n 80 "$alt_log" | show_paged_output "Sideband Log"
+        else
+            print_info "Sideband may not have been run yet"
+        fi
+    fi
+}
+
+_logs_search() {
+    print_section "Search Logs"
+    echo -n "Enter search term: "
+    # 5-min timeout (matches the rest of the lib/ TUI prompts post-PR-#78)
+    if ! read -r -t 300 SEARCH_TERM; then
+        echo ""
+        print_warning "No search term within 5 minutes — cancelling"
+        return 1
+    fi
+    if [ -n "$SEARCH_TERM" ]; then
+        print_info "Searching for '$SEARCH_TERM' in log files..."
+        echo ""
+        # Search management logs + app logs
+        {
+            grep -F --color=always "$SEARCH_TERM" \
+                "$UPDATE_LOG" "${UPDATE_LOG}".* \
+                "$REAL_HOME"/rns_management_*.log \
+                "$REAL_HOME/meshchat_build.log" \
+                "$REAL_HOME/.nomadnetwork/logfile" \
+                "$REAL_HOME/.sideband/logfile" 2>/dev/null
+        } || print_warning "No matches found"
+    fi
+}
+
+# Enhanced log listing with line counts (meshforge 259f22e pattern)
+_logs_list_all() {
+    print_section "All Log Files"
+    echo -e "${BOLD}Management logs:${NC}\n"
+    local found_any=false
+    # Show current + rotated logs with sizes and line counts
+    for logfile in "$UPDATE_LOG" "${UPDATE_LOG}.1" "${UPDATE_LOG}.2" "${UPDATE_LOG}.3"; do
+        if [ -f "$logfile" ]; then
+            found_any=true
+            local sz lc mod_time
+            sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
+            lc=$(wc -l < "$logfile" 2>/dev/null || echo "?")
+            mod_time=$(stat -c%y "$logfile" 2>/dev/null | cut -d. -f1 || echo "?")
+            echo "  $(basename "$logfile") (${sz} bytes, ${lc} lines, modified: ${mod_time})"
+        fi
+    done
+    # Show any legacy timestamped logs
+    local legacy_logs
+    legacy_logs=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r)
+    if [ -n "$legacy_logs" ]; then
+        found_any=true
+        echo ""
+        echo -e "  ${YELLOW}Legacy timestamped logs:${NC}"
+        while IFS= read -r logfile; do
+            [ -z "$logfile" ] && continue
+            local sz lc
+            sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
+            lc=$(wc -l < "$logfile" 2>/dev/null || echo "?")
+            echo "  $(basename "$logfile") (${sz} bytes, ${lc} lines)"
+        done <<< "$legacy_logs"
+    fi
+    if [ "$found_any" = false ]; then
+        print_warning "No management logs found"
+    fi
+
+    # Application logs
+    echo ""
+    echo -e "${BOLD}Application logs:${NC}\n"
+    local app_found=false
+    for app_log in "$REAL_HOME/meshchat_build.log" "$REAL_HOME/.nomadnetwork/logfile" "$REAL_HOME/.sideband/logfile"; do
+        if [ -f "$app_log" ]; then
+            app_found=true
+            local sz lc mod_time
+            sz=$(stat -c%s "$app_log" 2>/dev/null || stat -f%z "$app_log" 2>/dev/null || echo "?")
+            lc=$(wc -l < "$app_log" 2>/dev/null || echo "?")
+            mod_time=$(stat -c%y "$app_log" 2>/dev/null | cut -d. -f1 || echo "?")
+            echo "  $(basename "$app_log") (${sz} bytes, ${lc} lines, modified: ${mod_time})"
+        fi
+    done
+    if [ "$app_found" = false ]; then
+        print_info "No application logs found"
+    fi
+
+    echo ""
+    print_info "Logs directory: $REAL_HOME/"
+}
+
 view_logs_menu() {
     while true; do
         print_header
@@ -462,203 +666,17 @@ view_logs_menu() {
         read_menu_choice LOG_CHOICE
 
         case $LOG_CHOICE in
-            1)
-                print_section "rnsd Daemon Logs"
-                if has_command journalctl; then
-                    print_info "Showing recent rnsd-related log entries..."
-                    echo ""
-                    journalctl --user -u rnsd --no-pager -n 50 2>/dev/null || \
-                        journalctl -t rnsd --no-pager -n 50 2>/dev/null || \
-                        print_warning "No systemd logs found for rnsd"
-                else
-                    print_warning "journalctl not available"
-                    print_info "Try: ps aux | grep rnsd"
-                fi
-                pause_for_input
-                ;;
-            2)
-                # meshtasticd logs (meshforge 259f22e — expanded log viewer)
-                print_section "meshtasticd Logs"
-                if ! has_command meshtasticd; then
-                    print_info "meshtasticd is not installed"
-                elif has_command journalctl; then
-                    print_info "Showing recent meshtasticd log entries..."
-                    echo ""
-                    sudo journalctl -u meshtasticd --no-pager -n 50 2>/dev/null || \
-                        print_warning "No systemd logs found for meshtasticd"
-                else
-                    print_warning "journalctl not available"
-                fi
-                pause_for_input
-                ;;
-            3)
-                print_section "Reticulum Journal Entries"
-                if has_command journalctl; then
-                    print_info "Showing recent Reticulum-related journal entries..."
-                    echo ""
-                    # Search for rnsd, rns, lxmf across both user and system journals
-                    {
-                        journalctl --user -u rnsd --no-pager -n 20 2>/dev/null
-                        journalctl --user --grep="reticulum\|lxmf\|nomadnet\|meshchat\|sideband" --no-pager -n 20 2>/dev/null
-                    } | sort -u | tail -n 50 || print_warning "No Reticulum journal entries found"
-                else
-                    print_warning "journalctl not available"
-                fi
-                pause_for_input
-                ;;
-            4)
-                print_section "Management Tool Log"
-                if [ -f "$UPDATE_LOG" ]; then
-                    echo -e "${CYAN}File: $UPDATE_LOG${NC}\n"
-                    tail -n 100 "$UPDATE_LOG" | show_paged_output "Recent Log Entries"
-                else
-                    # Find most recent log
-                    local latest_log
-                    latest_log=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r | head -1)
-                    if [ -n "$latest_log" ]; then
-                        echo -e "${CYAN}File: $latest_log${NC}\n"
-                        tail -n 100 "$latest_log" | show_paged_output "Recent Log Entries"
-                    else
-                        print_warning "No log files found"
-                    fi
-                fi
-                pause_for_input
-                ;;
-            5)
-                print_section "MeshChat Build Log"
-                local meshchat_build_log="${REAL_HOME}/meshchat_build.log"
-                if [ -f "$meshchat_build_log" ]; then
-                    echo -e "${CYAN}File: $meshchat_build_log${NC}"
-                    echo -e "${YELLOW}This log is from a failed build — it is removed on success.${NC}\n"
-                    tail -n 80 "$meshchat_build_log" | show_paged_output "MeshChat Build Output"
-                else
-                    print_info "No MeshChat build log found"
-                    print_info "This file only exists after a failed build (removed on success)"
-                    # Check management log for MeshChat-related entries
-                    if [ -f "$UPDATE_LOG" ]; then
-                        echo ""
-                        print_info "MeshChat entries from management log:"
-                        echo ""
-                        grep -i "meshchat\|npm\|node\|build" "$UPDATE_LOG" 2>/dev/null | tail -n 20 || \
-                            print_info "No MeshChat entries found in management log"
-                    fi
-                fi
-                pause_for_input
-                ;;
-            6)
-                print_section "NomadNet Log"
-                local nomadnet_log="$REAL_HOME/.nomadnetwork/logfile"
-                if [ -f "$nomadnet_log" ]; then
-                    echo -e "${CYAN}File: $nomadnet_log${NC}\n"
-                    tail -n 80 "$nomadnet_log" | show_paged_output "NomadNet Log"
-                else
-                    print_info "No NomadNet log found at $nomadnet_log"
-                    print_info "NomadNet may not have been run yet"
-                fi
-                pause_for_input
-                ;;
-            7)
-                print_section "Sideband Log"
-                local sideband_log="$REAL_HOME/.sideband/logfile"
-                if [ -f "$sideband_log" ]; then
-                    echo -e "${CYAN}File: $sideband_log${NC}\n"
-                    tail -n 80 "$sideband_log" | show_paged_output "Sideband Log"
-                else
-                    print_info "No Sideband log found at $sideband_log"
-                    # Try alternate locations
-                    local alt_log
-                    alt_log=$(find "$REAL_HOME/.config/sideband" "$REAL_HOME/.sideband" -name "*.log" -type f 2>/dev/null | head -1)
-                    if [ -n "$alt_log" ]; then
-                        echo -e "${CYAN}Found log at: $alt_log${NC}\n"
-                        tail -n 80 "$alt_log" | show_paged_output "Sideband Log"
-                    else
-                        print_info "Sideband may not have been run yet"
-                    fi
-                fi
-                pause_for_input
-                ;;
-            8)
-                print_section "Search Logs"
-                echo -n "Enter search term: "
-                read -r SEARCH_TERM
-                if [ -n "$SEARCH_TERM" ]; then
-                    print_info "Searching for '$SEARCH_TERM' in log files..."
-                    echo ""
-                    # Search management logs + app logs
-                    {
-                        grep -F --color=always "$SEARCH_TERM" \
-                            "$UPDATE_LOG" "${UPDATE_LOG}".* \
-                            "$REAL_HOME"/rns_management_*.log \
-                            "$REAL_HOME/meshchat_build.log" \
-                            "$REAL_HOME/.nomadnetwork/logfile" \
-                            "$REAL_HOME/.sideband/logfile" 2>/dev/null
-                    } || print_warning "No matches found"
-                fi
-                pause_for_input
-                ;;
-            9)
-                # Enhanced log listing with line counts (meshforge 259f22e pattern)
-                print_section "All Log Files"
-                echo -e "${BOLD}Management logs:${NC}\n"
-                local found_any=false
-                # Show current + rotated logs with sizes and line counts
-                for logfile in "$UPDATE_LOG" "${UPDATE_LOG}.1" "${UPDATE_LOG}.2" "${UPDATE_LOG}.3"; do
-                    if [ -f "$logfile" ]; then
-                        found_any=true
-                        local sz lc mod_time
-                        sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
-                        lc=$(wc -l < "$logfile" 2>/dev/null || echo "?")
-                        mod_time=$(stat -c%y "$logfile" 2>/dev/null | cut -d. -f1 || echo "?")
-                        echo "  $(basename "$logfile") (${sz} bytes, ${lc} lines, modified: ${mod_time})"
-                    fi
-                done
-                # Show any legacy timestamped logs
-                local legacy_logs
-                legacy_logs=$(find "$REAL_HOME" -maxdepth 1 -name "rns_management_*.log" -type f 2>/dev/null | sort -r)
-                if [ -n "$legacy_logs" ]; then
-                    found_any=true
-                    echo ""
-                    echo -e "  ${YELLOW}Legacy timestamped logs:${NC}"
-                    while IFS= read -r logfile; do
-                        [ -z "$logfile" ] && continue
-                        local sz lc
-                        sz=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo "?")
-                        lc=$(wc -l < "$logfile" 2>/dev/null || echo "?")
-                        echo "  $(basename "$logfile") (${sz} bytes, ${lc} lines)"
-                    done <<< "$legacy_logs"
-                fi
-                if [ "$found_any" = false ]; then
-                    print_warning "No management logs found"
-                fi
-
-                # Application logs
-                echo ""
-                echo -e "${BOLD}Application logs:${NC}\n"
-                local app_found=false
-                for app_log in "$REAL_HOME/meshchat_build.log" "$REAL_HOME/.nomadnetwork/logfile" "$REAL_HOME/.sideband/logfile"; do
-                    if [ -f "$app_log" ]; then
-                        app_found=true
-                        local sz lc mod_time
-                        sz=$(stat -c%s "$app_log" 2>/dev/null || stat -f%z "$app_log" 2>/dev/null || echo "?")
-                        lc=$(wc -l < "$app_log" 2>/dev/null || echo "?")
-                        mod_time=$(stat -c%y "$app_log" 2>/dev/null | cut -d. -f1 || echo "?")
-                        echo "  $(basename "$app_log") (${sz} bytes, ${lc} lines, modified: ${mod_time})"
-                    fi
-                done
-                if [ "$app_found" = false ]; then
-                    print_info "No application logs found"
-                fi
-
-                echo ""
-                print_info "Logs directory: $REAL_HOME/"
-                pause_for_input
-                ;;
-            0|"")
-                return
-                ;;
-            *)
-                print_error "Invalid option"
-                ;;
+            1) _logs_show_rnsd; pause_for_input ;;
+            2) _logs_show_meshtasticd; pause_for_input ;;
+            3) _logs_show_reticulum_journal; pause_for_input ;;
+            4) _logs_show_management; pause_for_input ;;
+            5) _logs_show_meshchat_build; pause_for_input ;;
+            6) _logs_show_nomadnet; pause_for_input ;;
+            7) _logs_show_sideband; pause_for_input ;;
+            8) _logs_search; pause_for_input ;;
+            9) _logs_list_all; pause_for_input ;;
+            0|"") return ;;
+            *) print_error "Invalid option" ;;
         esac
     done
 }
