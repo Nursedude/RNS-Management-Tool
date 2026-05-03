@@ -1,0 +1,9 @@
+#!/bin/bash
+# Pre-push hook — fast lint check before push.
+# Bypass: git push --no-verify
+set -u
+remote="${1:-origin}"
+[ "$remote" = "origin" ] || exit 0
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+[ -x "$REPO_ROOT/scripts/healthcheck.sh" ] || exit 0
+"$REPO_ROOT/scripts/healthcheck.sh" --lint-only
