@@ -85,6 +85,37 @@ teardown() {
 }
 
 #########################################################
+# read_menu_choice / confirm_action — EOF handling (regression)
+# Bug: $? taken inside `if ! read; then` was the negated-test status (0),
+# not read's, so idle-timeout never fired and EOF spun the menu loop forever.
+#########################################################
+
+@test "FUNC: read_menu_choice returns non-zero on EOF (no infinite menu loop)" {
+    # Closed stdin → read fails with EOF (rc=1). The function must return
+    # non-zero so the main loop's 3-strike guard can break instead of spinning.
+    run read_menu_choice _choice </dev/null
+    [ "$status" -ne 0 ]
+}
+
+@test "FUNC: read_menu_choice leaves choice empty on EOF" {
+    _choice="STALE"
+    read_menu_choice _choice </dev/null || true
+    [ -z "$_choice" ]
+}
+
+@test "FUNC: confirm_action default=y does NOT auto-affirm on EOF" {
+    # On closed stdin a 'y'-default prompt must decline, not auto-proceed a
+    # heavyweight op (apt upgrade, backup).
+    run confirm_action "Proceed?" y </dev/null
+    [ "$status" -ne 0 ]
+}
+
+@test "FUNC: confirm_action default=n declines on EOF" {
+    run confirm_action "Proceed?" n </dev/null
+    [ "$status" -ne 0 ]
+}
+
+#########################################################
 # retry_with_backoff — behavioral tests
 #########################################################
 

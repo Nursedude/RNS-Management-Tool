@@ -208,15 +208,25 @@ show_paged_output() {
 # Usage: read_menu_choice VARIABLE_NAME
 read_menu_choice() {
     local -n _result=$1
-    if ! read -r -t "$MENU_READ_TIMEOUT" _result; then
-        if [ $? -gt 128 ]; then
-            log_message "Session timed out after ${MENU_READ_TIMEOUT}s idle"
-            echo ""
-            print_info "Session timed out due to inactivity"
-            exit 0
-        fi
-        _result=""
+    local rc
+    # Capture read's exit status DIRECTLY — must not be taken inside an
+    # `if ! read ...; then` block, where $? would be the negated-test status (0)
+    # rather than read's. read >128 = timeout; 1 = EOF/closed stdin.
+    read -r -t "$MENU_READ_TIMEOUT" _result
+    rc=$?
+    if [ "$rc" -gt 128 ]; then
+        log_message "Session timed out after ${MENU_READ_TIMEOUT}s idle"
+        echo ""
+        print_info "Session timed out due to inactivity"
+        exit 0
     fi
+    if [ "$rc" -ne 0 ]; then
+        # EOF / closed stdin / read error — return non-zero so the caller's
+        # bounded-retry guard breaks the menu loop instead of spinning forever.
+        _result=""
+        return 1
+    fi
+    return 0
 }
 
 pause_for_input() {
@@ -310,13 +320,16 @@ confirm_action() {
     local message="$1"
     local default="${2:-n}"  # Default to 'n' if not specified
 
+    local response
     if [ "$default" = "y" ]; then
         echo -n "$message (Y/n): "
-        read -r response
+        # On EOF/closed stdin, read fails — decline rather than auto-affirm a
+        # heavyweight op (apt upgrade, backup) just because default is 'y'.
+        read -r response || return 1
         [[ ! "$response" =~ ^[Nn]$ ]]
     else
         echo -n "$message (y/N): "
-        read -r response
+        read -r response || return 1
         [[ "$response" =~ ^[Yy]$ ]]
     fi
 }
