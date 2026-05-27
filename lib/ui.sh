@@ -210,7 +210,7 @@ read_menu_choice() {
     local -n _result=$1
     local rc
     # Capture read's exit status DIRECTLY — must not be taken inside an
-    # `if ! read ...; then` block, where $? would be the negated-test status (0)
+    # "if ! read ...; then" block, where $? would be the negated-test status (0)
     # rather than read's. read >128 = timeout; 1 = EOF/closed stdin.
     read -r -t "$MENU_READ_TIMEOUT" _result
     rc=$?
