@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Windows keep-alive (Phase 1B)**: the Services menu now registers logon-triggered
+  Scheduled Tasks with **restart-on-failure** (up to 3×/min) for `rnsd` and MeshChatX —
+  a Windows-native watchdog (no admin, runs in the user session). New menu entries for
+  enabling/disabling each and an auto-start status view; Enable offers to start the task
+  immediately so it can be tested without logging off. `Stop rnsd` now warns when
+  keep-alive is active (it will restart the daemon). New functions:
+  `Enable-MeshChatXAutoStart`, `Disable-MeshChatXAutoStart`, `Get-RnsAutoStartStatus`;
+  `Enable-RnsdAutoStart` upgraded with the watchdog settings.
 - **RNS environment doctor** (diagnostics): new step in both the bash (now 8-step)
   and PowerShell (now 7-step) diagnostics. Detects the version/ownership/PATH
   gotchas a naive `pip show rns` misses — *which* RNS `python` actually imports and

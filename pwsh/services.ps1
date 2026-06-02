@@ -3,6 +3,11 @@
 # Dot-sourced by rns_management_tool.ps1
 #########################################################
 
+# Scheduled-task names for the Windows keep-alive (logon trigger + restart-on-failure).
+# No admin required — tasks run in the user's interactive session at RunLevel Limited.
+$Script:RnsdTaskName      = "RNS_rnsd_autostart"
+$Script:MeshChatXTaskName = "RNS_meshchatx_autostart"
+
 function Show-Status {
     Show-Section "Reticulum Status"
 
@@ -104,6 +109,12 @@ function Stop-RNSDaemon {
         }
     } catch {
         Write-ColorOutput "Error stopping rnsd: $_" "Error"
+    }
+
+    # Honesty: if keep-alive auto-start is enabled, the task will bring rnsd back.
+    if (Get-ScheduledTask -TaskName $Script:RnsdTaskName -ErrorAction SilentlyContinue) {
+        Write-ColorOutput "Note: rnsd auto-start (keep-alive) is enabled — it will restart on failure / at next logon." "Warning"
+        Write-Host "  To keep rnsd stopped, disable auto-start first (Services > 12)." -ForegroundColor Yellow
     }
 
     pause
@@ -255,17 +266,18 @@ function Invoke-RemoteCommand {
 }
 
 function Enable-RnsdAutoStart {
-    Show-Section "Enable rnsd Auto-Start"
+    Show-Section "Enable rnsd Auto-Start (keep-alive)"
 
     $rnsdPath = (Get-Command rnsd -ErrorAction SilentlyContinue).Source
     if (-not $rnsdPath) {
         Write-ColorOutput "rnsd not found. Install RNS first." "Error"
+        Write-Host "  Tip: Diagnostics > RNS Environment Doctor checks whether rnsd is on PATH." -ForegroundColor Yellow
         pause
         return
     }
 
     try {
-        $taskName = "RNS_rnsd_autostart"
+        $taskName = $Script:RnsdTaskName
 
         # Check if task already exists
         $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
@@ -282,10 +294,30 @@ function Enable-RnsdAutoStart {
         $action = New-ScheduledTaskAction -Execute $rnsdPath -Argument "--daemon"
         $trigger = New-ScheduledTaskTrigger -AtLogOn
         $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        # Watchdog: restart up to 3x at 1-minute intervals if rnsd exits unexpectedly.
+        # No execution time limit (it is a long-running daemon); single instance only.
+        $settings = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+            -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 
-        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Description "Auto-start rnsd daemon at logon"
-        Write-ColorOutput "Auto-start enabled: rnsd will start at logon" "Success"
-        Write-RnsLog "Enabled rnsd auto-start via Task Scheduler" "INFO"
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+            -Principal $principal -Settings $settings `
+            -Description "Auto-start rnsd at logon with restart-on-failure" | Out-Null
+        Write-ColorOutput "Auto-start enabled: rnsd starts at logon and restarts on failure" "Success"
+        Write-RnsLog "Enabled rnsd keep-alive task via Task Scheduler" "INFO"
+
+        # Offer to start it now so it can be tested without logging off.
+        $now = Read-Host "Start rnsd now via the task? (Y/n)"
+        if ($now -ne 'n' -and $now -ne 'N') {
+            Start-ScheduledTask -TaskName $taskName
+            Start-Sleep -Seconds 2
+            if (Get-Process -Name "rnsd" -ErrorAction SilentlyContinue) {
+                Write-ColorOutput "rnsd is running" "Success"
+            } else {
+                Write-ColorOutput "rnsd not detected yet — give it a few seconds" "Warning"
+            }
+        }
     } catch {
         Write-ColorOutput "Failed to create auto-start task: $_" "Error"
     }
@@ -296,7 +328,7 @@ function Enable-RnsdAutoStart {
 function Disable-RnsdAutoStart {
     Show-Section "Disable rnsd Auto-Start"
 
-    $taskName = "RNS_rnsd_autostart"
+    $taskName = $Script:RnsdTaskName
     $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     if ($existing) {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
@@ -306,6 +338,99 @@ function Disable-RnsdAutoStart {
         Write-ColorOutput "No auto-start task found" "Info"
     }
 
+    pause
+}
+
+function Enable-MeshChatXAutoStart {
+    Show-Section "Enable MeshChatX Auto-Start (keep-alive)"
+
+    $mcxPath = (Get-Command meshchatx -ErrorAction SilentlyContinue).Source
+    if (-not $mcxPath) {
+        Write-ColorOutput "meshchatx not found. Install MeshChatX first (main menu 'm')." "Error"
+        Write-Host "  Tip: Diagnostics > RNS Environment Doctor checks whether meshchatx is on PATH." -ForegroundColor Yellow
+        pause
+        return
+    }
+
+    try {
+        $taskName = $Script:MeshChatXTaskName
+
+        $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($existing) {
+            Write-ColorOutput "MeshChatX auto-start task already exists" "Warning"
+            $replace = Read-Host "Replace existing task? (y/N)"
+            if ($replace -ne 'y' -and $replace -ne 'Y') {
+                pause
+                return
+            }
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+        }
+
+        $action = New-ScheduledTaskAction -Execute $mcxPath -Argument "--headless"
+        $trigger = New-ScheduledTaskTrigger -AtLogOn
+        $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+            -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+            -Principal $principal -Settings $settings `
+            -Description "Auto-start MeshChatX (headless web UI) at logon with restart-on-failure" | Out-Null
+        Write-ColorOutput "Auto-start enabled: MeshChatX serves https://127.0.0.1:8000 at logon" "Success"
+        Write-RnsLog "Enabled MeshChatX keep-alive task via Task Scheduler" "INFO"
+
+        $now = Read-Host "Start MeshChatX now via the task? (Y/n)"
+        if ($now -ne 'n' -and $now -ne 'N') {
+            Start-ScheduledTask -TaskName $taskName
+            Write-ColorOutput "Started — open https://127.0.0.1:8000 (self-signed cert; browser will warn)" "Info"
+        }
+    } catch {
+        Write-ColorOutput "Failed to create MeshChatX auto-start task: $_" "Error"
+    }
+
+    pause
+}
+
+function Disable-MeshChatXAutoStart {
+    Show-Section "Disable MeshChatX Auto-Start"
+
+    $taskName = $Script:MeshChatXTaskName
+    $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existing) {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+        Write-ColorOutput "MeshChatX auto-start disabled" "Success"
+        Write-RnsLog "Disabled MeshChatX auto-start" "INFO"
+    } else {
+        Write-ColorOutput "No MeshChatX auto-start task found" "Info"
+    }
+
+    pause
+}
+
+function Get-RnsAutoStartStatus {
+    Show-Section "Auto-Start Status"
+
+    $tasks = @(
+        @{ Name = $Script:RnsdTaskName;      Label = "rnsd" },
+        @{ Name = $Script:MeshChatXTaskName; Label = "MeshChatX" }
+    )
+    foreach ($t in $tasks) {
+        $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
+        if ($task) {
+            Write-ColorOutput "$($t.Label): auto-start ENABLED (state: $($task.State))" "Success"
+            $info = Get-ScheduledTaskInfo -TaskName $t.Name -ErrorAction SilentlyContinue
+            if ($info -and $info.LastRunTime) {
+                Write-Host "    Last run: $($info.LastRunTime)   Last result: $($info.LastTaskResult)"
+            }
+        } else {
+            Write-Host "  $($t.Label): auto-start disabled" -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  Keep-alive restarts the process up to 3x (1-min intervals) if it exits unexpectedly." -ForegroundColor Cyan
+    Write-Host "  To keep a service stopped, disable its auto-start first." -ForegroundColor Cyan
     pause
 }
 
@@ -320,6 +445,14 @@ function Show-ServiceMenu {
             Write-Host "Running (PID $($rnsdProcess.Id))" -ForegroundColor Green
         } else {
             Write-Host "Stopped" -ForegroundColor Yellow
+        }
+
+        $rnsdAuto = Get-ScheduledTask -TaskName $Script:RnsdTaskName -ErrorAction SilentlyContinue
+        Write-Host "  Auto-start (keep-alive): " -NoNewline
+        if ($rnsdAuto) {
+            Write-Host "Enabled" -ForegroundColor Green
+        } else {
+            Write-Host "Disabled" -ForegroundColor Yellow
         }
         Write-Host ""
 
@@ -336,10 +469,13 @@ function Show-ServiceMenu {
         Write-Host "   8) Transfer file (rncp)"
         Write-Host "   9) Remote command (rnx)"
         Write-Host ""
-        Write-Host "  --- Identity & Boot ---" -ForegroundColor Cyan
+        Write-Host "  --- Identity & Auto-Start ---" -ForegroundColor Cyan
         Write-Host "  10) Identity management (rnid)"
-        Write-Host "  11) Enable auto-start on boot"
-        Write-Host "  12) Disable auto-start on boot"
+        Write-Host "  11) Enable rnsd auto-start (keep-alive)"
+        Write-Host "  12) Disable rnsd auto-start"
+        Write-Host "  13) Enable MeshChatX auto-start (keep-alive)"
+        Write-Host "  14) Disable MeshChatX auto-start"
+        Write-Host "  15) Auto-start status"
         Write-Host ""
         Write-Host "   0) Back to Main Menu"
         Write-Host ""
@@ -359,6 +495,9 @@ function Show-ServiceMenu {
             "10" { Invoke-IdentityManagement }
             "11" { Enable-RnsdAutoStart }
             "12" { Disable-RnsdAutoStart }
+            "13" { Enable-MeshChatXAutoStart }
+            "14" { Disable-MeshChatXAutoStart }
+            "15" { Get-RnsAutoStartStatus }
             "0"  { return }
             ""   { return }
             default { Write-ColorOutput "Invalid option" "Error"; Start-Sleep -Seconds 1 }

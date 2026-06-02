@@ -363,7 +363,7 @@ This is the **only MeshForge ecosystem tool with native Windows support**.
 | | 21+ board support | ✅ | ⚠️ via WSL | Full support through WSL bridge |
 | **Services** | Start/Stop/Restart rnsd | ✅ | ✅ | |
 | | Network tools (rncp, rnx, rnid) | ✅ | ✅ | |
-| | Auto-start on boot | ✅ | ✅ | systemd / Task Scheduler |
+| | Auto-start + keep-alive | ✅ | ✅ | systemd-user / Scheduled Task with restart-on-failure |
 | | meshtasticd integration | ✅ | ❌ | RPi/Linux only |
 | | Port conflict resolution | ✅ | ❌ | Detects + offers to fix at startup |
 | **Backup** | Automatic timestamped | ✅ | ✅ | |
