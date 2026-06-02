@@ -546,16 +546,16 @@ cleanup_partial_install() {
 # install, so this only warns if something left an older RNS behind. We do NOT
 # pin or fork RNS (that is MeshForge's job, not this lightweight tool's).
 ensure_rns_floor() {
-    local floor="${1:-$RNS_MIN_VERSION}" cur
+    local cur
     cur=$(get_installed_version "rns")
     [ -z "$cur" ] && return 0
     # sort -V -C succeeds when the input is already in ascending order, i.e.
-    # floor <= cur. If it fails, cur is below the floor.
-    if printf '%s\n%s\n' "$floor" "$cur" | sort -V -C 2>/dev/null; then
+    # RNS_MIN_VERSION <= cur. If it fails, cur is below the floor.
+    if printf '%s\n%s\n' "$RNS_MIN_VERSION" "$cur" | sort -V -C 2>/dev/null; then
         return 0
     fi
-    print_warning "RNS $cur is below MeshChatX's required $floor — pip should have upgraded it"
-    log_warn "RNS $cur below MeshChatX floor $floor; verify the install"
+    print_warning "RNS $cur is below MeshChatX's required $RNS_MIN_VERSION — pip should have upgraded it"
+    log_warn "RNS $cur below MeshChatX floor $RNS_MIN_VERSION; verify the install"
     return 0
 }
 
