@@ -131,6 +131,7 @@ EXPECTED_FUNCTIONS=(
     diag_check_configuration
     diag_check_services
     diag_check_network
+    diag_rns_doctor
     diag_report_summary
     # Installation
     install_reticulum_ecosystem

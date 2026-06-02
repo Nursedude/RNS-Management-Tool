@@ -80,7 +80,7 @@ graph TB
 │   ├── rnode.sh                    # RNODE device configuration and management
 │   ├── services.sh                 # Service management, meshtasticd, autostart
 │   ├── backup.sh                   # Backup/restore, export/import
-│   ├── diagnostics.sh              # 6-step diagnostics with return-value pattern
+│   ├── diagnostics.sh              # 8-step diagnostics (incl. RNS environment doctor), return-value pattern
 │   ├── config.sh                   # Config templates, editor, viewer, logs
 │   └── advanced.sh                 # Emergency mode, advanced menu, startup
 │
@@ -92,7 +92,7 @@ graph TB
 │   ├── rnode.ps1                   # Serial port, radio config, EEPROM, bootloader
 │   ├── services.ps1                # Daemon control, network tools, identity, autostart
 │   ├── backup.ps1                  # Backup/restore, export/import, list/delete
-│   ├── diagnostics.ps1             # 6-step diagnostic checks
+│   ├── diagnostics.ps1             # 7-step diagnostic checks (incl. RNS environment doctor)
 │   └── advanced.ps1                # Cache, factory reset, updates, config management
 │
 ├── config_templates/               # Pre-built RNS configurations

@@ -1,9 +1,9 @@
 ﻿#Requires -Modules Pester
 <#
 .SYNOPSIS
-    Pester tests for pwsh/diagnostics.ps1 — 6-step system diagnostics
+    Pester tests for pwsh/diagnostics.ps1 — 7-step system diagnostics
 .NOTES
-    Covers: 6-step diagnostic pipeline, issue/warning counters,
+    Covers: 7-step diagnostic pipeline, issue/warning counters,
     environment checks, RNS tool detection, config validation,
     service health, network/USB, summary with recommendations.
     Uses .Contains() for literal string checks to avoid regex/source-text mismatch.
@@ -19,23 +19,24 @@ BeforeAll {
 
 Describe "Function Existence" {
 
-    It "All 7 diagnostic functions exist" {
+    It "All 8 diagnostic functions exist" {
         $Script:DiagSource.Contains('function Invoke-DiagCheckEnvironment') | Should -BeTrue
         $Script:DiagSource.Contains('function Invoke-DiagCheckRnsTool') | Should -BeTrue
         $Script:DiagSource.Contains('function Invoke-DiagCheckConfiguration') | Should -BeTrue
         $Script:DiagSource.Contains('function Invoke-DiagCheckService') | Should -BeTrue
         $Script:DiagSource.Contains('function Invoke-DiagCheckNetwork') | Should -BeTrue
+        $Script:DiagSource.Contains('function Invoke-DiagRnsDoctor') | Should -BeTrue
         $Script:DiagSource.Contains('function Invoke-DiagReportSummary') | Should -BeTrue
         $Script:DiagSource.Contains('function Show-Diagnostic') | Should -BeTrue
     }
 
-    It "diagnostics.ps1 has exactly 7 functions" {
+    It "diagnostics.ps1 has exactly 8 functions" {
         $functionCount = ([regex]::Matches(
             $Script:DiagSource,
             '^\s*function\s+',
             [System.Text.RegularExpressions.RegexOptions]::Multiline
         )).Count
-        $functionCount | Should -Be 7
+        $functionCount | Should -Be 8
     }
 }
 
@@ -54,7 +55,7 @@ Describe "Diagnostic Counters" {
     }
 }
 
-Describe "Step 1/6: Invoke-DiagCheckEnvironment" {
+Describe "Step 1/7: Invoke-DiagCheckEnvironment" {
 
     BeforeAll {
         $fnIdx = $Script:DiagSource.IndexOf('function Invoke-DiagCheckEnvironment')
@@ -64,7 +65,7 @@ Describe "Step 1/6: Invoke-DiagCheckEnvironment" {
     }
 
     It "Displays step header" {
-        $Script:DiagSource.Contains('Step 1/6') | Should -BeTrue
+        $Script:DiagSource.Contains('Step 1/7') | Should -BeTrue
     }
 
     It "Shows platform and architecture info" {
@@ -90,7 +91,7 @@ Describe "Step 1/6: Invoke-DiagCheckEnvironment" {
     }
 }
 
-Describe "Step 2/6: Invoke-DiagCheckRnsTool" {
+Describe "Step 2/7: Invoke-DiagCheckRnsTool" {
 
     It "Checks all 8 RNS tools" {
         $Script:DiagSource.Contains('"rnsd"') | Should -BeTrue
@@ -116,7 +117,7 @@ Describe "Step 2/6: Invoke-DiagCheckRnsTool" {
     }
 }
 
-Describe "Step 3/6: Invoke-DiagCheckConfiguration" {
+Describe "Step 3/7: Invoke-DiagCheckConfiguration" {
 
     BeforeAll {
         $fnIdx = $Script:DiagSource.IndexOf('function Invoke-DiagCheckConfiguration')
@@ -144,7 +145,7 @@ Describe "Step 3/6: Invoke-DiagCheckConfiguration" {
     }
 }
 
-Describe "Step 4/6: Invoke-DiagCheckService" {
+Describe "Step 4/7: Invoke-DiagCheckService" {
 
     BeforeAll {
         $fnIdx = $Script:DiagSource.IndexOf('function Invoke-DiagCheckService')
@@ -169,7 +170,7 @@ Describe "Step 4/6: Invoke-DiagCheckService" {
     }
 }
 
-Describe "Step 5/6: Invoke-DiagCheckNetwork" {
+Describe "Step 5/7: Invoke-DiagCheckNetwork" {
 
     It "Enumerates network adapters" {
         $Script:DiagSource.Contains('Get-NetAdapter') | Should -BeTrue
@@ -192,7 +193,48 @@ Describe "Step 5/6: Invoke-DiagCheckNetwork" {
     }
 }
 
-Describe "Step 6/6: Invoke-DiagReportSummary" {
+Describe "Step 6/7: Invoke-DiagRnsDoctor" {
+
+    BeforeAll {
+        $fnIdx = $Script:DiagSource.IndexOf('function Invoke-DiagRnsDoctor')
+        $fnEnd = $Script:DiagSource.IndexOf("`nfunction ", $fnIdx + 10)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:DiagSource.Length }
+        $Script:DoctorBlock = $Script:DiagSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Displays step header" {
+        $Script:DiagSource.Contains('Step 6/7') | Should -BeTrue
+    }
+
+    It "Detects the Microsoft Store python alias stub" {
+        $Script:DoctorBlock.Contains('WindowsApps') | Should -BeTrue
+        $Script:DoctorBlock.Contains('App execution aliases') | Should -BeTrue
+    }
+
+    It "Imports RNS to find the live version and path" {
+        $Script:DoctorBlock.Contains('import RNS') | Should -BeTrue
+        $Script:DoctorBlock.Contains('RNS.__file__') | Should -BeTrue
+    }
+
+    It "Flags pip-vs-import version mismatch (shadowed install)" {
+        $Script:DoctorBlock.Contains('Version mismatch') | Should -BeTrue
+    }
+
+    It "Flags rnsd not on PATH while RNS importable" {
+        $Script:DoctorBlock.Contains('not on PATH') | Should -BeTrue
+    }
+
+    It "Checks the MeshChatX environment too" {
+        $Script:DoctorBlock.Contains('reticulum-meshchatx') | Should -BeTrue
+    }
+
+    It "Increments warning or issue counters" {
+        ($Script:DoctorBlock.Contains('$Script:DiagWarnings++') -or `
+         $Script:DoctorBlock.Contains('$Script:DiagIssues++')) | Should -BeTrue
+    }
+}
+
+Describe "Step 7/7: Invoke-DiagReportSummary" {
 
     It "Reports healthy when no issues" {
         $Script:DiagSource.Contains('All checks passed') | Should -BeTrue
@@ -214,7 +256,7 @@ Describe "Step 6/6: Invoke-DiagReportSummary" {
 
 Describe "Show-Diagnostic: Orchestrator" {
 
-    It "Runs all 6 diagnostic steps in order" {
+    It "Runs all 7 diagnostic steps in order" {
         $fnIdx = $Script:DiagSource.IndexOf('function Show-Diagnostic')
         $block = $Script:DiagSource.Substring($fnIdx)
 
@@ -223,7 +265,8 @@ Describe "Show-Diagnostic: Orchestrator" {
         $idx3 = $block.IndexOf('Invoke-DiagCheckConfiguration')
         $idx4 = $block.IndexOf('Invoke-DiagCheckService')
         $idx5 = $block.IndexOf('Invoke-DiagCheckNetwork')
-        $idx6 = $block.IndexOf('Invoke-DiagReportSummary')
+        $idx6 = $block.IndexOf('Invoke-DiagRnsDoctor')
+        $idx7 = $block.IndexOf('Invoke-DiagReportSummary')
 
         $idx1 | Should -BeGreaterThan 0
         $idx2 | Should -BeGreaterThan $idx1
@@ -231,10 +274,11 @@ Describe "Show-Diagnostic: Orchestrator" {
         $idx4 | Should -BeGreaterThan $idx3
         $idx5 | Should -BeGreaterThan $idx4
         $idx6 | Should -BeGreaterThan $idx5
+        $idx7 | Should -BeGreaterThan $idx6
     }
 
-    It "Describes running 6-step diagnostic" {
-        $Script:DiagSource.Contains('6-step diagnostic') | Should -BeTrue
+    It "Describes running 7-step diagnostic" {
+        $Script:DiagSource.Contains('7-step diagnostic') | Should -BeTrue
     }
 }
 

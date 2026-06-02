@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **RNS environment doctor** (diagnostics): new step in both the bash (now 8-step)
+  and PowerShell (now 7-step) diagnostics. Detects the version/ownership/PATH
+  gotchas a naive `pip show rns` misses — *which* RNS `python` actually imports and
+  from where, **pip-reported vs imported version mismatch** (shadowed installs),
+  `rnsd`/`meshchatx` not being on PATH, and (Linux) `~/.reticulum` owned by the
+  wrong user from a `sudo pip`. On Windows it also flags the Microsoft Store
+  `python` alias-stub trap and multiple-interpreter confusion.
+
 ### Changed
 - **MeshChat → MeshChatX migration**: Menu option 4 now installs MeshChatX
   (`reticulum-meshchatx`) from PyPI instead of the deprecated
