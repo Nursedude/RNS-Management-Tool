@@ -10,7 +10,7 @@
 # Exit: 0 ok / 1 lint / 2 smoke
 
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 print_ok()   { printf "\033[1;32m✓\033[0m %s\n" "$1"; }
 print_fail() { printf "\033[1;31m✗\033[0m %s\n" "$1"; }

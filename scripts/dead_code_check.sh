@@ -18,6 +18,7 @@ if [ -t 1 ]; then
     YELLOW='\033[1;33m'
     NC='\033[0m'
 else
+    # shellcheck disable=SC2034  # color vars kept in pairs; some unused by design
     RED='' GREEN='' YELLOW='' NC=''
 fi
 
