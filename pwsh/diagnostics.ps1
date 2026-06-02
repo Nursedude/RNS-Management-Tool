@@ -1,5 +1,5 @@
 ﻿#########################################################
-# pwsh/diagnostics.ps1 — System diagnostics (6-step)
+# pwsh/diagnostics.ps1 — System diagnostics (7-step, incl. RNS environment doctor)
 # Dot-sourced by rns_management_tool.ps1
 #########################################################
 
@@ -7,7 +7,7 @@ $Script:DiagIssues = 0
 $Script:DiagWarnings = 0
 
 function Invoke-DiagCheckEnvironment {
-    Write-Host "▶ Step 1/6: Environment & Prerequisites" -ForegroundColor Blue
+    Write-Host "▶ Step 1/7: Environment & Prerequisites" -ForegroundColor Blue
     Write-Host ""
 
     Write-Host "  Platform:      Windows $([Environment]::OSVersion.Version.Major).$([Environment]::OSVersion.Version.Minor)"
@@ -46,7 +46,7 @@ function Invoke-DiagCheckEnvironment {
 }
 
 function Invoke-DiagCheckRnsTool {
-    Write-Host "▶ Step 2/6: RNS Tool Availability" -ForegroundColor Blue
+    Write-Host "▶ Step 2/7: RNS Tool Availability" -ForegroundColor Blue
     Write-Host ""
 
     $tools = @(
@@ -79,7 +79,7 @@ function Invoke-DiagCheckRnsTool {
 }
 
 function Invoke-DiagCheckConfiguration {
-    Write-Host "▶ Step 3/6: Configuration Validation" -ForegroundColor Blue
+    Write-Host "▶ Step 3/7: Configuration Validation" -ForegroundColor Blue
     Write-Host ""
 
     $configDir = Join-Path $env:USERPROFILE ".reticulum"
@@ -112,7 +112,7 @@ function Invoke-DiagCheckConfiguration {
 }
 
 function Invoke-DiagCheckService {
-    Write-Host "▶ Step 4/6: Service Health" -ForegroundColor Blue
+    Write-Host "▶ Step 4/7: Service Health" -ForegroundColor Blue
     Write-Host ""
 
     $rnsdProcess = Get-Process -Name "rnsd" -ErrorAction SilentlyContinue
@@ -156,7 +156,7 @@ function Invoke-DiagCheckService {
 }
 
 function Invoke-DiagCheckNetwork {
-    Write-Host "▶ Step 5/6: Network & Interfaces" -ForegroundColor Blue
+    Write-Host "▶ Step 5/7: Network & Interfaces" -ForegroundColor Blue
     Write-Host ""
 
     # Network adapters
@@ -228,8 +228,93 @@ function Invoke-DiagCheckNetwork {
     Write-Host ""
 }
 
+function Invoke-DiagRnsDoctor {
+    # The "which RNS is actually live, and is its environment sane" check.
+    # On Windows the big traps are the Microsoft Store 'python' alias stub and
+    # pip --user putting console scripts in a Scripts dir that isn't on PATH.
+    Write-Host "▶ Step 6/7: RNS Environment Doctor" -ForegroundColor Blue
+    Write-Host ""
+
+    $py = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $py) {
+        Write-ColorOutput "Python not found - skipping RNS environment checks" "Warning"
+        $Script:DiagWarnings++
+        Write-Host ""
+        return
+    }
+
+    # 1. Microsoft Store App-execution-alias stub trap
+    if ($py.Source -like "*\WindowsApps\*") {
+        Write-ColorOutput "'python' resolves to the Microsoft Store alias stub" "Warning"
+        Write-Host "  This stub opens the Store instead of running Python and breaks pip installs." -ForegroundColor Yellow
+        Write-Host "  Fix: install real Python (winget install Python.Python.3.11), or turn off the" -ForegroundColor Yellow
+        Write-Host "       'python' alias in Settings > Apps > Advanced > App execution aliases." -ForegroundColor Yellow
+        $Script:DiagWarnings++
+    } else {
+        Write-Host "  python: $($py.Source)"
+    }
+
+    # 2. Which RNS python imports, and from where
+    $imp = @(& python -c "import RNS, os; print(RNS.__version__); print(os.path.dirname(os.path.dirname(RNS.__file__)))" 2>$null)
+    $importedVer = if ($imp.Count -ge 1) { $imp[0] } else { $null }
+    $importedPath = if ($imp.Count -ge 2) { $imp[1] } else { $null }
+
+    # pip-reported version
+    $pipVer = $null
+    $showOut = Invoke-Pip show rns 2>$null | Select-String '^Version:'
+    if ($showOut) { $pipVer = ($showOut.ToString() -split '\s+')[1] }
+
+    if (-not $importedVer) {
+        if ($pipVer) {
+            Write-ColorOutput "RNS is pip-installed ($pipVer) but 'python' cannot import it" "Error"
+            Write-Host "  A different Python is on PATH than the one pip installed into." -ForegroundColor Yellow
+            $Script:DiagIssues++
+        } else {
+            Write-Host "  [i] RNS not installed (python cannot import RNS)" -ForegroundColor Cyan
+        }
+    } else {
+        Write-ColorOutput "python imports RNS $importedVer" "Success"
+        Write-Host "  From: $importedPath"
+        if ($pipVer -and $pipVer -ne $importedVer) {
+            Write-ColorOutput "Version mismatch: pip reports $pipVer but python imports $importedVer" "Warning"
+            Write-Host "  A second RNS install is shadowing the other." -ForegroundColor Yellow
+            $Script:DiagWarnings++
+        }
+    }
+
+    # 3. console scripts reachable on PATH
+    if ($importedVer -and -not (Get-Command rnsd -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput "RNS importable but 'rnsd' not on PATH" "Warning"
+        Write-Host "  pip --user puts console scripts in a Scripts dir that may not be on PATH." -ForegroundColor Yellow
+        Write-Host "  Check: python -c `"import site,os;print(os.path.join(site.USER_BASE,'Scripts'))`"" -ForegroundColor Yellow
+        $Script:DiagWarnings++
+    }
+
+    # 4. multiple Python launchers (a common source of version confusion)
+    $allPy = Get-Command python, python3, py -All -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source } | Select-Object -ExpandProperty Source -Unique
+    if ($allPy.Count -gt 1) {
+        Write-Host "  [i] Multiple Python launchers on PATH:" -ForegroundColor Cyan
+        foreach ($p in $allPy) { Write-Host "      $p" }
+    }
+
+    # 5. MeshChatX environment
+    $mcxOut = Invoke-Pip show reticulum-meshchatx 2>$null | Select-String '^Version:'
+    if ($mcxOut) {
+        $mcxVer = ($mcxOut.ToString() -split '\s+')[1]
+        if (Get-Command meshchatx -ErrorAction SilentlyContinue) {
+            Write-ColorOutput "MeshChatX $mcxVer (meshchatx on PATH)" "Success"
+        } else {
+            Write-ColorOutput "MeshChatX $mcxVer installed but 'meshchatx' not on PATH" "Warning"
+            $Script:DiagWarnings++
+        }
+    }
+
+    Write-Host ""
+}
+
 function Invoke-DiagReportSummary {
-    Write-Host "▶ Step 6/6: Summary & Recommendations" -ForegroundColor Blue
+    Write-Host "▶ Step 7/7: Summary & Recommendations" -ForegroundColor Blue
     Write-Host ""
 
     if ($Script:DiagIssues -eq 0 -and $Script:DiagWarnings -eq 0) {
@@ -266,7 +351,7 @@ function Show-Diagnostic {
     $Script:DiagIssues = 0
     $Script:DiagWarnings = 0
 
-    Write-Host "Running 6-step diagnostic..." -ForegroundColor White
+    Write-Host "Running 7-step diagnostic..." -ForegroundColor White
     Write-Host ""
 
     Invoke-DiagCheckEnvironment
@@ -274,6 +359,7 @@ function Show-Diagnostic {
     Invoke-DiagCheckConfiguration
     Invoke-DiagCheckService
     Invoke-DiagCheckNetwork
+    Invoke-DiagRnsDoctor
     Invoke-DiagReportSummary
 
     pause

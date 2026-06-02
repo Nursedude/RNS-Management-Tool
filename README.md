@@ -369,7 +369,7 @@ This is the **only MeshForge ecosystem tool with native Windows support**.
 | **Backup** | Automatic timestamped | ✅ | ✅ | |
 | | Export/Import archives | ✅ (.tar.gz) | ✅ (.zip) | Platform-native formats |
 | | Factory reset | ✅ | ✅ | Auto-backup before reset |
-| **Diagnostics** | 6-step actionable diagnostics | ✅ | ✅ | With "Fix:" suggestions |
+| **Diagnostics** | Actionable diagnostics + RNS environment doctor | ✅ | ✅ | With "Fix:" suggestions |
 | | Environment detection | ✅ | ✅ | |
 | | USB device detection | ✅ | ⚠️ | Windows: COM port detection |
 | | Startup health check | ✅ | ✅ | Disk, memory, ports, log validation |
@@ -483,7 +483,7 @@ RNS-Management-Tool/
 │   ├── rnode.sh                    # RNODE device configuration (21+ boards)
 │   ├── services.sh                 # rnsd/meshtasticd management, network tools
 │   ├── backup.sh                   # Backup/restore, export/import
-│   ├── diagnostics.sh              # 6-step diagnostics with return codes
+│   ├── diagnostics.sh              # 8-step diagnostics (incl. RNS environment doctor), return codes
 │   ├── config.sh                   # Config templates, editor, log viewer
 │   └── advanced.sh                 # Quick mode, advanced menu, first-run wizard
 ├── pwsh/                           # PowerShell modules (9 files, ~2,560 lines)
@@ -573,7 +573,7 @@ timeline
     section Beta - Semantic Versioning
         v0.3.0-beta : Modularization - 11 Bash + 9 PS modules
                     : Config templates & first-run wizard
-                    : 6-step diagnostics
+                    : diagnostics + RNS doctor
                     : Security rules RNS001-RNS006
         v0.3.5-beta : Security audit - A rating
                     : CI expansion - 7 jobs

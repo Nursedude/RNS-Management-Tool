@@ -46,6 +46,7 @@ teardown() {
     diag_check_configuration() { true; }
     diag_check_services() { true; }
     diag_check_network() { true; }
+    diag_rns_doctor() { true; }
     diag_report_summary() { true; }
 
     run_diagnostics
@@ -59,6 +60,7 @@ teardown() {
     diag_check_configuration() { true; }
     diag_check_services() { true; }
     diag_check_network() { true; }
+    diag_rns_doctor() { true; }
     diag_report_summary() { true; }
 
     local rc=0
@@ -73,11 +75,52 @@ teardown() {
     diag_check_configuration() { true; }
     diag_check_services() { true; }
     diag_check_network() { true; }
+    diag_rns_doctor() { true; }
     diag_report_summary() { true; }
 
     local rc=0
     run_diagnostics || rc=$?
     [ "$rc" -eq 2 ]
+}
+
+#########################################################
+# RNS Environment Doctor (Phase 1A)
+#########################################################
+
+@test "DOCTOR: diag_rns_doctor function exists" {
+    declare -F diag_rns_doctor
+}
+
+@test "DOCTOR: run_diagnostics invokes diag_rns_doctor" {
+    grep -q 'diag_rns_doctor' "$LIB_DIR/diagnostics.sh"
+}
+
+@test "DOCTOR: checks pip-vs-import version mismatch (shadowed install)" {
+    local block
+    block=$(sed -n '/^diag_rns_doctor()/,/^}/p' "$LIB_DIR/diagnostics.sh")
+    grep -q 'import RNS' <<<"$block"
+    grep -q 'Version mismatch' <<<"$block"
+}
+
+@test "DOCTOR: checks .reticulum ownership gotcha" {
+    local block
+    block=$(sed -n '/^diag_rns_doctor()/,/^}/p' "$LIB_DIR/diagnostics.sh")
+    grep -q "stat -c '%U'" <<<"$block"
+    grep -q 'chown -R' <<<"$block"
+}
+
+@test "DOCTOR: flags rnsd not on PATH while RNS importable" {
+    local block
+    block=$(sed -n '/^diag_rns_doctor()/,/^}/p' "$LIB_DIR/diagnostics.sh")
+    grep -q "not on your PATH" <<<"$block"
+}
+
+@test "DOCTOR: degrades gracefully when python3 is absent" {
+    HAS_PYTHON3=false
+    local output rc=0
+    output=$(diag_rns_doctor 2>&1) || rc=$?
+    [ "$rc" -eq 0 ]
+    [[ "$output" == *"skipping RNS environment checks"* ]]
 }
 
 #########################################################

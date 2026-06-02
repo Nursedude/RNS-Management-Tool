@@ -11,7 +11,7 @@ _DIAG_TOTAL_WARNINGS=0
 # Step 1: System resources — disk space and memory
 # (adapted from meshforge improved diagnostics; reuses patterns from lib/install.sh)
 diag_check_system_resources() {
-    echo -e "${BLUE}▶ Step 1/7: System Resources${NC}"
+    echo -e "${BLUE}▶ Step 1/8: System Resources${NC}"
 
     # Disk space check
     if has_command df; then
@@ -88,7 +88,7 @@ diag_check_system_resources() {
 
 # Step 2: Check environment and prerequisites
 diag_check_environment() {
-    echo -e "${BLUE}▶ Step 2/7: Environment & Prerequisites${NC}"
+    echo -e "${BLUE}▶ Step 2/8: Environment & Prerequisites${NC}"
 
     echo "  Platform: $OS_TYPE ($ARCHITECTURE)"
     [ "$IS_RASPBERRY_PI" = true ] && echo "  Raspberry Pi: $PI_MODEL"
@@ -121,7 +121,7 @@ diag_check_environment() {
 
 # Step 3: Check RNS tool availability
 diag_check_rns_tools() {
-    echo -e "${BLUE}▶ Step 3/7: RNS Tool Availability${NC}"
+    echo -e "${BLUE}▶ Step 3/8: RNS Tool Availability${NC}"
 
     local tool_list=(
         "rnsd:$HAS_RNSD:daemon"
@@ -174,7 +174,7 @@ diag_check_rns_tools() {
 
 # Step 4: Validate Reticulum configuration
 diag_check_configuration() {
-    echo -e "${BLUE}▶ Step 4/7: Configuration Validation${NC}"
+    echo -e "${BLUE}▶ Step 4/8: Configuration Validation${NC}"
 
     local config_file="$REAL_HOME/.reticulum/config"
     if [ -f "$config_file" ]; then
@@ -242,7 +242,7 @@ diag_check_configuration() {
 
 # Step 5: Check service health (rnsd + meshtasticd)
 diag_check_services() {
-    echo -e "${BLUE}▶ Step 5/7: Service Health${NC}"
+    echo -e "${BLUE}▶ Step 5/8: Service Health${NC}"
 
     # rnsd status with detection method tracking (meshforge ServiceStatus pattern)
     local rnsd_detection_method="none"
@@ -334,7 +334,7 @@ diag_check_services() {
 
 # Step 6: Check network interfaces and USB devices
 diag_check_network() {
-    echo -e "${BLUE}▶ Step 6/7: Network & Interfaces${NC}"
+    echo -e "${BLUE}▶ Step 6/8: Network & Interfaces${NC}"
 
     if has_command ip; then
         local net_ifaces
@@ -413,9 +413,101 @@ diag_check_network() {
     echo ""
 }
 
-# Step 7: Print summary and recommendations
+# Step 7: RNS environment doctor — the "which RNS is actually live, and is its
+# environment sane" check. Catches the version/ownership/PATH gotchas that a
+# naive "pip show rns" misses: pip and the rnsd that actually runs can be looking
+# at different installs.
+diag_rns_doctor() {
+    echo -e "${BLUE}▶ Step 7/8: RNS Environment Doctor${NC}"
+
+    if [ "$HAS_PYTHON3" != true ]; then
+        print_warning "Python 3 not available — skipping RNS environment checks"
+        ((_DIAG_TOTAL_WARNINGS++)) || true
+        echo ""
+        return 0
+    fi
+
+    # 1. Which RNS does python actually import, and from where?
+    local imp imported_ver imported_path pip_ver
+    imp=$(python3 -c 'import RNS, os; print(RNS.__version__); print(os.path.dirname(os.path.dirname(RNS.__file__)))' 2>/dev/null)
+    imported_ver=$(printf '%s\n' "$imp" | sed -n '1p')
+    imported_path=$(printf '%s\n' "$imp" | sed -n '2p')
+    pip_ver=$(get_installed_version "rns")
+
+    if [ -z "$imported_ver" ]; then
+        if [ -n "$pip_ver" ]; then
+            print_error "RNS is pip-installed ($pip_ver) but python3 cannot import it"
+            echo -e "  ${YELLOW}A different Python is on your PATH than the one pip installed into.${NC}"
+            ((_DIAG_TOTAL_ISSUES++)) || true
+        else
+            echo -e "  ${CYAN}[i] RNS not installed (python3 cannot import RNS)${NC}"
+        fi
+    else
+        print_success "python3 imports RNS $imported_ver"
+        echo "  From: $imported_path"
+        case "$imported_path" in
+            "$REAL_HOME/.local/"*) echo "  Scope: user install (~/.local)" ;;
+            /usr/*site-packages*|/usr/*dist-packages*) echo "  Scope: system install" ;;
+            *) [ -n "$imported_path" ] && echo "  Scope: $imported_path" ;;
+        esac
+
+        # 2. pip vs import agreement (the shadowed-install trap)
+        if [ -n "$pip_ver" ] && [ "$pip_ver" != "$imported_ver" ]; then
+            print_warning "Version mismatch: pip reports $pip_ver but python imports $imported_ver"
+            echo -e "  ${YELLOW}A second RNS install is shadowing the other — 'pip install --upgrade'${NC}"
+            echo -e "  ${YELLOW}may update one while rnsd runs the other.${NC}"
+            ((_DIAG_TOTAL_WARNINGS++)) || true
+        fi
+    fi
+
+    # 3. rnsd reachability on PATH
+    if has_command rnsd; then
+        echo "  rnsd: $(command -v rnsd)"
+    elif [ -n "$imported_ver" ]; then
+        print_warning "RNS is importable but 'rnsd' is not on your PATH"
+        if [ -x "$REAL_HOME/.local/bin/rnsd" ]; then
+            echo -e "  ${YELLOW}Found at ~/.local/bin/rnsd — add it to PATH:${NC}"
+            echo -e "  ${YELLOW}  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && . ~/.bashrc${NC}"
+        fi
+        ((_DIAG_TOTAL_WARNINGS++)) || true
+    fi
+
+    # 4. ~/.reticulum ownership (the sudo-pip / root-owned-config gotcha)
+    local cfgdir="$REAL_HOME/.reticulum"
+    if [ -d "$cfgdir" ] && has_command stat; then
+        local owner cur
+        owner=$(stat -c '%U' "$cfgdir" 2>/dev/null)
+        cur=$(id -un 2>/dev/null)
+        if [ -n "$owner" ] && [ -n "$cur" ] && [ "$owner" != "$cur" ]; then
+            print_error "Config dir $cfgdir is owned by '$owner', not '$cur'"
+            echo -e "  ${YELLOW}Likely created by a sudo command; rnsd run as $cur can't read it.${NC}"
+            echo -e "  ${YELLOW}Fix: sudo chown -R $cur:$cur \"$cfgdir\"${NC}"
+            ((_DIAG_TOTAL_ISSUES++)) || true
+        fi
+    fi
+    if [ -n "${SUDO_USER:-}" ]; then
+        print_warning "Running under sudo (SUDO_USER=$SUDO_USER) — installs may land in the wrong place"
+        ((_DIAG_TOTAL_WARNINGS++)) || true
+    fi
+
+    # 5. MeshChatX environment (parallel quick check)
+    local mcx_ver
+    mcx_ver=$(get_installed_version "reticulum-meshchatx")
+    if [ -n "$mcx_ver" ]; then
+        if has_command meshchatx; then
+            print_success "MeshChatX $mcx_ver (meshchatx on PATH)"
+        else
+            print_warning "MeshChatX $mcx_ver installed but 'meshchatx' not on PATH"
+            ((_DIAG_TOTAL_WARNINGS++)) || true
+        fi
+    fi
+
+    echo ""
+}
+
+# Step 8: Print summary and recommendations
 diag_report_summary() {
-    echo -e "${BLUE}▶ Step 7/7: Summary & Recommendations${NC}"
+    echo -e "${BLUE}▶ Step 8/8: Summary & Recommendations${NC}"
     echo ""
 
     if [ "$_DIAG_TOTAL_ISSUES" -eq 0 ] && [ "$_DIAG_TOTAL_WARNINGS" -eq 0 ]; then
@@ -460,7 +552,7 @@ run_diagnostics() {
     _DIAG_TOTAL_ISSUES=0
     _DIAG_TOTAL_WARNINGS=0
 
-    echo -e "${BOLD}Running 7-step diagnostic...${NC}\n"
+    echo -e "${BOLD}Running 8-step diagnostic...${NC}\n"
 
     diag_check_system_resources
     diag_check_environment
@@ -468,6 +560,7 @@ run_diagnostics() {
     diag_check_configuration
     diag_check_services
     diag_check_network
+    diag_rns_doctor
     diag_report_summary
 
     # Return value for scripted use:
