@@ -170,7 +170,7 @@ function Show-MainMenu {
     Write-Host "  3) Install/Configure RNODE Device"
     Write-Host "  4) Install Sideband"
     Write-Host "  5) Install NomadNet"
-    Write-Host "  m) Install MeshChat"
+    Write-Host "  m) Install MeshChatX"
     Write-Host ""
     Write-Host "  --- Management ---" -ForegroundColor Cyan
     Write-Host "  6) System Status & Diagnostics"

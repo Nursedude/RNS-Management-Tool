@@ -19,7 +19,7 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 >
 > **What needs testing most:**
 > - RNODE firmware flashing and radio configuration across all 21+ supported boards
-> - MeshChat and Sideband installation on various Linux distributions
+> - MeshChatX and Sideband installation on various Linux distributions
 > - Windows PowerShell workflows (service management, backup/restore)
 > - meshtasticd integration (HTTP API, SPI HAT detection)
 > - Backup import/export across platforms
@@ -139,7 +139,7 @@ From the main menu, select **1) Install/Update Reticulum Ecosystem**. This will:
 
 You can also update individual components:
 - **3) Install NomadNet** — updates NomadNet to the latest version
-- **4) Install MeshChat** — pulls the latest from git and rebuilds
+- **4) Install MeshChatX** — installs/updates the `reticulum-meshchatx` pip wheel (no Node.js build)
 - **5) Install Sideband** — updates via pip or from source
 - **9) Advanced Options > 4) Update System Packages** — runs `apt update && apt upgrade`
 
@@ -169,21 +169,27 @@ nomadnet
 
 NomadNet provides a text-based UI for sending and receiving encrypted messages, reading and hosting pages (microblog-style content), and managing your LXMF identity.
 
-### MeshChat (Web-Based Messaging)
+### MeshChatX (Web-Based Messaging)
 
-MeshChat is a web-based LXMF messaging client. After installation, it runs a local web server you access through your browser.
+MeshChatX (Quad4 Software) is the actively maintained successor to the original
+Reticulum MeshChat. It installs as a pip wheel with the frontend bundled — **no
+Node.js build required** — and runs a local web server you access through your browser.
 
 ```bash
-# Navigate to the MeshChat directory and start it
-cd ~/reticulum-meshchat
-python meshchat.py
+# Start the headless web daemon
+meshchatx --headless
 
-# Then open your browser to http://localhost:8000
+# Then open your browser to https://127.0.0.1:8000
+# (self-signed certificate — your browser will show a warning the first time)
+
 # For additional options:
-python meshchat.py --help
+meshchatx --help
 ```
 
-A desktop launcher is also created during installation if you have a graphical environment. MeshChat is Linux/RPi only.
+A desktop launcher is created during installation if you have a graphical
+environment, and the Services menu offers start/stop plus optional auto-start on
+login. MeshChatX is cross-platform (Linux/RPi and Windows 11 via the same pip
+wheel). It requires **Python 3.11+** and pulls in `rns>=1.2.5` automatically.
 
 ### Sideband (Graphical Messaging App)
 
@@ -210,7 +216,7 @@ A desktop launcher is created during installation. Sideband requires a graphical
    1) Install/Update Reticulum Ecosystem
    2) Install/Configure RNODE Device
    3) Install NomadNet
-   4) Install MeshChat
+   4) Install MeshChatX
    5) Install Sideband
 
   --- Management ---
@@ -349,7 +355,7 @@ This is the **only MeshForge ecosystem tool with native Windows support**.
 |----------|---------|:---:|:---:|-------|
 | **Installation** | Full ecosystem install | ✅ | ✅ | With progress spinner |
 | | Selective component updates | ✅ | ✅ | |
-| | MeshChat with Node.js | ✅ | ❌ | Linux only (Node.js build) |
+| | MeshChatX (pip wheel) | ✅ | ✅ | Cross-platform; needs Python 3.11+ |
 | | First-run wizard | ✅ | ❌ | Auto-detects fresh setup |
 | **RNODE** | Auto-install firmware | ✅ | ⚠️ Basic | Windows: pip-only or WSL fallback |
 | | Radio parameter config | ✅ | ❌ | Bash only (rnodeconf TUI) |
@@ -394,7 +400,7 @@ This is the **only MeshForge ecosystem tool with native Windows support**.
 - 500MB+ free disk space
 
 ### Optional
-- Node.js 18+ (for MeshChat — Linux/RPi only, auto-installed if needed)
+- Python 3.11+ (required for MeshChatX — the rest of the stack needs only 3.7+)
 - Git (for source installations — auto-installed if needed)
 - USB port (for RNODE devices)
 - WSL2 (for full RNODE support on Windows)
@@ -434,7 +440,7 @@ graph TB
         RNS["RNS Core"]
         LXMF["LXMF Protocol"]
         NOMAD["NomadNet"]
-        MESH["MeshChat"]
+        MESH["MeshChatX"]
         SIDE["Sideband"]
     end
 
@@ -473,7 +479,7 @@ RNS-Management-Tool/
 │   ├── validation.sh               # Input validation (RNS002-RNS004)
 │   ├── utils.sh                    # Timeout, retry, spinner, logging, service checks
 │   ├── ui.sh                       # Menus, box drawing, pagination, status line
-│   ├── install.sh                  # Prerequisites, ecosystem, MeshChat, Sideband
+│   ├── install.sh                  # Prerequisites, ecosystem, MeshChatX, Sideband
 │   ├── rnode.sh                    # RNODE device configuration (21+ boards)
 │   ├── services.sh                 # rnsd/meshtasticd management, network tools
 │   ├── backup.sh                   # Backup/restore, export/import
@@ -515,7 +521,7 @@ A formal security and code review was completed on 2026-02-21, rating the projec
 | RNODE not detected | `sudo usermod -aG dialout $USER` then logout/login |
 | rnsd won't start | Check `~/.reticulum/config` exists; run `rnsd --daemon` to create default |
 | Port 37428 in use | Tool detects this at startup and offers to stop the blocking process |
-| MeshChat build fails | Ensure Node.js 18+ installed (script auto-upgrades via NodeSource) |
+| MeshChatX install fails | Ensure Python 3.11+ (`python3 --version`); it installs via `pip install reticulum-meshchatx` |
 | pip not found | `sudo apt install python3-pip` |
 | pip externally-managed error | Debian 12+ / RPi OS Bookworm; tool auto-adds `--break-system-packages` |
 | Low disk space warning | Free up space; tool requires 500MB minimum |
@@ -662,7 +668,7 @@ bash tests/run_bats_compat.sh tests/functional_tests.bats
 The test suite covers structural patterns, functional behavior, security rules, service health classification, and regression guards. However, many features need **real hardware and real-world validation**:
 
 - **Well-tested** (automated): Syntax, security rules, input validation, service health state classification, backup/restore logic, config template handling, menu structure
-- **Needs field testing**: RNODE firmware flashing, radio parameter configuration, MeshChat/Sideband install on varied distros, meshtasticd HTTP API integration, Windows PowerShell workflows, export/import across platforms
+- **Needs field testing**: RNODE firmware flashing, radio parameter configuration, MeshChatX/Sideband install on varied distros, meshtasticd HTTP API integration, Windows PowerShell workflows, export/import across platforms
 
 If you can test on hardware or platforms the maintainers don't have access to, that's the most valuable contribution.
 
@@ -692,7 +698,7 @@ See [CLAUDE.md](CLAUDE.md) for the full development guide and [CHANGELOG.md](CHA
 
 ### Applications
 - NomadNet: https://github.com/markqvist/nomadnet
-- MeshChat: https://github.com/liamcottle/reticulum-meshchat
+- MeshChatX: https://github.com/Quad4-Software/MeshChatX
 - Sideband: https://unsigned.io/sideband/
 
 ### MeshForge Ecosystem
@@ -707,7 +713,8 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 ## Acknowledgments
 
 - **Mark Qvist** - Creator of Reticulum Network Stack
-- **Liam Cottle** - MeshChat and RNode Web Flasher
+- **Liam Cottle** - Original MeshChat and RNode Web Flasher
+- **Quad4 Software** - MeshChatX
 - **Reticulum Community** - Testing and feedback
 - **MeshForge** - Upstream patterns, security rules, and architecture guidance
 

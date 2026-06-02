@@ -57,7 +57,7 @@ $Script:CurrentLogLevel = $Script:LogLevelInfo
 # Environment: WSL, Python, pip detection
 . "$Script:ScriptDir\pwsh\environment.ps1"
 
-# Installation: Python, Reticulum, MeshChat, Sideband
+# Installation: Python, Reticulum, MeshChatX, Sideband
 . "$Script:ScriptDir\pwsh\install.ps1"
 
 # RNODE: device configuration and management
@@ -104,8 +104,8 @@ function Main {
             "3" { Show-RnodeMenu }
             "4" { Install-Sideband }
             "5" { Install-NomadNet }
-            "m" { Install-MeshChat }
-            "M" { Install-MeshChat }
+            "m" { Install-MeshChatX }
+            "M" { Install-MeshChatX }
             "6" { Show-Diagnostic }
             "7" { Show-ServiceMenu }
             "8" { Show-BackupMenu }

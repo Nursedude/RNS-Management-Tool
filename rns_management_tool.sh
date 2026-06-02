@@ -36,7 +36,7 @@ source "$SCRIPT_DIR/lib/utils.sh"
 # UI: print functions, box drawing, menus, help
 source "$SCRIPT_DIR/lib/ui.sh"
 
-# Installation: prerequisites, ecosystem, MeshChat, Sideband
+# Installation: prerequisites, ecosystem, MeshChatX, Sideband
 source "$SCRIPT_DIR/lib/install.sh"
 
 # RNODE: device configuration and management
@@ -131,7 +131,7 @@ show_main_menu() {
     echo "   1) Install/Update Reticulum Ecosystem"
     echo "   2) Install/Configure RNODE Device"
     echo "   3) Install NomadNet"
-    echo "   4) Install MeshChat"
+    echo "   4) Install MeshChatX"
     echo "   5) Install Sideband"
     echo ""
     echo -e "  ${CYAN}─── Management ───${NC}"
@@ -217,8 +217,8 @@ main() {
                 pause_for_input
                 ;;
             4)
-                # Install MeshChat
-                safe_call "MeshChat Install" install_meshchat
+                # Install MeshChatX
+                safe_call "MeshChatX Install" install_meshchatx
                 pause_for_input
                 ;;
             5)

@@ -294,7 +294,7 @@ show_help() {
     echo "  • ${BOLD}RNS${NC} - Reticulum Network Stack (core networking)"
     echo "  • ${BOLD}LXMF${NC} - Lightweight Extensible Message Format"
     echo "  • ${BOLD}NomadNet${NC} - Terminal-based messaging client"
-    echo "  • ${BOLD}MeshChat${NC} - Web-based LXMF messaging interface"
+    echo "  • ${BOLD}MeshChatX${NC} - Web-based LXMF messaging interface"
     echo "  • ${BOLD}Sideband${NC} - Mobile/Desktop LXMF client"
     echo "  • ${BOLD}RNODE${NC} - LoRa radio hardware for long-range links"
     echo ""

@@ -134,7 +134,9 @@ EXPECTED_FUNCTIONS=(
     diag_report_summary
     # Installation
     install_reticulum_ecosystem
-    install_meshchat
+    install_meshchatx
+    start_meshchatx
+    stop_meshchatx
     install_sideband
     install_prerequisites
     # RNODE
@@ -191,7 +193,7 @@ PS_EXPECTED_FUNCTIONS=(
     Stop-RNSDaemon
     Show-Diagnostic
     Install-Reticulum
-    Install-MeshChat
+    Install-MeshChatX
     Install-Sideband
     Show-RnodeMenu
     # New parity functions
@@ -315,9 +317,9 @@ section "Security Checks"
 
 # RNS001: No eval usage
 if grep -nE '^\s*eval\s' $COMBINED_SOURCE 2>/dev/null | grep -v '^#'; then
-    fail "RNS001: eval usage detected"
+    fail "RNS001: eval-keyword usage detected"
 else
-    pass "RNS001: No eval usage"
+    pass "RNS001: No eval-keyword usage"
 fi
 
 # RNS002: Device port validation exists

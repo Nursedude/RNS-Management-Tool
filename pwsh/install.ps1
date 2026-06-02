@@ -250,201 +250,71 @@ function Install-NomadNet {
     pause
 }
 
-function Install-MeshChat {
-    Show-Section "Installing MeshChat"
+function Install-MeshChatX {
+    Show-Section "Installing MeshChatX"
 
-    # Check for Node.js / npm
-    $npm = Get-Command npm -ErrorAction SilentlyContinue
+    Write-Host "MeshChatX (Quad4 Software) is the actively maintained successor to" -ForegroundColor Cyan
+    Write-Host "the original Reticulum MeshChat. It installs as a pip wheel with the" -ForegroundColor Cyan
+    Write-Host "frontend bundled, so no Node.js build is required." -ForegroundColor Cyan
+    Write-Host ""
 
-    if (-not $npm) {
-        Write-ColorOutput "Node.js/npm not found" "Error"
-        Write-Host ""
-        Write-Host "MeshChat requires Node.js 18+. Install options:" -ForegroundColor Yellow
-        Write-Host "  1) Download from https://nodejs.org/" -ForegroundColor Cyan
-        Write-Host "  2) Install via winget: winget install OpenJS.NodeJS.LTS" -ForegroundColor Cyan
-        Write-Host ""
-        $installChoice = Read-Host "Install via winget now? (Y/n)"
-        if ($installChoice -ne 'n' -and $installChoice -ne 'N') {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Write-ColorOutput "Installing Node.js LTS via winget..." "Progress"
-                winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
-                # Refresh PATH
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-                $npm = Get-Command npm -ErrorAction SilentlyContinue
-                if (-not $npm) {
-                    Write-ColorOutput "npm still not found after install. Restart your terminal and try again." "Error"
-                    pause
-                    return
-                }
-            } else {
-                Write-ColorOutput "winget not available. Please install Node.js manually." "Error"
-                pause
-                return
-            }
-        } else {
-            pause
+    if (-not (Test-Python)) {
+        Write-ColorOutput "Python is required but not installed" "Error"
+        $install = Read-Host "Would you like to install Python now? (Y/n)"
+        if ($install -ne 'n' -and $install -ne 'N') {
+            Install-Python
             return
         }
-    } else {
-        $nodeVersion = & node --version 2>&1
-        Write-ColorOutput "Node.js detected: $nodeVersion" "Success"
-        # Check minimum version (18+)
-        if ($nodeVersion -match 'v(\d+)') {
-            $majorVersion = [int]$Matches[1]
-            if ($majorVersion -lt 18) {
-                Write-ColorOutput "Node.js $nodeVersion is too old. MeshChat requires Node.js 18+." "Error"
-                Write-Host "  Fix: winget install OpenJS.NodeJS.LTS" -ForegroundColor Yellow
-                pause
-                return
-            }
-        }
-    }
-
-    # Check for git
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-ColorOutput "git not found. Install via: winget install Git.Git" "Error"
         pause
         return
     }
 
-    $meshchatDir = Join-Path $env:USERPROFILE "reticulum-meshchat"
-    $isUpdate = $false
-
-    if (Test-Path $meshchatDir) {
-        Write-ColorOutput "MeshChat directory already exists at $meshchatDir" "Warning"
-        $update = Read-Host "Update existing installation? (Y/n)"
-        if ($update -eq 'n' -or $update -eq 'N') {
-            pause
-            return
-        }
-        $isUpdate = $true
+    # Python >=3.11 gate — MeshChatX declares requires-python>=3.11.
+    $pyVer = & python -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+    $pyOk = & python -c "import sys; print(1 if sys.version_info >= (3, 11) else 0)" 2>$null
+    if ($pyOk -ne '1') {
+        Write-ColorOutput "MeshChatX requires Python 3.11+ (found $pyVer)" "Error"
+        Write-Host "  Install a newer Python from https://www.python.org/downloads/ and retry." -ForegroundColor Yellow
+        pause
+        return
     }
 
-    $buildLog = Join-Path $env:USERPROFILE "meshchat_build.log"
-
-    try {
-        # Step 1: Clone or update
-        if ($isUpdate) {
-            Write-ColorOutput "Step 1/5: Updating repository..." "Progress"
-            Push-Location $meshchatDir
-            $gitOutput = & git pull origin master 2>&1
-            $gitOutput | Out-File -FilePath $Script:LogFile -Append
-        } else {
-            Write-ColorOutput "Step 1/5: Cloning repository..." "Progress"
-            $gitOutput = & git clone https://github.com/liamcottle/reticulum-meshchat.git $meshchatDir 2>&1
-            $gitOutput | Out-File -FilePath $Script:LogFile -Append
-            Push-Location $meshchatDir
+    # Legacy migration — offer to remove the old git/npm MeshChat tree.
+    $legacyDir = Join-Path $env:USERPROFILE "reticulum-meshchat"
+    if (Test-Path $legacyDir) {
+        Write-ColorOutput "Found old git-based MeshChat at $legacyDir (deprecated)" "Warning"
+        $remove = Read-Host "Remove it to reclaim disk space? (Y/n)"
+        if ($remove -ne 'n' -and $remove -ne 'N') {
+            Remove-Item -Recurse -Force $legacyDir -ErrorAction SilentlyContinue
+            Write-ColorOutput "Removed legacy MeshChat directory" "Success"
         }
-
-        if ($LASTEXITCODE -ne 0) {
-            Write-ColorOutput "Failed to clone/update MeshChat repository" "Error"
-            Write-Host ""
-            Write-Host "Git output:" -ForegroundColor Yellow
-            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
-            $gitOutput | ForEach-Object { Write-Host "  $_" }
-            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "Troubleshooting suggestions:" -ForegroundColor Yellow
-            Write-Host "  1) Check your internet connection"
-            Write-Host "  2) Verify git is installed: git --version"
-            Write-Host "  3) Try manually: git pull origin master"
-            Write-Host "  4) Delete and re-clone: Remove-Item -Recurse $meshchatDir"
-            Write-Host "  5) Check log: l) Logs from Main Menu"
-            Pop-Location -ErrorAction SilentlyContinue
-            pause
-            return
-        }
-
-        # Step 2: npm install
-        Write-ColorOutput "Step 2/5: Installing npm dependencies..." "Progress"
-        $npmOutput = & npm install 2>&1
-        $npmOutput | Out-File -FilePath $Script:LogFile -Append
-
-        if ($LASTEXITCODE -ne 0) {
-            Write-ColorOutput "npm install failed" "Error"
-            $npmOutput | Out-File -FilePath $buildLog
-            Write-Host ""
-            Write-Host "Last 20 lines of output:" -ForegroundColor Yellow
-            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
-            $npmOutput | Select-Object -Last 20 | ForEach-Object { Write-Host "  $_" }
-            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "Troubleshooting suggestions:" -ForegroundColor Yellow
-            Write-Host "  1) Clear npm cache: npm cache clean --force"
-            Write-Host "  2) Delete node_modules and retry: Remove-Item -Recurse node_modules"
-            Write-Host "  3) Check disk space"
-            Write-Host "  4) Full log saved to: $buildLog"
-            Pop-Location
-            pause
-            return
-        }
-
-        # Step 3: Install Python dependencies (aiohttp, lxmf, peewee, rns, websockets)
-        Write-ColorOutput "Step 3/5: Installing Python dependencies..." "Progress"
-        $reqFile = Join-Path $meshchatDir "requirements.txt"
-        if (Test-Path $reqFile) {
-            Invoke-Pip install -r $reqFile 2>&1 | Out-File -FilePath $Script:LogFile -Append
-            if ($LASTEXITCODE -ne 0) {
-                Write-ColorOutput "Failed to install some Python dependencies — MeshChat may not run correctly" "Warning"
-            }
-        } else {
-            Write-ColorOutput "requirements.txt not found — skipping Python dependencies" "Warning"
-        }
-
-        # Step 4: Security audit (non-fatal)
-        Write-ColorOutput "Step 4/5: Running security audit..." "Progress"
-        & npm audit fix --audit-level=moderate 2>&1 | Out-File -FilePath $Script:LogFile -Append
-
-        # Step 5: Build frontend
-        Write-ColorOutput "Step 5/5: Building frontend..." "Progress"
-        $buildOutput = & npm run build-frontend 2>&1
-        $buildOutput | Out-File -FilePath $Script:LogFile -Append
-
-        if ($LASTEXITCODE -ne 0) {
-            $buildOutput | Out-File -FilePath $buildLog
-            Write-RnsLog "MeshChat build failed - see $buildLog for details" "ERROR"
-            Write-ColorOutput "Build failed" "Error"
-            Write-Host ""
-            Write-Host "Last 20 lines of build output:" -ForegroundColor Yellow
-            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
-            $buildOutput | Select-Object -Last 20 | ForEach-Object { Write-Host "  $_" }
-            Write-Host "────────────────────────────────────────────" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "Troubleshooting suggestions:" -ForegroundColor Yellow
-            Write-Host "  1) Check Node.js version: node --version (requires 18+)"
-            Write-Host "  2) Clear npm cache: npm cache clean --force"
-            Write-Host "  3) Delete node_modules and retry: Remove-Item -Recurse node_modules; npm install"
-            Write-Host "  4) Check disk space"
-            Write-Host "  5) Full build log saved to: $buildLog"
-            Write-Host "  6) View logs: Main Menu > l) Logs > MeshChat build log"
-            Pop-Location
-            pause
-            return
-        }
-
-        # Build succeeded — remove any stale build log
-        if (Test-Path $buildLog) { Remove-Item $buildLog -ErrorAction SilentlyContinue }
-
-        # Verify
-        $packageJson = Join-Path $meshchatDir "package.json"
-        if (Test-Path $packageJson) {
-            $pkg = Get-Content $packageJson -Raw | ConvertFrom-Json
-            Write-ColorOutput "MeshChat v$($pkg.version) installed successfully" "Success"
-            Write-Host ""
-            Write-Host "Start MeshChat with:" -ForegroundColor Yellow
-            Write-Host "  cd $meshchatDir && python meshchat.py" -ForegroundColor Cyan
-            Write-RnsLog "MeshChat installed: $($pkg.version)" "INFO"
-        }
-
-        Pop-Location
     }
-    catch {
-        Write-ColorOutput "MeshChat installation failed: $_" "Error"
-        Pop-Location -ErrorAction SilentlyContinue
+
+    Write-ColorOutput "Installing reticulum-meshchatx via pip..." "Progress"
+    Invoke-Pip install reticulum-meshchatx --upgrade 2>&1 | Out-File -FilePath $Script:LogFile -Append
+
+    if ($LASTEXITCODE -eq 0) {
+        $ver = "unknown"
+        $showOut = Invoke-Pip show reticulum-meshchatx 2>$null | Select-String '^Version:'
+        if ($showOut) { $ver = ($showOut.ToString() -split '\s+')[1] }
+        Write-ColorOutput "MeshChatX v$ver installed successfully" "Success"
+        Write-RnsLog "MeshChatX installed: $ver" "INFO"
+        Write-Host ""
+        Write-Host "Start MeshChatX:  meshchatx --headless" -ForegroundColor Cyan
+        Write-Host "Then open:        https://127.0.0.1:8000  (self-signed cert — browser will warn)" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "Prefer a native desktop app? Download the Windows installer from:" -ForegroundColor Yellow
+        Write-Host "  https://github.com/Quad4-Software/MeshChatX/releases/latest" -ForegroundColor Yellow
+    } else {
+        Write-ColorOutput "Failed to install MeshChatX" "Error"
+        Write-Host "  Check the log (Main Menu > Logs) for pip output." -ForegroundColor Yellow
     }
 
     pause
 }
+
+# Back-compat alias — older menu wiring/tests may still call Install-MeshChat.
+function Install-MeshChat { Install-MeshChatX @args }
 
 function Install-Ecosystem {
     [CmdletBinding(SupportsShouldProcess)]

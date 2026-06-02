@@ -56,11 +56,11 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 # Select Option 1: Everything gets installed
 ```
 
-### "I only want the Python stack, no MeshChat"
+### "I only want the Python stack, no MeshChatX"
 ```bash
 ./rns_management_tool.sh
 # Select Option 1 for RNS/LXMF/NomadNet
-# Skip Option 4 (MeshChat)
+# Skip Option 4 (MeshChatX)
 ```
 
 ### "Quick field check"
@@ -78,7 +78,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 | Permission denied | `chmod +x rns_management_tool.sh` |
 | pip not found | `sudo apt install python3-pip` |
 | RNODE not detected | `sudo usermod -aG dialout $USER` then logout/login |
-| MeshChat build fails | Script auto-upgrades Node.js; ensure 18+ with `node --version` |
+| MeshChatX install fails | Needs Python 3.11+ (`python3 --version`); installs via pip, no Node.js |
 | Command not found after update | Log out and back in, or `sudo reboot` |
 
 ---
@@ -95,8 +95,8 @@ rnstatus
 # Launch NomadNet (Ctrl+Q to quit)
 nomadnet
 
-# Launch MeshChat (if installed)
-cd ~/reticulum-meshchat && npm run dev
+# Launch MeshChatX (if installed) — web UI at https://127.0.0.1:8000
+meshchatx --headless
 ```
 
 ---
@@ -104,7 +104,7 @@ cd ~/reticulum-meshchat && npm run dev
 ## Important Notes
 
 - **Backups are automatic** — stored at `~/.reticulum_backup_[DATE]_[TIME]/`
-- **Update order is handled for you** — RNS first, then LXMF, then NomadNet, then MeshChat
+- **Update order is handled for you** — RNS first, then LXMF, then NomadNet, then MeshChatX
 - **Your data is preserved** — identities, messages, and configs are maintained
 - **Services stop temporarily** during updates and restart automatically after
 - **Logs** are at `~/rns_management.log` (auto-rotates at 1MB)
