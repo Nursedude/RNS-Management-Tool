@@ -81,7 +81,17 @@ BACKUP_DIR=""
 UPDATE_LOG="$REAL_HOME/rns_management.log"
 LOG_MAX_BYTES=1048576   # 1MB rotation threshold (meshforge pattern)
 LOG_MAX_ROTATIONS=3     # Keep .log.1, .log.2, .log.3
-MESHCHAT_DIR="$REAL_HOME/reticulum-meshchat"
+# MeshChatX (reticulum-meshchatx) — installed via pip wheel; bundled frontend, no Node.js.
+MESHCHATX_PKG="reticulum-meshchatx"                       # PyPI/pip package name
+MESHCHATX_STORAGE_DIR="$REAL_HOME/.config/reticulum-meshchatx"  # --storage-dir (identity/config)
+MESHCHATX_HOST="127.0.0.1"
+MESHCHATX_PORT="8000"
+MESHCHATX_URL="https://${MESHCHATX_HOST}:${MESHCHATX_PORT}"
+RNS_MIN_VERSION="1.2.5"                                   # MeshChatX requires rns>=1.2.5
+# Legacy git-clone install of the deprecated liamcottle/reticulum-meshchat.
+# Retained only so install_meshchatx() can detect and offer to remove the old tree.
+MESHCHAT_LEGACY_DIR="$REAL_HOME/reticulum-meshchat"
+MESHCHAT_DIR="$MESHCHAT_LEGACY_DIR"                       # back-compat alias
 SIDEBAND_DIR="$REAL_HOME/Sideband"
 NEEDS_REBOOT=false
 IS_WSL=false

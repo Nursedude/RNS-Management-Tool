@@ -549,14 +549,36 @@ EOF
     [ ! -d "$tmpdir" ]
 }
 
-@test "ROLLBACK: install_meshchat invokes cleanup on every hard-failure branch" {
-    # Hard failures: clone (step 1), npm install (step 2), build-frontend (step 4).
-    # Step 3 (pip requirements) is intentionally a soft warn — exempt.
-    local meshchat_block
-    meshchat_block=$(sed -n '/^install_meshchat()/,/^}/p' "$LIB_DIR/install.sh")
-    local invocations
-    invocations=$(grep -c 'cleanup_partial_install "MeshChat"' <<<"$meshchat_block")
-    [ "$invocations" -ge 3 ]
+@test "MESHCHATX: install_meshchatx installs the pip wheel, not a git clone or npm build" {
+    local block
+    block=$(sed -n '/^install_meshchatx()/,/^}/p' "$LIB_DIR/install.sh")
+    [ -n "$block" ]
+    # Lightweight pip path — must NOT clone or build a Node frontend.
+    ! grep -q 'git clone' <<<"$block"
+    ! grep -q 'npm ' <<<"$block"
+    ! grep -q 'build-frontend' <<<"$block"
+    # Installs the reticulum-meshchatx package.
+    grep -q 'install "\$MESHCHATX_PKG"' <<<"$block"
+}
+
+@test "MESHCHATX: install_meshchatx wraps pip in retry_with_backoff + run_with_timeout (RNS006)" {
+    local block
+    block=$(sed -n '/^install_meshchatx()/,/^}/p' "$LIB_DIR/install.sh")
+    grep -q 'retry_with_backoff .* run_with_timeout "\$PIP_TIMEOUT" "\$PIP_CMD" install "\$MESHCHATX_PKG"' <<<"$block"
+}
+
+@test "MESHCHATX: install_meshchatx gates on Python 3.11+" {
+    local block
+    block=$(sed -n '/^install_meshchatx()/,/^}/p' "$LIB_DIR/install.sh")
+    grep -q 'sys.version_info >= (3, 11)' <<<"$block"
+}
+
+@test "MESHCHATX: legacy MeshChat removal is confirm-gated (RNS005)" {
+    local block
+    block=$(sed -n '/^install_meshchatx()/,/^}/p' "$LIB_DIR/install.sh")
+    # The rm -rf of the legacy dir must sit inside a confirm_action block.
+    grep -q 'confirm_action' <<<"$block"
+    grep -q 'rm -rf "\$MESHCHAT_LEGACY_DIR"' <<<"$block"
 }
 
 @test "ROLLBACK: install_sideband_source invokes cleanup on every hard-failure branch" {

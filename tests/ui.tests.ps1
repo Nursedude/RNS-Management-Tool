@@ -182,9 +182,9 @@ Describe "Show-MainMenu" {
         $Script:UiSource.Contains('Management') | Should -BeTrue
     }
 
-    It "Has Exit option and MeshChat option" {
+    It "Has Exit option and MeshChatX option" {
         $Script:UiSource.Contains('0) Exit') | Should -BeTrue
-        $Script:UiSource.Contains('m) Install MeshChat') | Should -BeTrue
+        $Script:UiSource.Contains('m) Install MeshChatX') | Should -BeTrue
     }
 
     It "Returns user choice" {

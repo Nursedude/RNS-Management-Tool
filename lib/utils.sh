@@ -404,8 +404,9 @@ detect_available_tools() {
         HAS_NODE=true
     fi
 
-    # MeshChat detection (installed via npm/git)
-    if command -v meshchat &>/dev/null || [ -d "$MESHCHAT_DIR" ]; then
+    # MeshChatX detection (pip console script: meshchatx, alias meshchat).
+    # HAS_MESHCHAT name kept to avoid churn across menu/status readers.
+    if command -v meshchatx &>/dev/null; then
         HAS_MESHCHAT=true
     fi
 
@@ -427,13 +428,9 @@ detect_available_tools() {
         fi
     fi
 
-    if [ "$HAS_NODE" = true ] && [ "$HAS_MESHCHAT" = true ]; then
-        local nodever
-        nodever=$(node --version 2>/dev/null | sed 's/v//' | cut -d. -f1)
-        if [ -n "$nodever" ] && [ "$nodever" -lt 18 ] 2>/dev/null; then
-            log_warn "Node.js v${nodever} detected — MeshChat requires 18+"
-        fi
-    fi
+    # MeshChatX has no Node.js dependency (bundled-frontend pip wheel), so the
+    # old Node version warning is gone. MeshChatX needs Python 3.11+; the
+    # installer (install_meshchatx) gates on that at install time.
 }
 
 # Count available RNS tools (eliminates duplicate counting logic)
@@ -700,9 +697,12 @@ check_service_status() {
             fi
             return 1
             ;;
-        meshchat)
-            # Match node process running meshchat, not any process mentioning the string
-            if pgrep -f "node.*reticulum-meshchat" > /dev/null 2>&1; then
+        meshchat|meshchatx)
+            # MeshChatX is a Python web daemon launched via the meshchatx
+            # console script. -f is required because the running process is a
+            # python interpreter, not an exec named meshchatx (web UI on
+            # 127.0.0.1:8000). pgrep stays centralized here per RNS008.
+            if pgrep -f "meshchatx" > /dev/null 2>&1; then
                 _LAST_SERVICE_STATE="$SVC_STATE_RUNNING"
                 return 0
             fi

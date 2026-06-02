@@ -119,7 +119,7 @@ function Show-LogMenu {
         Write-Host ""
         Write-Host "  --- Application Logs ---" -ForegroundColor Cyan
         Write-Host "  3) View management tool log"
-        Write-Host "  4) View MeshChat build log"
+        Write-Host "  4) View MeshChatX log"
         Write-Host "  5) View NomadNet log"
         Write-Host "  6) View Sideband log"
         Write-Host ""
@@ -181,28 +181,19 @@ function Show-LogMenu {
                 pause
             }
             "4" {
-                Show-Section "MeshChat Build Log"
-                $buildLog = Join-Path $env:USERPROFILE "meshchat_build.log"
-                if (Test-Path $buildLog) {
-                    Write-Host "File: $buildLog" -ForegroundColor Cyan
-                    Write-Host "This log is from a failed build - it is removed on success." -ForegroundColor Yellow
+                Show-Section "MeshChatX Log"
+                # MeshChatX is a pip wheel (no build log). Show management-log entries.
+                if (Test-Path $Script:LogFile) {
+                    Write-Host "MeshChatX entries from management log:" -ForegroundColor Cyan
                     Write-Host ""
-                    Get-Content -Path $buildLog -Tail 80
-                } else {
-                    Write-ColorOutput "No MeshChat build log found" "Info"
-                    Write-ColorOutput "This file only exists after a failed build (removed on success)" "Info"
-                    # Check management log for MeshChat entries
-                    if (Test-Path $Script:LogFile) {
-                        Write-Host ""
-                        Write-Host "MeshChat entries from management log:" -ForegroundColor Cyan
-                        Write-Host ""
-                        $entries = Select-String -Path $Script:LogFile -Pattern "meshchat|npm|node|build" -ErrorAction SilentlyContinue | Select-Object -Last 20
-                        if ($entries) {
-                            $entries | ForEach-Object { Write-Host "  $($_.Line)" }
-                        } else {
-                            Write-ColorOutput "No MeshChat entries found in management log" "Info"
-                        }
+                    $entries = Select-String -Path $Script:LogFile -Pattern "meshchatx" -ErrorAction SilentlyContinue | Select-Object -Last 20
+                    if ($entries) {
+                        $entries | ForEach-Object { Write-Host "  $($_.Line)" }
+                    } else {
+                        Write-ColorOutput "No MeshChatX entries found in management log" "Info"
                     }
+                } else {
+                    Write-ColorOutput "No log file found" "Warning"
                 }
                 pause
             }
@@ -247,7 +238,7 @@ function Show-LogMenu {
                     Write-ColorOutput "Searching for '$searchTerm' in log files..." "Info"
                     Write-Host ""
                     $found = $false
-                    $searchFiles = @($Script:LogFile, (Join-Path $env:USERPROFILE "meshchat_build.log"), (Join-Path $env:USERPROFILE ".nomadnetwork\logfile"), (Join-Path $env:USERPROFILE ".sideband\logfile"))
+                    $searchFiles = @($Script:LogFile, (Join-Path $env:USERPROFILE ".nomadnetwork\logfile"), (Join-Path $env:USERPROFILE ".sideband\logfile"))
                     foreach ($f in $searchFiles) {
                         if (Test-Path $f) {
                             $matches = Select-String -Path $f -Pattern $searchTerm -SimpleMatch -ErrorAction SilentlyContinue
@@ -286,7 +277,7 @@ function Show-LogMenu {
                 Write-Host "Application logs:" -ForegroundColor White
                 Write-Host ""
                 $appFound = $false
-                foreach ($appLog in @((Join-Path $env:USERPROFILE "meshchat_build.log"), (Join-Path $env:USERPROFILE ".nomadnetwork\logfile"), (Join-Path $env:USERPROFILE ".sideband\logfile"))) {
+                foreach ($appLog in @((Join-Path $env:USERPROFILE ".nomadnetwork\logfile"), (Join-Path $env:USERPROFILE ".sideband\logfile"))) {
                     if (Test-Path $appLog) {
                         $appFound = $true
                         $item = Get-Item $appLog

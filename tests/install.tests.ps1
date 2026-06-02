@@ -4,7 +4,7 @@
     Pester tests for pwsh/install.ps1 — Installation functions
 .NOTES
     Covers: Install-Python (3 methods), Install-Reticulum, Install-ReticulumWSL,
-    Install-RNODE, Install-Sideband, Install-NomadNet, Install-MeshChat,
+    Install-RNODE, Install-Sideband, Install-NomadNet, Install-MeshChatX,
     Install-Ecosystem (reinstall).
     Uses .Contains() for literal string checks to avoid regex/source-text mismatch.
 #>
@@ -19,24 +19,24 @@ BeforeAll {
 
 Describe "Function Existence" {
 
-    It "All 8 install functions exist" {
+    It "All install functions exist" {
         $Script:InstallSource.Contains('function Install-Python') | Should -BeTrue
         $Script:InstallSource.Contains('function Install-Reticulum') | Should -BeTrue
         $Script:InstallSource.Contains('function Install-ReticulumWSL') | Should -BeTrue
         $Script:InstallSource.Contains('function Install-RNODE') | Should -BeTrue
         $Script:InstallSource.Contains('function Install-Sideband') | Should -BeTrue
         $Script:InstallSource.Contains('function Install-NomadNet') | Should -BeTrue
-        $Script:InstallSource.Contains('function Install-MeshChat') | Should -BeTrue
+        $Script:InstallSource.Contains('function Install-MeshChatX') | Should -BeTrue
         $Script:InstallSource.Contains('function Install-Ecosystem') | Should -BeTrue
     }
 
-    It "install.ps1 has exactly 8 functions" {
+    It "install.ps1 has 9 functions (8 installers + MeshChat back-compat alias)" {
         $functionCount = ([regex]::Matches(
             $Script:InstallSource,
             '^\s*function\s+',
             [System.Text.RegularExpressions.RegexOptions]::Multiline
         )).Count
-        $functionCount | Should -Be 8
+        $functionCount | Should -Be 9
     }
 }
 
@@ -113,65 +113,50 @@ Describe "Install-ReticulumWSL" {
     }
 }
 
-Describe "Install-MeshChat" {
+Describe "Install-MeshChatX" {
 
     BeforeAll {
-        $fnIdx = $Script:InstallSource.IndexOf('function Install-MeshChat')
+        $fnIdx = $Script:InstallSource.IndexOf('function Install-MeshChatX')
         $fnEnd = $Script:InstallSource.IndexOf("`nfunction ", $fnIdx + 10)
         if ($fnEnd -lt 0) { $fnEnd = $Script:InstallSource.Length }
         $Script:MeshChatBlock = $Script:InstallSource.Substring($fnIdx, $fnEnd - $fnIdx)
     }
 
-    It "Checks for npm availability" {
-        $Script:MeshChatBlock.Contains('Get-Command npm') | Should -BeTrue
+    It "Installs the reticulum-meshchatx pip wheel" {
+        $Script:MeshChatBlock.Contains('Invoke-Pip install reticulum-meshchatx --upgrade') | Should -BeTrue
     }
 
-    It "Requires Node.js 18+" {
-        $Script:InstallSource.Contains('Node.js 18+') | Should -BeTrue
+    It "Does NOT use Node.js / npm / git clone (lightweight pip path)" {
+        $Script:MeshChatBlock.Contains('Get-Command npm') | Should -BeFalse
+        $Script:MeshChatBlock.Contains('npm install') | Should -BeFalse
+        $Script:MeshChatBlock.Contains('git clone') | Should -BeFalse
+        $Script:MeshChatBlock.Contains('build-frontend') | Should -BeFalse
     }
 
-    It "Checks Node.js major version" {
-        $Script:InstallSource.Contains('majorVersion') | Should -BeTrue
-        $Script:InstallSource.Contains('-lt 18') | Should -BeTrue
+    It "Gates on Python 3.11+" {
+        $Script:MeshChatBlock.Contains('sys.version_info >= (3, 11)') | Should -BeTrue
     }
 
-    It "Checks for git dependency" {
-        $Script:MeshChatBlock.Contains('Get-Command git') | Should -BeTrue
+    It "Checks Python prerequisite" {
+        $Script:MeshChatBlock.Contains('Test-Python') | Should -BeTrue
     }
 
-    It "Clones from correct repository" {
-        $Script:InstallSource.Contains('liamcottle/reticulum-meshchat') | Should -BeTrue
+    It "Offers to remove the legacy git-based MeshChat install" {
+        $Script:MeshChatBlock.Contains('reticulum-meshchat') | Should -BeTrue
+        $Script:MeshChatBlock.Contains('Remove-Item -Recurse') | Should -BeTrue
     }
 
-    It "Supports update of existing installation" {
-        $Script:InstallSource.Contains('Update existing installation') | Should -BeTrue
-        $Script:InstallSource.Contains('git pull origin master') | Should -BeTrue
+    It "Checks LASTEXITCODE after pip install" {
+        $Script:MeshChatBlock.Contains('LASTEXITCODE') | Should -BeTrue
     }
 
-    It "Runs 5-step installation process" {
-        $Script:InstallSource.Contains('Step 1/5') | Should -BeTrue
-        $Script:InstallSource.Contains('Step 2/5') | Should -BeTrue
-        $Script:InstallSource.Contains('Step 3/5') | Should -BeTrue
-        $Script:InstallSource.Contains('Step 4/5') | Should -BeTrue
-        $Script:InstallSource.Contains('Step 5/5') | Should -BeTrue
+    It "Reports the headless run command and web UI URL" {
+        $Script:MeshChatBlock.Contains('meshchatx --headless') | Should -BeTrue
+        $Script:MeshChatBlock.Contains('127.0.0.1:8000') | Should -BeTrue
     }
 
-    It "Installs Python dependencies from requirements.txt" {
-        $Script:MeshChatBlock.Contains('requirements.txt') | Should -BeTrue
-        $Script:MeshChatBlock.Contains('Invoke-Pip install -r') | Should -BeTrue
-    }
-
-    It "Runs npm audit fix" {
-        $Script:InstallSource.Contains('npm audit fix') | Should -BeTrue
-    }
-
-    It "Verifies installation via package.json" {
-        $Script:InstallSource.Contains('package.json') | Should -BeTrue
-        $Script:InstallSource.Contains('ConvertFrom-Json') | Should -BeTrue
-    }
-
-    It "Uses Pop-Location for cleanup" {
-        $Script:InstallSource.Contains('Pop-Location') | Should -BeTrue
+    It "Keeps a back-compat Install-MeshChat alias" {
+        $Script:InstallSource.Contains('function Install-MeshChat ') | Should -BeTrue
     }
 }
 

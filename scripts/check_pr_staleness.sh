@@ -46,7 +46,8 @@ printf "Branch:   %s → %s\n\n" "$HEAD_REF" "$BASE_REF"
 git fetch -q origin "pull/${PR}/head:pr-${PR}-staleness" 2>/dev/null || {
     echo "Failed to fetch PR head"; exit 1;
 }
-trap "git branch -D pr-${PR}-staleness >/dev/null 2>&1" EXIT
+cleanup_branch="pr-${PR}-staleness"
+trap 'git branch -D "$cleanup_branch" >/dev/null 2>&1' EXIT
 
 git fetch -q origin "$BASE_REF" 2>/dev/null
 

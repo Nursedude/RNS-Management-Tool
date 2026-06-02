@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # NEEDS_REBOOT, MENU_BREADCRUMB used by other sourced modules
 #########################################################
-# lib/install.sh — Prerequisites, ecosystem, MeshChat, Sideband
+# lib/install.sh — Prerequisites, ecosystem, MeshChatX, Sideband
 # Sourced by rns_management_tool.sh
 #########################################################
 
@@ -164,6 +164,11 @@ install_prerequisites() {
 
 #########################################################
 # Node.js Installation (Modern Method)
+#
+# DEPRECATED: MeshChatX installs as a pip wheel with a bundled frontend, so the
+# tool no longer requires Node.js for any component. install_nodejs_modern() and
+# check_nodejs_version() are retained for now in case an out-of-tree caller
+# depends on them; they have no in-tree callers and are slated for removal.
 #########################################################
 
 install_nodejs_modern() {
@@ -485,27 +490,31 @@ install_reticulum_ecosystem() {
     fi
 }
 
-check_meshchat_installed() {
-    if [ -d "$MESHCHAT_DIR" ] && [ -f "$MESHCHAT_DIR/package.json" ]; then
-        MESHCHAT_VERSION=$(grep '"version"' "$MESHCHAT_DIR/package.json" | head -1 | awk -F'"' '{print $4}')
-        print_info "MeshChat: v$MESHCHAT_VERSION (installed)"
-        log_message "MeshChat installed: $MESHCHAT_VERSION"
+check_meshchatx_installed() {
+    MESHCHATX_VERSION=$(get_installed_version "$MESHCHATX_PKG")
+    MESHCHAT_VERSION="$MESHCHATX_VERSION"   # back-compat for older callers
+    if [ -n "$MESHCHATX_VERSION" ]; then
+        print_info "MeshChatX: v$MESHCHATX_VERSION (installed)"
+        log_message "MeshChatX installed: $MESHCHATX_VERSION"
         return 0
     else
-        print_warning "MeshChat: not installed"
-        log_message "MeshChat not installed"
+        print_warning "MeshChatX: not installed"
+        log_message "MeshChatX not installed"
         return 1
     fi
 }
+
+# Back-compat alias — older code/tests may still call check_meshchat_installed.
+check_meshchat_installed() { check_meshchatx_installed "$@"; }
 
 # cleanup_partial_install — remove a half-installed component directory after a
 # failed FIRST-time install so the operator can retry from a clean slate.
 # On UPDATE failure we leave the previous (working) install in place — clobbering
 # it would turn a recoverable update failure into a total outage.
 #
-# User-data caveat: install dirs ($MESHCHAT_DIR, $SIDEBAND_DIR) hold the cloned
-# repo + build artifacts only. Identity / config live in $REAL_HOME/.reticulum/
-# and $REAL_HOME/.config/<app>/ respectively, which we never touch.
+# User-data caveat: an install dir like $SIDEBAND_DIR holds the cloned repo +
+# build artifacts only. Identity / config live in $REAL_HOME/.reticulum/ and
+# $REAL_HOME/.config/<app>/ respectively, which we never touch.
 #
 # Usage: cleanup_partial_install <component_name> <install_dir> <is_update>
 cleanup_partial_install() {
@@ -532,153 +541,126 @@ cleanup_partial_install() {
     fi
 }
 
-install_meshchat() {
-    print_section "Installing MeshChat"
+# ensure_rns_floor — advisory (non-blocking) check that the installed RNS meets a
+# minimum version. MeshChatX declares rns>=1.2.5; pip resolves/upgrades it on
+# install, so this only warns if something left an older RNS behind. We do NOT
+# pin or fork RNS (that is MeshForge's job, not this lightweight tool's).
+ensure_rns_floor() {
+    local cur
+    cur=$(get_installed_version "rns")
+    [ -z "$cur" ] && return 0
+    # sort -V -C succeeds when the input is already in ascending order, i.e.
+    # RNS_MIN_VERSION <= cur. If it fails, cur is below the floor.
+    if printf '%s\n%s\n' "$RNS_MIN_VERSION" "$cur" | sort -V -C 2>/dev/null; then
+        return 0
+    fi
+    print_warning "RNS $cur is below MeshChatX's required $RNS_MIN_VERSION — pip should have upgraded it"
+    log_warn "RNS $cur below MeshChatX floor $RNS_MIN_VERSION; verify the install"
+    return 0
+}
 
-    # Disk space pre-check (MeshChat clone + npm install needs ~500MB)
-    if ! check_disk_space 500 "$REAL_HOME"; then
-        print_error "Insufficient disk space for MeshChat installation"
+install_meshchatx() {
+    print_section "Installing MeshChatX"
+
+    echo -e "${CYAN}${BOLD}About MeshChatX${NC}\n"
+    echo "MeshChatX (Quad4 Software) is the actively maintained successor to the"
+    echo "original Reticulum MeshChat — a web-based LXMF messaging client."
+    echo "It installs as a pip wheel with the frontend bundled, so no Node.js"
+    echo "build is required. Run it headless and open the web UI in a browser."
+    echo ""
+
+    # Disk space pre-check — the wheel is tens of MB (no npm tree, no clone).
+    if ! check_disk_space 100 "$REAL_HOME"; then
+        print_error "Insufficient disk space for MeshChatX installation"
         return 1
     fi
 
-    # Check for Node.js
-    if ! has_command npm; then
-        print_warning "Node.js/npm not found"
-        echo -e "${YELLOW}MeshChat requires Node.js 18+${NC}"
-        if confirm_action "Install Node.js now?" "y"; then
-            install_nodejs_modern || return 1
-        else
+    # Python >=3.11 gate — MeshChatX declares requires-python>=3.11. Fail fast
+    # with a clear message instead of an opaque pip 'requires-python' error.
+    if has_command python3; then
+        local py_ok
+        py_ok=$(python3 -c 'import sys; print(1 if sys.version_info >= (3, 11) else 0)' 2>/dev/null)
+        if [ "$py_ok" != "1" ]; then
+            local py_ver
+            py_ver=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "unknown")
+            print_error "MeshChatX requires Python 3.11+ (found $py_ver)"
+            print_info "Upgrade your OS or install a newer Python, then retry."
+            log_message "MeshChatX install aborted: Python $py_ver < 3.11"
             return 1
         fi
     else
-        check_nodejs_version || return 1
+        print_error "python3 not found — install the Reticulum ecosystem first (menu option 1)"
+        return 1
     fi
 
-    # Check for git
-    if ! has_command git; then
-        print_info "Installing git..."
-        run_with_timeout "$APT_TIMEOUT" sudo apt update && run_with_timeout "$APT_TIMEOUT" sudo apt install -y git
-    fi
+    log_message "Installing MeshChatX"
 
-    log_message "Installing MeshChat"
-    local is_update=false
-
-    if [ -d "$MESHCHAT_DIR" ]; then
-        print_warning "MeshChat directory already exists"
-        if confirm_action "Update existing installation?" "y"; then
-            is_update=true
-        else
-            return 1
+    # Legacy migration — the deprecated git/npm install left a heavy tree behind.
+    if [ -d "$MESHCHAT_LEGACY_DIR" ]; then
+        print_warning "Found the old git-based MeshChat at $MESHCHAT_LEGACY_DIR"
+        echo "  This is deprecated and can be hundreds of MB (node_modules + build)."
+        echo "  Your Reticulum identity in ~/.reticulum is untouched by removal."
+        if confirm_action "Remove the old install to reclaim disk space?" "y"; then
+            if rm -rf "$MESHCHAT_LEGACY_DIR"; then
+                print_success "Removed legacy MeshChat at $MESHCHAT_LEGACY_DIR"
+                log_message "Removed legacy MeshChat dir $MESHCHAT_LEGACY_DIR"
+            else
+                print_warning "Could not remove $MESHCHAT_LEGACY_DIR — remove it manually"
+            fi
         fi
     fi
 
-    # Step-based progress (wiring up init_operation from meshforge pattern)
-    init_operation "Installing MeshChat" \
-        "Clone/update repository" \
-        "Install npm dependencies" \
-        "Install Python dependencies" \
-        "Build frontend" \
+    # Step-based progress (init_operation from meshforge pattern)
+    init_operation "Installing MeshChatX" \
+        "Install reticulum-meshchatx (pip)" \
         "Verify installation"
 
-    # Step 1: Clone or update
-    if [ "$is_update" = true ]; then
-        pushd "$MESHCHAT_DIR" > /dev/null || return 1
-        ensure_git_safe_directory "$MESHCHAT_DIR"
-        if retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git pull origin master 2>&1 | tee -a "$UPDATE_LOG"; then
-            next_step "success"
-        else
-            next_step "fail"
-            popd > /dev/null || true
-            complete_operation "fail"
-            return 1
-        fi
-    else
-        if retry_with_backoff 3 run_with_timeout "$GIT_TIMEOUT" git clone https://github.com/liamcottle/reticulum-meshchat.git "$MESHCHAT_DIR" 2>&1 | tee -a "$UPDATE_LOG"; then
-            pushd "$MESHCHAT_DIR" > /dev/null || return 1
-            next_step "success"
-        else
-            next_step "fail"
-            print_error "Failed to clone MeshChat repository"
-            complete_operation "fail"
-            show_error_help "git" ""
-            cleanup_partial_install "MeshChat" "$MESHCHAT_DIR" "$is_update"
-            return 1
-        fi
-    fi
-
-    # Step 2: npm install (with retry)
-    if retry_with_backoff 2 run_with_timeout "$NETWORK_TIMEOUT" npm install 2>&1 | tee -a "$UPDATE_LOG"; then
+    # Step 1: pip install the wheel (bundled frontend; resolves rns>=1.2.5).
+    if retry_with_backoff 3 run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install "$MESHCHATX_PKG" --upgrade --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
         next_step "success"
     else
         next_step "fail"
-        popd > /dev/null || true
         complete_operation "fail"
-        show_error_help "nodejs" ""
-        cleanup_partial_install "MeshChat" "$MESHCHAT_DIR" "$is_update"
+        print_error "Failed to install MeshChatX"
+        show_error_help "pip" ""
         return 1
     fi
 
-    # Step 3: Install Python dependencies (aiohttp, lxmf, peewee, rns, websockets)
-    if [ -f "requirements.txt" ]; then
-        print_info "Installing Python dependencies..."
-        if run_with_timeout "$PIP_TIMEOUT" "$PIP_CMD" install -r requirements.txt --break-system-packages 2>&1 | tee -a "$UPDATE_LOG"; then
-            next_step "success"
-        else
-            next_step "fail"
-            print_warning "Failed to install some Python dependencies"
-            echo "  MeshChat may not run correctly without them"
-        fi
-    else
-        print_warning "requirements.txt not found — skipping Python dependencies"
-        next_step "fail"
-    fi
-
-    # Step 4: Build frontend
-    npm audit fix --audit-level=moderate 2>&1 | tee -a "$UPDATE_LOG" || true
-    local build_log="${REAL_HOME}/meshchat_build.log"
-    if npm run build-frontend 2>&1 | tee -a "$UPDATE_LOG" | tee "$build_log"; then
+    # Step 2: Verify installation (bust the version cache for a fresh read).
+    unset "_VERSION_CACHE[$MESHCHATX_PKG]" 2>/dev/null || true
+    MESHCHATX_VERSION=$(get_installed_version "$MESHCHATX_PKG")
+    MESHCHAT_VERSION="$MESHCHATX_VERSION"   # back-compat
+    if [ -n "$MESHCHATX_VERSION" ]; then
+        print_success "MeshChatX v$MESHCHATX_VERSION installed successfully"
+        log_message "MeshChatX installed: $MESHCHATX_VERSION"
         next_step "success"
-        rm -f "$build_log"
     else
         next_step "fail"
-        popd > /dev/null || true
         complete_operation "fail"
-        log_error "MeshChat build failed — see $build_log for details"
-
-        # Show last build errors inline
-        echo ""
-        echo -e "${RED}${BOLD}Build failed. Last 20 lines of build output:${NC}"
-        echo -e "${YELLOW}────────────────────────────────────────────${NC}"
-        tail -n 20 "$build_log" 2>/dev/null
-        echo -e "${YELLOW}────────────────────────────────────────────${NC}"
-        echo ""
-        echo -e "${YELLOW}Troubleshooting suggestions:${NC}"
-        echo "  1) Check Node.js version: node --version (requires 18+)"
-        echo "  2) Clear npm cache: npm cache clean --force"
-        echo "  3) Delete node_modules and retry: rm -rf node_modules && npm install"
-        echo "  4) Check disk space: df -h"
-        echo "  5) Full build log saved to: $build_log"
-        echo "  6) View logs: Main Menu > l) Logs > MeshChat build log"
-        echo ""
-        cleanup_partial_install "MeshChat" "$MESHCHAT_DIR" "$is_update"
+        print_error "MeshChatX install reported success but the package is not detectable"
         return 1
     fi
 
-    # Step 5: Verify installation
-    if [ -f "package.json" ]; then
-        MESHCHAT_VERSION=$(grep '"version"' package.json | head -1 | awk -F'"' '{print $4}')
-        print_success "MeshChat v$MESHCHAT_VERSION installed successfully"
-        log_message "MeshChat installed: $MESHCHAT_VERSION"
-        create_meshchat_launcher
-        next_step "success"
-    else
-        next_step "fail"
+    if ! has_command meshchatx; then
+        print_warning "meshchatx installed but not on PATH yet"
+        print_info "Restart your shell or run: hash -r  (it lives in ~/.local/bin)"
     fi
 
-    popd > /dev/null || true
+    # Advisory RNS version-parity check (MeshChatX needs rns>=$RNS_MIN_VERSION).
+    ensure_rns_floor
+
+    create_meshchatx_launcher
+
+    echo ""
+    print_info "Start MeshChatX:  meshchatx --headless"
+    print_info "Then open:        $MESHCHATX_URL  (self-signed cert — your browser will warn)"
+
     complete_operation "success"
     return 0
 }
+
+# Back-compat alias — older code/tests may still call install_meshchat.
+install_meshchat() { install_meshchatx "$@"; }
 
 # Unified desktop launcher creator (merges meshchat + sideband patterns)
 # Usage: create_desktop_launcher <filename> <name> <comment> <exec> <icon> [extra_keys]
@@ -712,13 +694,19 @@ EOF
     log_message "Created $name desktop launcher"
 }
 
-create_meshchat_launcher() {
-    create_desktop_launcher "meshchat" \
-        "Reticulum MeshChat" \
-        "LXMF messaging client for Reticulum" \
-        "bash -c 'cd $MESHCHAT_DIR && python meshchat.py'" \
-        "$MESHCHAT_DIR/icon.png"
+create_meshchatx_launcher() {
+    # MeshChatX runs as a headless web daemon; the launcher starts it and the
+    # user opens $MESHCHATX_URL in a browser. No bundled icon file exists, so
+    # use a generic themed icon name.
+    create_desktop_launcher "meshchatx" \
+        "Reticulum MeshChatX" \
+        "Web-based LXMF messaging client for Reticulum" \
+        "meshchatx --headless --host $MESHCHATX_HOST --port $MESHCHATX_PORT --storage-dir $MESHCHATX_STORAGE_DIR" \
+        "network-transmit-receive"
 }
+
+# Back-compat alias.
+create_meshchat_launcher() { create_meshchatx_launcher "$@"; }
 
 #########################################################
 # Sideband Installation

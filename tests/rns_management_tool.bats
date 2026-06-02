@@ -198,7 +198,7 @@ teardown() {
 }
 
 @test "Main menu uses safe_call for dispatching" {
-    grep -q 'safe_call.*install_meshchat\|safe_call.*install_sideband' "$MAIN_SCRIPT"
+    grep -q 'safe_call.*install_meshchatx\|safe_call.*install_sideband' "$MAIN_SCRIPT"
 }
 
 @test "First-run wizard function exists" {

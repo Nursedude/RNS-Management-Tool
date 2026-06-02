@@ -133,7 +133,7 @@ The RNS Management Tool demonstrates **production-quality security practices** f
 
 - Centralized in `check_service_status()` (`lib/utils.sh:317-345`)
 - Uses `pgrep -x` (exact match) for all services
-- Documented exception: meshchat uses `pgrep -f "node.*reticulum-meshchat"` (`lib/utils.sh:339`) — necessary because meshchat runs as a Node.js child process
+- Documented exception: meshchatx uses `pgrep -f "meshchatx"` (`lib/utils.sh`) — necessary because MeshChatX runs as a Python console-script (interpreter) process, not an exec named `meshchatx`, so `-x` would not match
 - Comment at `lib/utils.sh:322`: "Never use pgrep -f - it matches editors, grep, and the script itself"
 - Prefers `systemctl --user is-active` when available, falls back to pgrep
 
@@ -322,9 +322,9 @@ Backup and export operations create files with the default umask. Setting `umask
 
 ### R4: Explicit `pgrep -f` Documentation (Cosmetic)
 
-**File:** `lib/utils.sh:339`
+**File:** `lib/utils.sh`
 
-The meshchat `pgrep -f` exception is necessary but could be more explicitly documented with a comment explaining that Node.js child processes don't match `-x` pattern.
+The meshchatx `pgrep -f` exception is necessary but could be more explicitly documented with a comment explaining that the Python console-script process doesn't match the `-x` pattern.
 
 **Priority:** Cosmetic — existing comment on line 322 provides context, but a line-level comment would aid future reviewers.
 

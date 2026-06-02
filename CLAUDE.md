@@ -44,7 +44,7 @@ graph TB
         RNS[RNS Core]
         LXMF[LXMF Protocol]
         NOMAD[NomadNet]
-        MESH[MeshChat]
+        MESH[MeshChatX]
         SIDE[Sideband]
     end
 
@@ -76,7 +76,7 @@ graph TB
 │   ├── validation.sh               # Centralized input validation (RNS002-RNS004)
 │   ├── utils.sh                    # Timeout, retry, logging, caching, service checks
 │   ├── ui.sh                       # Print functions, box drawing, menus, help
-│   ├── install.sh                  # Prerequisites, ecosystem, MeshChat, Sideband
+│   ├── install.sh                  # Prerequisites, ecosystem, MeshChatX, Sideband
 │   ├── rnode.sh                    # RNODE device configuration and management
 │   ├── services.sh                 # Service management, meshtasticd, autostart
 │   ├── backup.sh                   # Backup/restore, export/import
@@ -88,7 +88,7 @@ graph TB
 │   ├── core.ps1                    # Environment, logging, health checks, log rotation
 │   ├── ui.ps1                      # Color output, headers, menus, quick status
 │   ├── environment.ps1             # WSL, Python, pip detection
-│   ├── install.ps1                 # Python, Reticulum, MeshChat, Sideband, ecosystem
+│   ├── install.ps1                 # Python, Reticulum, MeshChatX, Sideband, ecosystem
 │   ├── rnode.ps1                   # Serial port, radio config, EEPROM, bootloader
 │   ├── services.ps1                # Daemon control, network tools, identity, autostart
 │   ├── backup.ps1                  # Backup/restore, export/import, list/delete
@@ -215,7 +215,7 @@ Main Menu
 │   ├── 1) Install/Update Reticulum Ecosystem
 │   ├── 2) Install/Configure RNODE Device
 │   ├── 3) Install NomadNet
-│   ├── 4) Install MeshChat
+│   ├── 4) Install MeshChatX
 │   └── 5) Install Sideband
 │
 ├── Management ─────────────────────
@@ -302,7 +302,7 @@ See [PERSISTENT_ISSUES.md](PERSISTENT_ISSUES.md) for detailed root causes, fixes
 |-------|----------|--------|
 | RNODE not detected | Linux | `sudo usermod -aG dialout $USER` then logout/login |
 | rnsd won't start | All | Check `~/.reticulum/config` exists |
-| MeshChat build fails | All | Script auto-upgrades Node.js to 22 LTS via NodeSource |
+| MeshChatX install fails | All | Needs Python 3.11+; `pip install reticulum-meshchatx` (no Node.js) |
 | Permission denied | Linux | `chmod +x rns_management_tool.sh` |
 | pip externally-managed error | Debian 12+ | Script auto-adds `--break-system-packages` flag |
 
@@ -380,7 +380,7 @@ shellcheck -x -S warning rns_management_tool.sh
 | Reticulum Manual | reticulum.network/manual |
 | RNS GitHub | github.com/markqvist/Reticulum |
 | RNODE Firmware | github.com/markqvist/RNode_Firmware |
-| MeshChat | github.com/liamcottle/reticulum-meshchat |
+| MeshChatX | github.com/Quad4-Software/MeshChatX |
 | Sideband | unsigned.io/sideband |
 | MeshForge | github.com/Nursedude/meshforge |
 

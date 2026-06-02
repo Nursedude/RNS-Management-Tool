@@ -352,7 +352,7 @@ run_startup_health_check() {
     fi
 
     # 5. Git safe.directory for common paths
-    ensure_git_safe_directory "$MESHCHAT_DIR"
+    # (MeshChatX is a pip wheel, not a git clone — only Sideband needs this now.)
     ensure_git_safe_directory "$SIDEBAND_DIR"
 
     # 6. Log directory writable

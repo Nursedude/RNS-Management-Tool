@@ -48,12 +48,9 @@ stop_services() {
         log_message "User closed NomadNet manually"
     fi
 
-    # Check for MeshChat processes (centralized service check)
-    if check_service_status "meshchat"; then
-        print_warning "MeshChat appears to be running - please close it manually"
-        echo -n "Press Enter when MeshChat is closed..."
-        read -r -t 300 || { echo ""; print_warning "Timed out waiting for confirmation"; return 1; }
-        log_message "User closed MeshChat manually"
+    # Stop MeshChatX if running (managed via its systemd --user unit)
+    if check_service_status "meshchatx"; then
+        stop_meshchatx
     fi
 
     # Invalidate status cache after service changes
@@ -190,11 +187,16 @@ show_service_status() {
         print_info "NomadNet: Not installed"
     fi
 
-    # Check MeshChat
-    if check_meshchat_installed; then
-        print_success "MeshChat: v$MESHCHAT_VERSION"
+    # Check MeshChatX
+    MESHCHATX_VERSION=$(get_installed_version "$MESHCHATX_PKG")
+    if [ -n "$MESHCHATX_VERSION" ]; then
+        if check_service_status "meshchatx"; then
+            print_success "MeshChatX: v$MESHCHATX_VERSION (running — $MESHCHATX_URL)"
+        else
+            print_success "MeshChatX: v$MESHCHATX_VERSION (installed, stopped)"
+        fi
     else
-        print_info "MeshChat: Not installed"
+        print_info "MeshChatX: Not installed"
     fi
 
     # Check rnodeconf
@@ -692,6 +694,103 @@ meshtasticd_check_api() {
 }
 
 #########################################################
+# MeshChatX Control (systemd --user web daemon on :8000)
+#########################################################
+
+# Resolve the meshchatx executable path for the unit's ExecStart.
+# pip --break-system-packages / --user typically lands in ~/.local/bin.
+_meshchatx_bin() {
+    command -v meshchatx 2>/dev/null || echo "$REAL_HOME/.local/bin/meshchatx"
+}
+
+# Write (idempotently) the systemd --user unit for the MeshChatX web daemon.
+# Uses write_atomic per project config-write policy. Returns 1 on failure.
+write_meshchatx_unit() {
+    local unit_dir="$REAL_HOME/.config/systemd/user"
+    local unit_file="$unit_dir/meshchatx.service"
+    local mcx_bin
+    mcx_bin=$(_meshchatx_bin)
+
+    local unit_content="[Unit]
+Description=Reticulum MeshChatX (web UI)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${mcx_bin} --headless --host ${MESHCHATX_HOST} --port ${MESHCHATX_PORT} --storage-dir ${MESHCHATX_STORAGE_DIR}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"
+    if write_atomic "$unit_file" "$unit_content"; then
+        systemctl --user daemon-reload 2>/dev/null || true
+        return 0
+    fi
+    print_error "Failed to write MeshChatX service unit"
+    return 1
+}
+
+start_meshchatx() {
+    print_section "Starting MeshChatX"
+    if ! command -v meshchatx &>/dev/null && [ -z "$(get_installed_version "$MESHCHATX_PKG")" ]; then
+        print_error "MeshChatX is not installed (use main menu option 4)"
+        return 1
+    fi
+    if check_service_status "meshchatx"; then
+        print_info "MeshChatX is already running — $MESHCHATX_URL"
+        return 0
+    fi
+
+    write_meshchatx_unit || return 1
+    print_info "Starting MeshChatX service..."
+    if systemctl --user start meshchatx.service 2>&1; then
+        local wait_count=0 max_wait=10
+        while ! check_service_status "meshchatx" && [ $wait_count -lt $max_wait ]; do
+            sleep 1
+            ((wait_count++))
+        done
+        if check_service_status "meshchatx"; then
+            print_success "MeshChatX started — open $MESHCHATX_URL (self-signed cert)"
+            log_message "Started MeshChatX service"
+        else
+            print_warning "MeshChatX did not come up within ${max_wait}s"
+            echo -e "  ${CYAN}Check logs:${NC} systemctl --user status meshchatx --no-pager"
+        fi
+    else
+        print_error "Failed to start MeshChatX service"
+        echo -e "  ${CYAN}Check logs:${NC} systemctl --user status meshchatx --no-pager"
+    fi
+    invalidate_status_cache
+}
+
+stop_meshchatx() {
+    print_section "Stopping MeshChatX"
+    if ! check_service_status "meshchatx"; then
+        print_info "MeshChatX is not running"
+        invalidate_status_cache
+        return 0
+    fi
+    print_info "Stopping MeshChatX service..."
+    systemctl --user stop meshchatx.service 2>&1 || true
+    local wait_count=0 max_wait=10
+    while check_service_status "meshchatx" && [ $wait_count -lt $max_wait ]; do
+        sleep 1
+        ((wait_count++))
+    done
+    if ! check_service_status "meshchatx"; then
+        print_success "MeshChatX stopped"
+        log_message "Stopped MeshChatX service"
+    else
+        # Still running — likely launched manually rather than via the unit.
+        print_warning "MeshChatX still running — if you started it manually, stop that process"
+        log_warn "MeshChatX did not stop via systemctl --user (manual launch?)"
+    fi
+    invalidate_status_cache
+}
+
+#########################################################
 # Service Management Menu
 #########################################################
 
@@ -717,6 +816,12 @@ services_menu() {
             echo "  m2) Stop meshtasticd"
             echo "  m3) Restart meshtasticd"
             echo "  m4) Check HTTP API & config"
+            echo ""
+        fi
+        if command -v meshchatx &>/dev/null; then
+            echo -e "  ${CYAN}─── MeshChatX Control ───${NC}"
+            echo "  x1) Start MeshChatX (web UI)"
+            echo "  x2) Stop MeshChatX"
             echo ""
         fi
         echo -e "  ${CYAN}─── Network Tools ───${NC}"
@@ -757,6 +862,8 @@ services_menu() {
             m2|M2) meshtasticd_stop; pause_for_input ;;
             m3|M3) meshtasticd_restart; pause_for_input ;;
             m4|M4) meshtasticd_check_api; pause_for_input ;;
+            x1|X1) start_meshchatx; pause_for_input ;;
+            x2|X2) stop_meshchatx; pause_for_input ;;
             0|"") return ;;
             *)  print_error "Invalid option" ;;
         esac
@@ -794,16 +901,36 @@ EOF
     print_success "Auto-start enabled for rnsd"
     print_info "Service will start automatically on login"
     log_message "Enabled rnsd auto-start"
+
+    # Optionally also auto-start the MeshChatX web daemon on login.
+    if command -v meshchatx &>/dev/null && confirm_action "Also auto-start MeshChatX on login?" "y"; then
+        if write_meshchatx_unit; then
+            systemctl --user enable meshchatx.service 2>/dev/null
+            print_success "Auto-start enabled for MeshChatX ($MESHCHATX_URL)"
+            log_message "Enabled MeshChatX auto-start"
+        fi
+    fi
 }
 
 disable_autostart() {
     print_section "Disable Auto-Start"
 
+    local disabled=false
     if systemctl --user is-enabled rnsd.service &>/dev/null; then
         systemctl --user disable rnsd.service
         print_success "Auto-start disabled for rnsd"
         log_message "Disabled rnsd auto-start"
-    else
+        disabled=true
+    fi
+
+    if systemctl --user is-enabled meshchatx.service &>/dev/null; then
+        systemctl --user disable meshchatx.service
+        print_success "Auto-start disabled for MeshChatX"
+        log_message "Disabled MeshChatX auto-start"
+        disabled=true
+    fi
+
+    if [ "$disabled" = false ]; then
         print_info "Auto-start was not enabled"
     fi
 }

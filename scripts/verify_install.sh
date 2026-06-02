@@ -189,11 +189,11 @@ fi
 #########################################################
 section "[6/6] Optional Components"
 
-# MeshChat
-if command -v meshchat &>/dev/null || [ -d "$REAL_HOME/reticulum-meshchat" ]; then
-    check_pass "MeshChat installed"
+# MeshChatX (pip wheel: reticulum-meshchatx, console script meshchatx)
+if command -v meshchatx &>/dev/null || pip3 show reticulum-meshchatx &>/dev/null 2>&1; then
+    check_pass "MeshChatX installed"
 else
-    check_warn "MeshChat" "not installed (optional — menu option 4)"
+    check_warn "MeshChatX" "not installed (optional — menu option 4)"
 fi
 
 # Sideband

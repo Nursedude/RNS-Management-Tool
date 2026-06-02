@@ -5,6 +5,30 @@ All notable changes to the RNS Management Tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **MeshChat → MeshChatX migration**: Menu option 4 now installs MeshChatX
+  (`reticulum-meshchatx`) from PyPI instead of the deprecated
+  `liamcottle/reticulum-meshchat`. The pip wheel bundles the built frontend, so
+  the installer no longer requires Node.js, npm, a git clone, or a build step on
+  either Linux or Windows — a much lighter, cross-platform path.
+- Service detection now matches the `meshchatx` Python daemon (web UI on
+  `https://127.0.0.1:8000`) instead of the old Node.js process.
+
+### Added
+- **MeshChatX service control**: Start/Stop entries in the Services menu and an
+  optional `systemd --user` auto-start unit (written atomically) on login.
+- **RNS version-parity advisory**: `ensure_rns_floor()` logs a warning if the
+  installed RNS is below MeshChatX's `rns>=1.2.5` requirement (pip resolves it).
+- **Python 3.11+ gate**: the MeshChatX installer fails fast with a clear message
+  on older Python instead of an opaque pip `requires-python` error.
+
+### Removed
+- Node.js / npm dependency and the MeshChat build-log viewer (no build step).
+- Legacy git-based MeshChat install is detected and offered for removal to
+  reclaim disk space.
+
 ## [0.4.0-beta] - 2026-03-04
 
 ### Added

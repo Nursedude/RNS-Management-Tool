@@ -504,24 +504,22 @@ _logs_show_management() {
     fi
 }
 
-_logs_show_meshchat_build() {
-    print_section "MeshChat Build Log"
-    local meshchat_build_log="${REAL_HOME}/meshchat_build.log"
-    if [ -f "$meshchat_build_log" ]; then
-        echo -e "${CYAN}File: $meshchat_build_log${NC}"
-        echo -e "${YELLOW}This log is from a failed build — it is removed on success.${NC}\n"
-        tail -n 80 "$meshchat_build_log" | show_paged_output "MeshChat Build Output"
+_logs_show_meshchatx() {
+    print_section "MeshChatX Log"
+    # MeshChatX is a pip wheel run as a systemd --user daemon — no build log.
+    # Show the service journal if the unit is active, else management-log entries.
+    if systemctl --user cat meshchatx.service &>/dev/null; then
+        echo -e "${CYAN}Source: systemctl --user journal for meshchatx.service${NC}\n"
+        systemctl --user status meshchatx.service --no-pager 2>/dev/null | head -n 20
+        echo ""
+        journalctl --user -u meshchatx.service --no-pager -n 60 2>/dev/null | show_paged_output "MeshChatX Journal"
+    elif [ -f "$UPDATE_LOG" ]; then
+        print_info "MeshChatX entries from management log:"
+        echo ""
+        grep -i "meshchatx" "$UPDATE_LOG" 2>/dev/null | tail -n 20 || \
+            print_info "No MeshChatX entries found in management log"
     else
-        print_info "No MeshChat build log found"
-        print_info "This file only exists after a failed build (removed on success)"
-        # Check management log for MeshChat-related entries
-        if [ -f "$UPDATE_LOG" ]; then
-            echo ""
-            print_info "MeshChat entries from management log:"
-            echo ""
-            grep -i "meshchat\|npm\|node\|build" "$UPDATE_LOG" 2>/dev/null | tail -n 20 || \
-                print_info "No MeshChat entries found in management log"
-        fi
+        print_info "No MeshChatX log available"
     fi
 }
 
@@ -574,7 +572,6 @@ _logs_search() {
             grep -F --color=always "$SEARCH_TERM" \
                 "$UPDATE_LOG" "${UPDATE_LOG}".* \
                 "$REAL_HOME"/rns_management_*.log \
-                "$REAL_HOME/meshchat_build.log" \
                 "$REAL_HOME/.nomadnetwork/logfile" \
                 "$REAL_HOME/.sideband/logfile" 2>/dev/null
         } || print_warning "No matches found"
@@ -620,7 +617,7 @@ _logs_list_all() {
     echo ""
     echo -e "${BOLD}Application logs:${NC}\n"
     local app_found=false
-    for app_log in "$REAL_HOME/meshchat_build.log" "$REAL_HOME/.nomadnetwork/logfile" "$REAL_HOME/.sideband/logfile"; do
+    for app_log in "$REAL_HOME/.nomadnetwork/logfile" "$REAL_HOME/.sideband/logfile"; do
         if [ -f "$app_log" ]; then
             app_found=true
             local sz lc mod_time
@@ -652,7 +649,7 @@ view_logs_menu() {
         echo ""
         echo -e "  ${CYAN}─── Application Logs ───${NC}"
         echo "   4) View management tool log"
-        echo "   5) View MeshChat build log"
+        echo "   5) View MeshChatX log"
         echo "   6) View NomadNet log"
         echo "   7) View Sideband log"
         echo ""
@@ -670,7 +667,7 @@ view_logs_menu() {
             2) _logs_show_meshtasticd; pause_for_input ;;
             3) _logs_show_reticulum_journal; pause_for_input ;;
             4) _logs_show_management; pause_for_input ;;
-            5) _logs_show_meshchat_build; pause_for_input ;;
+            5) _logs_show_meshchatx; pause_for_input ;;
             6) _logs_show_nomadnet; pause_for_input ;;
             7) _logs_show_sideband; pause_for_input ;;
             8) _logs_search; pause_for_input ;;
