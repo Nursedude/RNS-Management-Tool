@@ -21,13 +21,18 @@ BeforeAll {
 # ---------------------------------------------------------
 Describe "Function Existence" {
 
-    It "services.ps1 has exactly 10 functions" {
+    It "services.ps1 has exactly 13 functions" {
         $functionCount = ([regex]::Matches(
             $Script:ServicesSource,
             '^\s*function\s+',
             [System.Text.RegularExpressions.RegexOptions]::Multiline
         )).Count
-        $functionCount | Should -Be 10
+        $functionCount | Should -Be 13
+    }
+
+    It "Defines shared keep-alive task-name constants" {
+        $Script:ServicesSource.Contains('$Script:RnsdTaskName      = "RNS_rnsd_autostart"') | Should -BeTrue
+        $Script:ServicesSource.Contains('$Script:MeshChatXTaskName = "RNS_meshchatx_autostart"') | Should -BeTrue
     }
 }
 
@@ -293,8 +298,8 @@ Describe "Autostart: Enable-RnsdAutoStart" {
         $Script:EnableBlock.Contains('Get-Command rnsd') | Should -BeTrue
     }
 
-    It "Uses consistent task name 'RNS_rnsd_autostart'" {
-        $Script:EnableBlock.Contains('RNS_rnsd_autostart') | Should -BeTrue
+    It "Uses the shared rnsd task-name constant" {
+        $Script:EnableBlock.Contains('$Script:RnsdTaskName') | Should -BeTrue
     }
 
     It "Checks for existing scheduled task before creating" {
@@ -329,9 +334,18 @@ Describe "Autostart: Enable-RnsdAutoStart" {
         $Script:EnableBlock.Contains('Register-ScheduledTask') | Should -BeTrue
     }
 
+    It "Adds restart-on-failure watchdog settings" {
+        $Script:EnableBlock.Contains('New-ScheduledTaskSettingsSet') | Should -BeTrue
+        $Script:EnableBlock.Contains('RestartCount') | Should -BeTrue
+    }
+
+    It "Offers to start the task immediately for testing" {
+        $Script:EnableBlock.Contains('Start-ScheduledTask') | Should -BeTrue
+    }
+
     It "Logs the auto-start enablement" {
         $Script:EnableBlock.Contains('Write-RnsLog') | Should -BeTrue
-        $Script:EnableBlock.Contains('Enabled rnsd auto-start') | Should -BeTrue
+        $Script:EnableBlock.Contains('Enabled rnsd keep-alive') | Should -BeTrue
     }
 }
 
@@ -344,8 +358,8 @@ Describe "Autostart: Disable-RnsdAutoStart" {
         $Script:DisableBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
     }
 
-    It "Uses same task name as Enable" {
-        $Script:DisableBlock.Contains('RNS_rnsd_autostart') | Should -BeTrue
+    It "Uses same task-name constant as Enable" {
+        $Script:DisableBlock.Contains('$Script:RnsdTaskName') | Should -BeTrue
     }
 
     It "Checks if task exists before removing" {
@@ -364,6 +378,80 @@ Describe "Autostart: Disable-RnsdAutoStart" {
     It "Logs the auto-start disablement" {
         $Script:DisableBlock.Contains('Write-RnsLog') | Should -BeTrue
         $Script:DisableBlock.Contains('Disabled rnsd auto-start') | Should -BeTrue
+    }
+}
+
+Describe "Autostart: Enable-MeshChatXAutoStart" {
+
+    BeforeAll {
+        $fnIdx = $Script:ServicesSource.IndexOf('function Enable-MeshChatXAutoStart')
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:McxEnableBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Verifies meshchatx is installed before creating task" {
+        $Script:McxEnableBlock.Contains('Get-Command meshchatx') | Should -BeTrue
+    }
+
+    It "Uses the shared MeshChatX task-name constant" {
+        $Script:McxEnableBlock.Contains('$Script:MeshChatXTaskName') | Should -BeTrue
+    }
+
+    It "Runs meshchatx headless via AtLogOn trigger" {
+        $Script:McxEnableBlock.Contains('--headless') | Should -BeTrue
+        $Script:McxEnableBlock.Contains('-AtLogOn') | Should -BeTrue
+    }
+
+    It "Adds restart-on-failure watchdog settings" {
+        $Script:McxEnableBlock.Contains('New-ScheduledTaskSettingsSet') | Should -BeTrue
+        $Script:McxEnableBlock.Contains('RestartCount') | Should -BeTrue
+    }
+
+    It "Runs with limited (non-elevated) privileges" {
+        $Script:McxEnableBlock.Contains('RunLevel Limited') | Should -BeTrue
+    }
+
+    It "Registers the task" {
+        $Script:McxEnableBlock.Contains('Register-ScheduledTask') | Should -BeTrue
+    }
+}
+
+Describe "Autostart: Disable-MeshChatXAutoStart" {
+
+    BeforeAll {
+        $fnIdx = $Script:ServicesSource.IndexOf('function Disable-MeshChatXAutoStart')
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:McxDisableBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Uses the MeshChatX task-name constant" {
+        $Script:McxDisableBlock.Contains('$Script:MeshChatXTaskName') | Should -BeTrue
+    }
+
+    It "Unregisters without confirmation prompt" {
+        $Script:McxDisableBlock.Contains('Unregister-ScheduledTask') | Should -BeTrue
+        $Script:McxDisableBlock.Contains('-Confirm:$false') | Should -BeTrue
+    }
+}
+
+Describe "Autostart: Get-RnsAutoStartStatus" {
+
+    BeforeAll {
+        $fnIdx = $Script:ServicesSource.IndexOf('function Get-RnsAutoStartStatus')
+        $fnEnd = $Script:ServicesSource.IndexOf("`nfunction ", $fnIdx + 20)
+        if ($fnEnd -lt 0) { $fnEnd = $Script:ServicesSource.Length }
+        $Script:StatusBlock = $Script:ServicesSource.Substring($fnIdx, $fnEnd - $fnIdx)
+    }
+
+    It "Reports state for both keep-alive tasks" {
+        $Script:StatusBlock.Contains('$Script:RnsdTaskName') | Should -BeTrue
+        $Script:StatusBlock.Contains('$Script:MeshChatXTaskName') | Should -BeTrue
+    }
+
+    It "Queries task state via Get-ScheduledTask" {
+        $Script:StatusBlock.Contains('Get-ScheduledTask') | Should -BeTrue
     }
 }
 
@@ -417,12 +505,12 @@ Describe "Service Menu Structure" {
         $Script:MenuBlock.Contains('Network Tools') | Should -BeTrue
     }
 
-    It "Menu has Identity & Boot section" {
-        $Script:MenuBlock.Contains('Identity & Boot') | Should -BeTrue
+    It "Menu has Identity & Auto-Start section" {
+        $Script:MenuBlock.Contains('Identity & Auto-Start') | Should -BeTrue
     }
 
     It "Menu wires key options to correct functions" {
-        # Spot-check a few representative options rather than all 12
+        # Spot-check representative options rather than all of them
         $Script:MenuBlock.Contains('Start-RNSDaemon') | Should -BeTrue
         $Script:MenuBlock.Contains('Stop-RNSDaemon') | Should -BeTrue
         $Script:MenuBlock.Contains('Show-Status') | Should -BeTrue
@@ -430,6 +518,9 @@ Describe "Service Menu Structure" {
         $Script:MenuBlock.Contains('Invoke-IdentityManagement') | Should -BeTrue
         $Script:MenuBlock.Contains('Enable-RnsdAutoStart') | Should -BeTrue
         $Script:MenuBlock.Contains('Disable-RnsdAutoStart') | Should -BeTrue
+        $Script:MenuBlock.Contains('Enable-MeshChatXAutoStart') | Should -BeTrue
+        $Script:MenuBlock.Contains('Disable-MeshChatXAutoStart') | Should -BeTrue
+        $Script:MenuBlock.Contains('Get-RnsAutoStartStatus') | Should -BeTrue
     }
 
     It "Menu has back option (0)" {
