@@ -406,14 +406,15 @@ setup() {
     echo "$func_body" | grep -q 'umask 077'
 }
 
-# R1: NodeSource download validation
+# NodeSource download-validation guards removed with the dead Node.js install
+# path (install_nodejs_modern / check_nodejs_version) — see #83: MeshChatX
+# ships as a pip wheel with a bundled frontend, so no component needs Node.js.
 
-@test "INSTALL: NodeSource download has size validation" {
-    grep -q 'script_size' "$LIB_DIR/install.sh"
-}
-
-@test "INSTALL: NodeSource download logs SHA256" {
-    grep -q 'sha256sum' "$LIB_DIR/install.sh"
+@test "#83 item2: dead Node.js install (curl|sudo bash NodeSource) stays removed" {
+    # The 'curl setup_22.x | sudo -E bash' path was dead code (no in-tree
+    # callers; Node.js no longer required). Guard against reintroducing the
+    # unverified remote-script-to-root-shell risk.
+    ! grep -qE 'install_nodejs_modern|check_nodejs_version|deb\.nodesource\.com|setup_22' "$LIB_DIR/install.sh"
 }
 
 #########################################################
