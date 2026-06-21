@@ -61,7 +61,13 @@ stop_services() {
 start_services() {
     print_section "Starting Services"
 
-    if confirm_action "Start the rnsd daemon?" "y"; then
+    # A plain "start" confirms; a "restart" passes "force" so we never
+    # re-prompt. Without this, restart = stop_services + start_services would
+    # leave rnsd STOPPED whenever the user declines the prompt or stdin is
+    # non-interactive (confirm_action returns 1 on closed stdin) — a silent
+    # "restart that never restarts".
+    local force_start="${1:-}"
+    if [ "$force_start" = "force" ] || confirm_action "Start the rnsd daemon?" "y"; then
         print_info "Starting rnsd daemon..."
         if rnsd --daemon >> "$UPDATE_LOG" 2>&1; then
             # Poll with spinner instead of silent sleep (meshforge progress pattern)
@@ -90,7 +96,7 @@ start_services() {
                 # Show status (only if rnstatus is available)
                 if [ "$HAS_RNSTATUS" = true ]; then
                     print_info "Network status:"
-                    rnstatus 2>&1 | head -n 15
+                    run_with_timeout "$RNSTATUS_TIMEOUT" rnstatus 2>&1 | head -n 15
                 fi
             else
                 print_error "rnsd failed to start after ${max_wait}s"
@@ -121,7 +127,7 @@ show_service_status() {
             print_success "rnsd daemon: Running"
             if has_command rnstatus; then
                 echo ""
-                rnstatus 2>&1 | show_paged_output ""
+                run_with_timeout "$RNSTATUS_TIMEOUT" rnstatus 2>&1 | show_paged_output ""
             fi
             ;;
         "$SVC_STATE_STARTING")
@@ -282,7 +288,7 @@ handle_network_tools() {
         5)
             print_section "Network Statistics"
             if [ "$HAS_RNSTATUS" = true ]; then
-                rnstatus -a 2>&1 | show_paged_output "Network Statistics"
+                run_with_timeout "$RNSTATUS_TIMEOUT" rnstatus -a 2>&1 | show_paged_output "Network Statistics"
             else
                 print_warning "rnstatus not available - install RNS first"
             fi
@@ -292,7 +298,7 @@ handle_network_tools() {
             if [ "$HAS_RNPATH" = true ]; then
                 print_info "Known paths in the Reticulum network:"
                 echo ""
-                rnpath -t 2>&1
+                run_with_timeout "$RNSTATUS_TIMEOUT" rnpath -t 2>&1
             else
                 print_warning "rnpath not available - install RNS first"
             fi
@@ -305,7 +311,7 @@ handle_network_tools() {
                 if [ -n "$PROBE_DEST" ]; then
                     if validate_rns_hash "$PROBE_DEST"; then
                         print_info "Probing $PROBE_DEST..."
-                        rnprobe "$PROBE_DEST" 2>&1
+                        run_with_timeout "$NETWORK_TIMEOUT" rnprobe "$PROBE_DEST" 2>&1
                     fi
                 else
                     print_info "Cancelled"
@@ -363,7 +369,7 @@ handle_file_transfer() {
                 if [ -n "$RNCP_DEST" ]; then
                     if validate_rns_hash "$RNCP_DEST"; then
                         print_info "Sending $RNCP_FILE to $RNCP_DEST..."
-                        rncp "$RNCP_FILE" "$RNCP_DEST" 2>&1
+                        run_with_timeout "$NETWORK_TIMEOUT" rncp "$RNCP_FILE" "$RNCP_DEST" 2>&1
                     fi
                 else
                     print_info "Cancelled"
@@ -375,6 +381,9 @@ handle_file_transfer() {
             mkdir -p "$REAL_HOME/Downloads" 2>/dev/null
             print_info "Listening for incoming file transfers..."
             print_info "Press Ctrl+C to stop listening"
+            # Intentionally NOT wrapped in run_with_timeout: this is a
+            # user-controlled listener (lifetime ends on Ctrl+C), like the
+            # serial console. A timeout here would kill the receiver mid-wait.
             rncp -l -s "$REAL_HOME/Downloads" 2>&1 || true
             ;;
         *)
@@ -847,7 +856,7 @@ services_menu() {
             3)
                 print_info "Restarting rnsd daemon..."
                 stop_services
-                start_services
+                start_services force
                 pause_for_input
                 ;;
             4)  show_service_status; pause_for_input ;;
@@ -873,20 +882,33 @@ services_menu() {
 setup_autostart() {
     print_section "Setup Auto-Start"
 
+    # Resolve the rnsd binary instead of hardcoding /usr/local/bin/rnsd.
+    # pip/pipx installs land in ~/.local/bin or /usr/bin, so the hardcoded
+    # path makes the unit fail at boot (status=203/EXEC) with no obvious cause.
+    local rnsd_bin
+    rnsd_bin=$(command -v rnsd 2>/dev/null)
+    if [ -z "$rnsd_bin" ]; then
+        print_error "rnsd not found on PATH — install RNS before enabling auto-start"
+        log_error "setup_autostart: rnsd binary not found on PATH"
+        return 1
+    fi
+    print_info "Using rnsd binary: $rnsd_bin"
+
     if [ ! -d "$REAL_HOME/.config/systemd/user" ]; then
         mkdir -p "$REAL_HOME/.config/systemd/user"
     fi
 
     local service_file="$REAL_HOME/.config/systemd/user/rnsd.service"
 
-    cat > "$service_file" << 'EOF'
+    # Unquoted heredoc so ${rnsd_bin} expands; no other $ / backticks below.
+    cat > "$service_file" << EOF
 [Unit]
 Description=Reticulum Network Stack Daemon
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/rnsd
+ExecStart=${rnsd_bin}
 Restart=always
 RestartSec=5
 
@@ -899,8 +921,29 @@ EOF
     systemctl --user enable rnsd.service
 
     print_success "Auto-start enabled for rnsd"
-    print_info "Service will start automatically on login"
-    log_message "Enabled rnsd auto-start"
+    log_message "Enabled rnsd auto-start (ExecStart=$rnsd_bin)"
+
+    # A --user unit only runs while the user has an active session unless
+    # linger is enabled. On a headless Pi (no login session at boot) the unit
+    # would silently never start. Offer to enable linger so it starts at boot.
+    local user_name="${SUDO_USER:-$USER}"
+    if command -v loginctl &>/dev/null; then
+        local linger_state
+        linger_state=$(loginctl show-user "$user_name" -p Linger --value 2>/dev/null)
+        if [ "$linger_state" = "yes" ]; then
+            print_info "Linger already enabled for $user_name — rnsd will start at boot"
+        elif confirm_action "Enable linger so rnsd starts at boot without login (headless)?" "y"; then
+            if sudo loginctl enable-linger "$user_name" 2>/dev/null; then
+                print_success "Linger enabled for $user_name — rnsd will start at boot"
+                log_message "Enabled linger for $user_name"
+            else
+                print_warning "Could not enable linger (sudo required?) — rnsd will start on login only"
+                log_warn "setup_autostart: failed to enable linger for $user_name"
+            fi
+        else
+            print_info "Skipped linger — rnsd will start on login only, not at boot"
+        fi
+    fi
 
     # Optionally also auto-start the MeshChatX web daemon on login.
     if command -v meshchatx &>/dev/null && confirm_action "Also auto-start MeshChatX on login?" "y"; then

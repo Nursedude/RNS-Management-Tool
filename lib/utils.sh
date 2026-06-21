@@ -18,10 +18,30 @@ run_with_timeout() {
     shift
     if has_command timeout; then
         timeout "$timeout_val" "$@"
-    else
-        # Fallback if timeout command not available
-        "$@"
+        return $?
     fi
+    # Fallback when coreutils 'timeout' is absent (busybox / minimal env).
+    # Do NOT run the command unbounded — a wedged network/RNS call would then
+    # hang forever and the bound the caller asked for would be silently void
+    # (the exact "degraded path reads as healthy" failure mode). Enforce the
+    # bound with a background watchdog that SIGTERMs (then SIGKILLs) on expiry.
+    log_warn "coreutils 'timeout' not found — enforcing ${timeout_val}s bound via kill-timer fallback"
+    "$@" &
+    local cmd_pid=$!
+    (
+        sleep "$timeout_val"
+        if kill -TERM "$cmd_pid" 2>/dev/null; then
+            sleep 2
+            kill -KILL "$cmd_pid" 2>/dev/null
+        fi
+    ) >/dev/null 2>&1 &
+    local watchdog_pid=$!
+    local rc=0
+    wait "$cmd_pid" 2>/dev/null || rc=$?
+    # Command returned on its own — cancel the watchdog so it doesn't linger.
+    kill -TERM "$watchdog_pid" 2>/dev/null
+    wait "$watchdog_pid" 2>/dev/null || true
+    return "$rc"
 }
 
 # Atomic file write (adapted from meshforge paths.py atomic_write_text)

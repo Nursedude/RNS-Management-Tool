@@ -406,7 +406,7 @@ diag_check_network() {
     if [ "$HAS_RNSTATUS" = true ] && check_service_status "rnsd"; then
         echo ""
         echo -e "  ${CYAN}Reticulum Interface Status:${NC}"
-        rnstatus 2>&1 | head -n 25 | while read -r line; do
+        run_with_timeout "$RNSTATUS_TIMEOUT" rnstatus 2>&1 | head -n 25 | while read -r line; do
             echo "  $line"
         done
     fi

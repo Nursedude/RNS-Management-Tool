@@ -199,3 +199,7 @@ APT_TIMEOUT=600          # 10 minutes for apt operations (can be slow)
 GIT_TIMEOUT=300          # 5 minutes for git operations
 PIP_TIMEOUT=300          # 5 minutes for pip operations
 RNODECONF_TIMEOUT=120    # 2 minutes for RNODE device operations
+# Short bound for rnstatus/rnpath reads: a wedged rnsd hangs the RPC socket
+# (cf. the unix_stream_connect wedge class), so fail FAST rather than make the
+# operator wait NETWORK_TIMEOUT. Generous enough for a slow-but-alive rnsd.
+RNSTATUS_TIMEOUT=30      # 30s for rnstatus/rnpath status reads
