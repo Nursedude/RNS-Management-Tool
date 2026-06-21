@@ -217,7 +217,14 @@ rnode_serial_console() {
     print_info "Opening serial console for $device_port..."
     print_info "Press Ctrl+C to exit"
     echo ""
-    rnodeconf "$device_port" --console 2>&1 | tee -a "$UPDATE_LOG"
+    # Run the console DIRECTLY — no tee pipe, no 2>&1 redirect. Piping an
+    # interactive serial console through tee detaches it from the controlling
+    # TTY: Ctrl+C is consumed by the pipeline instead of reaching rnodeconf,
+    # and a dropped SSH session can leave the pipe (and the serial port) held
+    # open. Log only the session boundaries, not the live byte stream.
+    log_message "Opening rnodeconf serial console for $device_port"
+    rnodeconf "$device_port" --console
+    log_message "Closed rnodeconf serial console for $device_port"
 }
 
 # RNODE: Show help

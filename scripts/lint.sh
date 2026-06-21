@@ -5,7 +5,7 @@
 # Enforces project-specific security and coding standards
 #
 # Adapted from meshforge scripts/lint.py (MF001-MF014)
-# Checks RNS001-RNS011 rules from CLAUDE.md
+# Checks RNS001-RNS012 rules from CLAUDE.md
 #
 # Usage:
 #   ./scripts/lint.sh              # Lint all bash source files
@@ -204,6 +204,29 @@ lint_file() {
                 report "W" "$filepath" "$lineno" "RNS011" \
                     "Hardcoded /home/<user>/ path — use \$HOME, \$REAL_HOME, or ~ for portability"
             fi
+        fi
+
+        # RNS012: RNS query commands without timeout protection (wedged-rnsd guard)
+        # A wedged rnsd hangs the RPC socket (the unix_stream_connect wedge class),
+        # so rnstatus/rnpath/rnprobe/rncp must run under run_with_timeout or they
+        # hang the TUI. Match the CODE portion only (strip inline comments) so the
+        # rule does not trip on its own command names in a comment — the same
+        # self-match gotcha RNS001 hit. Excludes: display-only lines, command -v /
+        # has_command probes, --help/--version, the `for tool in rnsd rnstatus ...`
+        # capability loop, the standalone verify_install.sh (cannot source lib/, so
+        # run_with_timeout is unavailable there — mirrors RNS008), and the
+        # interactive `rncp -l` listener (lifetime ends on Ctrl+C — a timeout would
+        # kill it mid-wait).
+        local rns012_code="${line%%#*}"
+        if [[ "$rns012_code" =~ [^_a-zA-Z](rnstatus|rnpath|rnprobe|rncp)[[:space:]] ]] && \
+           [[ "$rns012_code" != *"run_with_timeout"* ]] && [[ "$line" != *"command -v"* ]] && \
+           [[ "$line" != *"has_command"* ]] && [[ "$line" != *"--version"* ]] && \
+           [[ "$line" != *"--help"* ]] && [[ "$line" != *"rncp -l"* ]] && \
+           [[ "$line" != *"--listen"* ]] && [[ "$rns012_code" != *"for "* ]] && \
+           [[ "$filepath" != *"test"* ]] && [[ "$filepath" != *"lint.sh"* ]] && \
+           [[ "$filepath" != *"verify_install.sh"* ]] && [ "$is_display" = false ]; then
+            report "W" "$filepath" "$lineno" "RNS012" \
+                "RNS query (rnstatus/rnpath/rnprobe/rncp) without timeout — wrap in run_with_timeout"
         fi
 
     done < "$filepath"

@@ -615,3 +615,63 @@ EOF
     helper_count=$(grep -c '^_logs_[a-z_]*()' "$LIB_DIR/config.sh")
     [ "$helper_count" -ge 9 ]
 }
+
+#########################################################
+# Issue #83 — 2026-05-27 ecosystem review follow-ups (shell hardening)
+#########################################################
+
+@test "#83 item3: run_with_timeout fallback is bounded (not unbounded \$@)" {
+    # Regression for: the busybox/no-timeout fallback used to run "$@" with no
+    # bound, silently voiding the caller's timeout. The fallback must now
+    # enforce the bound with a kill-timer.
+    local func_body
+    func_body=$(sed -n '/^run_with_timeout()/,/^}/p' "$LIB_DIR/utils.sh")
+    echo "$func_body" | grep -q 'kill -TERM'
+    echo "$func_body" | grep -q 'kill -KILL'
+}
+
+@test "#83 item1: serial console is not piped through tee" {
+    # Regression for: rnodeconf --console | tee detached the console from the
+    # controlling TTY (Ctrl+C swallowed, serial port held on dropped SSH).
+    local func_body
+    func_body=$(sed -n '/^rnode_serial_console()/,/^}/p' "$LIB_DIR/rnode.sh")
+    ! echo "$func_body" | grep -q -- '--console.*| *tee'
+}
+
+@test "#83 item4: rnsd restart force-starts without re-confirming" {
+    # Regression for: restart = stop_services + start_services left rnsd STOPPED
+    # when the start prompt was declined / stdin non-interactive.
+    grep -q 'start_services force' "$LIB_DIR/services.sh"
+    local func_body
+    func_body=$(sed -n '/^start_services()/,/^}/p' "$LIB_DIR/services.sh")
+    echo "$func_body" | grep -q 'force_start'
+}
+
+@test "#83 item5: setup_autostart resolves rnsd via command -v, not hardcoded path" {
+    local func_body
+    func_body=$(sed -n '/^setup_autostart()/,/^}/p' "$LIB_DIR/services.sh")
+    echo "$func_body" | grep -q 'command -v rnsd'
+    ! echo "$func_body" | grep -q 'ExecStart=/usr/local/bin/rnsd'
+}
+
+@test "#83 item5: setup_autostart offers linger for headless boot" {
+    local func_body
+    func_body=$(sed -n '/^setup_autostart()/,/^}/p' "$LIB_DIR/services.sh")
+    echo "$func_body" | grep -q 'enable-linger'
+}
+
+@test "#83 item6: RNSTATUS_TIMEOUT defined for rn* query bound" {
+    grep -q 'RNSTATUS_TIMEOUT=' "$LIB_DIR/core.sh"
+}
+
+@test "#83 item6: lint.sh enforces rn* timeout wrapping (RNS012)" {
+    grep -q 'RNS012' "$SCRIPT_DIR/scripts/lint.sh"
+}
+
+@test "#83 item6: no unwrapped rnstatus/rnpath/rnprobe/rncp in lib/ (RNS012 clean)" {
+    # The custom linter is the live guard; this asserts it currently passes so
+    # a future bare rn* invocation fails the suite, not just CI.
+    run bash "$SCRIPT_DIR/scripts/lint.sh"
+    [ "$status" -eq 0 ]
+    ! echo "$output" | grep -q 'RNS012'
+}

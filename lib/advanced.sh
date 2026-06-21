@@ -29,7 +29,7 @@ emergency_quick_mode() {
 
         if [ "$HAS_RNSTATUS" = true ] && check_service_status "rnsd"; then
             local iface_count
-            iface_count=$(rnstatus 2>/dev/null | grep -c "interface" || echo "?")
+            iface_count=$(run_with_timeout "$RNSTATUS_TIMEOUT" rnstatus 2>/dev/null | grep -c "interface" || echo "?")
             print_box_line "  Interfaces: $iface_count"
         fi
 
@@ -71,7 +71,7 @@ emergency_quick_mode() {
                 # Use require_service for consistent pre-flight (meshforge f8946f4 pattern)
                 if [ "$HAS_RNSTATUS" = true ]; then
                     if require_service "rnsd" "Network status requires rnsd"; then
-                        rnstatus 2>&1 | show_paged_output "Network Status"
+                        run_with_timeout "$RNSTATUS_TIMEOUT" rnstatus 2>&1 | show_paged_output "Network Status"
                     fi
                 else
                     print_warning "rnstatus not available"
@@ -81,7 +81,7 @@ emergency_quick_mode() {
             4)
                 if [ "$HAS_RNPATH" = true ]; then
                     if require_service "rnsd" "Path table requires rnsd"; then
-                        rnpath -t 2>&1
+                        run_with_timeout "$RNSTATUS_TIMEOUT" rnpath -t 2>&1
                     fi
                 else
                     print_warning "rnpath not available"
@@ -94,7 +94,7 @@ emergency_quick_mode() {
                         echo -n "Destination hash: "
                         read -r QM_DEST
                         if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
-                            rnprobe "$QM_DEST" 2>&1
+                            run_with_timeout "$NETWORK_TIMEOUT" rnprobe "$QM_DEST" 2>&1
                         fi
                     fi
                 else
@@ -111,7 +111,7 @@ emergency_quick_mode() {
                             echo -n "Destination hash: "
                             read -r QM_DEST
                             if [ -n "$QM_DEST" ] && validate_rns_hash "$QM_DEST"; then
-                                rncp "$QM_FILE" "$QM_DEST" 2>&1
+                                run_with_timeout "$NETWORK_TIMEOUT" rncp "$QM_FILE" "$QM_DEST" 2>&1
                             fi
                         elif [ -n "$QM_FILE" ]; then
                             print_error "File not found: $QM_FILE"
@@ -141,7 +141,7 @@ emergency_quick_mode() {
             9)
                 if [ "$HAS_RNSTATUS" = true ]; then
                     if require_service "rnsd" "View interfaces requires rnsd"; then
-                        rnstatus 2>&1 | show_paged_output "Interfaces"
+                        run_with_timeout "$RNSTATUS_TIMEOUT" rnstatus 2>&1 | show_paged_output "Interfaces"
                     fi
                 else
                     print_warning "rnstatus not available"
