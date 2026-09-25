@@ -8,6 +8,8 @@ RNS Management Tool transforms any Raspberry Pi or Linux/Windows machine into a 
 
 **Key Tagline:** "Complete Reticulum Ecosystem Management - One Tool, All Platforms"
 
+**Status:** ARCHIVED (2026-09) — see docs/REVIEW_2026-09_KEEP_OR_RETIRE.md. Do not add fixes or features; Windows users → docs/WINDOWS_QUICKSTART.md, Linux/Pi → MeshForge.
+
 **Version:** 0.4.0-beta | **License:** GPLv3 | **Languages:** Bash 65%, PowerShell 30%, Markdown 5%
 
 ---
