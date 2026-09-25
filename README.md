@@ -3,7 +3,7 @@
 **Complete Reticulum Network Stack Management Solution**
 *Part of the [MeshForge](https://github.com/Nursedude/meshforge) Ecosystem*
 
-A comprehensive, cross-platform management tool for the Reticulum ecosystem, featuring automated installation, configuration, and maintenance capabilities for Raspberry Pi, Linux, Windows 11, and WSL environments.
+*(Archived.)* A comprehensive, cross-platform management tool for the Reticulum ecosystem, featuring automated installation, configuration, and maintenance capabilities for Raspberry Pi, Linux, Windows 11, and WSL environments.
 
 ![Version](https://img.shields.io/badge/version-0.4.0--beta-orange)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20RaspberryPi-green)
@@ -12,20 +12,31 @@ A comprehensive, cross-platform management tool for the Reticulum ecosystem, fea
 ![Security](https://img.shields.io/badge/security-A%20rated-brightgreen)
 ![ShellCheck](https://img.shields.io/badge/shellcheck-passing-green)
 ![Tests](https://img.shields.io/badge/tests-990%2B%20passing-green)
+![Status](https://img.shields.io/badge/status-archived-lightgrey)
 
-> **Beta Software - Community Testing Welcome**
+> [!WARNING]
+> **This repository is archived (2026-09) and should not be used.**
 >
-> This tool is functional and actively developed, but has **not been comprehensively field-tested** across all supported platforms and hardware combinations. Many features work in isolation but need real-world validation — especially RNODE hardware workflows, multi-device setups, and edge-case service management scenarios. If you use this tool, **please report issues and contribute improvements**. Your testing on Raspberry Pi, desktop Linux, Windows, and with RNODE hardware is invaluable.
+> A review found the features that went beyond `pip install` broken on both platforms:
+> - **Starting rnsd:** starting rnsd and the Windows auto-start task use `rnsd --daemon`,
+>   a flag rnsd doesn't have.
+> - **Windows restore:** it doesn't restore your config, but reports success.
+> - **Failed installs:** some are reported as successes.
+> - **RNode menu:** it calls `rnodeconf` options that don't exist. Its "Update bootloader"
+>   option actually rewrites the device EEPROM.
 >
-> **What needs testing most:**
-> - RNODE firmware flashing and radio configuration across all 21+ supported boards
-> - MeshChatX and Sideband installation on various Linux distributions
-> - Windows PowerShell workflows (service management, backup/restore)
-> - meshtasticd integration (HTTP API, SPI HAT detection)
-> - Backup import/export across platforms
-> - First-run wizard on fresh systems
+> Details: [`docs/REVIEW_2026-09_KEEP_OR_RETIRE.md`](docs/REVIEW_2026-09_KEEP_OR_RETIRE.md).
 >
-> Report issues: [GitHub Issues](https://github.com/Nursedude/RNS-Management-Tool/issues) | Contribute: [Pull Requests](https://github.com/Nursedude/RNS-Management-Tool/pulls)
+> **Use instead:**
+> - **Windows 11:** [`docs/WINDOWS_QUICKSTART.md`](docs/WINDOWS_QUICKSTART.md). It uses
+>   upstream `rns`/`lxmf`/`nomadnet` via pip, with auto-start, RNode and backup covered in a
+>   few PowerShell commands.
+> - **Linux / Raspberry Pi:** [MeshForge](https://github.com/Nursedude/meshforge), or the
+>   upstream packages directly (`pip install rns lxmf nomadnet`, `rnodeconf --autoinstall`).
+>
+> If you enabled this tool's Windows auto-start, remove its tasks. See step 4 of the quick start.
+>
+> The rest of this README is kept for historical reference only.
 
 ---
 
